@@ -1,0 +1,37 @@
+# ---------------------------------------------------------------------------
+# Default environment values for the redbull-platform helmfile.
+# Override per environment (e.g. environments/prod.yaml) or with `helmfile --state-values-set`.
+# ---------------------------------------------------------------------------
+
+# Git refs the service charts are pulled from (per repo). Pin to tags for prod.
+refs:
+  temporalStack: main
+  segmentManager: main
+  workflows: main
+  dhcp: main
+  bmh: main
+  serverScanner: main
+
+crossplane:
+  version: "2.3.2"
+
+providerHttp:
+  package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
+  packagePullSecrets: []        # e.g. [artifactory] for air-gapped
+  providerConfigName: dhcp-http # shared with the dhcp integration below
+
+# segments-manager needs an external MongoDB. Point this at your instance.
+segmentsManager:
+  mongodbUrl: "mongodb://mongodb.segments-manager.svc.cluster.local:27017"  # TODO: real MongoDB
+
+# segment-allocation (Temporal workers) wiring to the in-cluster Temporal + segments-manager.
+segmentAllocation:
+  temporalHost: "temporal-frontend.temporal.svc.cluster.local:7233"
+  temporalNamespace: "default"
+  segmentManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
+
+# dhcp_scope_manager <-> provider-http. apiUrl is the backend DHCP API the
+# Crossplane Request talks to. No scope Requests are created unless you set
+# dhcp_values below (the chart guards on dhcp_values.scopeName).
+dhcp:
+  apiUrl: "https://dhcp-api.lab.local"   # TODO: real DHCP API endpoint

@@ -1,0 +1,6 @@
+# Helmfile pulls remote/git charts into its cache; never commit those.
+.helmfile/
+helmfile-*.yaml
+*.tgz
+charts/**/charts/
+charts/**/Chart.lock

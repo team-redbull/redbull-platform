@@ -1,0 +1,143 @@
+# ===========================================================================
+# redbull-platform — one command deploys every team-redbull service.
+#
+#   helmfile sync          # install/upgrade everything in dependency order
+#   helmfile -e prod sync  # with a different environment
+#   helmfile destroy       # tear everything down
+#
+# Service charts are pulled DYNAMICALLY from each source repo at sync time
+# (git:: refs) — nothing is vendored here except the two platform-owned glue
+# charts under ./charts (namespaces, provider-http).
+# ===========================================================================
+
+environments:
+  default:
+    values:
+      - environments/default.yaml
+  prod:
+    values:
+      - environments/default.yaml
+      # - environments/prod.yaml   # create to override refs/registries/endpoints
+
+---
+
+repositories:
+  - name: crossplane-stable
+    url: https://charts.crossplane.io/stable
+
+helmDefaults:
+  wait: true
+  timeout: 600
+  createNamespace: false   # namespaces are created by the 'namespaces' release
+
+releases:
+  # --- foundation: namespaces every other release installs into -------------
+  - name: namespaces
+    namespace: default      # cluster-scoped objects; release record lives in default
+    chart: ./charts/namespaces
+
+  # --- Crossplane core ------------------------------------------------------
+  - name: crossplane
+    namespace: crossplane-system
+    chart: crossplane-stable/crossplane
+    version: {{ .Values.crossplane.version | quote }}
+    needs:
+      - default/namespaces
+
+  # --- provider-http: Provider package, then ProviderConfig -----------------
+  - name: provider-http
+    namespace: crossplane-system
+    chart: ./charts/provider-http
+    needs:
+      - crossplane-system/crossplane
+    hooks:
+      - events: [presync]
+        showlogs: true
+        command: kubectl
+        args: ["wait", "--for=condition=Established", "crd/providers.pkg.crossplane.io", "--timeout=120s"]
+    values:
+      - provider:
+          enabled: true
+          package: {{ .Values.providerHttp.package | quote }}
+          packagePullSecrets: {{ .Values.providerHttp.packagePullSecrets | toJson }}
+        providerConfig:
+          enabled: false
+
+  - name: provider-http-config
+    namespace: crossplane-system
+    chart: ./charts/provider-http
+    needs:
+      - crossplane-system/provider-http
+    hooks:
+      # ProviderConfig CRD only exists once the provider is installed & healthy.
+      - events: [presync]
+        showlogs: true
+        command: kubectl
+        args: ["wait", "--for=condition=Healthy", "provider.pkg.crossplane.io/provider-http", "--timeout=300s"]
+    values:
+      - provider:
+          enabled: false
+        providerConfig:
+          enabled: true
+          name: {{ .Values.providerHttp.providerConfigName | quote }}
+
+  # --- Temporal stack -------------------------------------------------------
+  - name: temporal-stack
+    namespace: temporal
+    chart: git::https://github.com/team-redbull/temporal-stack.git@.?ref={{ .Values.refs.temporalStack }}
+    needs:
+      - default/namespaces
+
+  # --- segments-manager (needs external MongoDB) ----------------------------
+  - name: segments-manager
+    namespace: segments-manager
+    chart: git::https://github.com/team-redbull/segment_manager.git@deploy/helm?ref={{ .Values.refs.segmentManager }}
+    needs:
+      - default/namespaces
+    values:
+      - mongodb:
+          url: {{ .Values.segmentsManager.mongodbUrl | quote }}
+
+  # --- segment-allocation (Temporal workers; chart creates its own namespace) -
+  # Release record lives in redbull-platform; the chart creates+populates the
+  # segment-allocation namespace itself.
+  - name: segment-allocation
+    namespace: redbull-platform
+    chart: git::https://github.com/team-redbull/workflows.git@helm/segment-allocation?ref={{ .Values.refs.workflows }}
+    needs:
+      - default/namespaces
+      - temporal/temporal-stack
+      - segments-manager/segments-manager
+    values:
+      - namespace: segment-allocation
+        config:
+          temporalHost: {{ .Values.segmentAllocation.temporalHost | quote }}
+          temporalNamespace: {{ .Values.segmentAllocation.temporalNamespace | quote }}
+          segmentManagerUrl: {{ .Values.segmentAllocation.segmentManagerUrl | quote }}
+
+  # --- BareMetalHost generator operator -------------------------------------
+  - name: bmh-generator-operator
+    namespace: bmh-system
+    chart: git::https://github.com/team-redbull/BareMetalHostUCS.git@deploy/helm/bmh-generator-operator?ref={{ .Values.refs.bmh }}
+    needs:
+      - default/namespaces
+
+  # --- Server scanner dashboard ---------------------------------------------
+  - name: server-scanner-dashboard
+    namespace: server-scanner
+    chart: git::https://github.com/team-redbull/ServerScanner.git@deploy/helm/server-scanner-dashboard?ref={{ .Values.refs.serverScanner }}
+    needs:
+      - default/namespaces
+
+  # --- DHCP scope integration (Crossplane Requests via provider-http) -------
+  - name: hosted-cluster-integration
+    namespace: crossplane-system
+    chart: git::https://github.com/team-redbull/dhcp_scope_manager.git@helm?ref={{ .Values.refs.dhcp }}
+    needs:
+      - crossplane-system/provider-http-config
+    values:
+      - crossplane:
+          namespace: crossplane-system
+          providerConfigName: {{ .Values.providerHttp.providerConfigName | quote }}
+        apiServer:
+          url: {{ .Values.dhcp.apiUrl | quote }}

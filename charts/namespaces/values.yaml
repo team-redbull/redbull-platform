@@ -1,0 +1,9 @@
+# Namespaces this platform creates up front. The segment-allocation namespace is
+# intentionally NOT here — the workflows chart creates and owns it itself.
+namespaces:
+  - crossplane-system
+  - temporal
+  - segments-manager
+  - bmh-system
+  - server-scanner
+  - redbull-platform   # hosts the segment-allocation release record (see helmfile)

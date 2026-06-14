@@ -1,0 +1,11 @@
+{{- if .Values.providerConfig.enabled }}
+# Cluster-scoped ProviderConfig (matches provider-http quickstart). Consumers
+# such as dhcp_scope_manager reference it by name (providerConfigRef.name).
+apiVersion: http.crossplane.io/v1alpha1
+kind: ProviderConfig
+metadata:
+  name: {{ .Values.providerConfig.name }}
+spec:
+  credentials:
+    source: {{ .Values.providerConfig.credentialsSource }}
+{{- end }}

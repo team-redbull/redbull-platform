@@ -1,0 +1,14 @@
+{{- if .Values.provider.enabled }}
+apiVersion: pkg.crossplane.io/v1
+kind: Provider
+metadata:
+  name: {{ .Values.provider.name }}
+spec:
+  package: {{ .Values.provider.package }}
+  {{- with .Values.provider.packagePullSecrets }}
+  packagePullSecrets:
+    {{- range . }}
+    - name: {{ . }}
+    {{- end }}
+  {{- end }}
+{{- end }}

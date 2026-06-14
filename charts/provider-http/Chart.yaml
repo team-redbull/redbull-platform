@@ -1,0 +1,7 @@
+apiVersion: v2
+name: provider-http
+description: >-
+  Platform-owned glue for the crossplane-contrib provider-http: installs the
+  Crossplane Provider package and (separately) its ProviderConfig.
+type: application
+version: 0.1.0

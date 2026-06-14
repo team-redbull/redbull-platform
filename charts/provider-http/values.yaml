@@ -1,0 +1,19 @@
+# Installed as TWO releases from the helmfile:
+#   provider-http        -> provider.enabled=true,  providerConfig.enabled=false
+#   provider-http-config -> provider.enabled=false, providerConfig.enabled=true
+# so the ProviderConfig is applied only after the Provider's CRDs exist.
+
+provider:
+  enabled: true
+  name: provider-http
+  # For air-gapped installs, retag this package into your registry and override.
+  package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
+  # Names of packagePullSecrets (must exist in crossplane-system).
+  packagePullSecrets: []
+
+providerConfig:
+  enabled: false
+  # Must match what consumers reference (dhcp_scope_manager expects "dhcp-http").
+  name: dhcp-http
+  # provider-http ProviderConfig credentials source: None | Secret
+  credentialsSource: None
