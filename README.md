@@ -52,6 +52,50 @@ Target a different environment (see `environments/`):
 helmfile -e prod sync
 ```
 
+## Installing specific services only
+
+Use Helmfile's `-l` / `--selector` to act on a subset of releases. Every release
+can be selected by its built-in `name` or `namespace` labels — no chart changes
+needed. The same selector works with `template`, `diff`, `sync`, and `destroy`.
+
+```sh
+# One release
+helmfile -l name=crossplane sync
+helmfile -l name=temporal-stack sync
+
+# Several at once (repeat -l = OR)
+helmfile -l name=crossplane -l name=provider-http sync
+
+# Everything in a namespace
+helmfile -l namespace=crossplane-system sync
+```
+
+Release names: `namespaces`, `crossplane`, `provider-http`, `provider-http-config`,
+`temporal-stack`, `segments-manager`, `segment-allocation`, `bmh-generator-operator`,
+`server-scanner-dashboard`, `hosted-cluster-integration`.
+
+> **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts
+> on *only* the matched releases and skips their `needs:`. So `helmfile -l
+> name=provider-http sync` will fail if `crossplane` isn't already installed. Add
+> `--include-needs` to also install everything a selection depends on, in order:
+>
+> ```sh
+> helmfile -l name=provider-http-config --include-needs sync   # also brings up crossplane + provider-http
+> ```
+
+Recommended first-time bring-up of the Crossplane layer, one step at a time:
+
+```sh
+helmfile -l name=namespaces sync
+helmfile -l name=crossplane sync
+helmfile -l name=provider-http sync
+helmfile -l name=provider-http-config sync
+```
+
+Tip: to make custom groupings (e.g. all apps vs. the platform layer), add a
+`labels:` block to releases in `helmfile.yaml.gotmpl` and select on it, e.g.
+`labels: { tier: platform }` → `helmfile -l tier=platform sync`.
+
 ## Configuration
 
 All tunables live in `environments/default.yaml`:
