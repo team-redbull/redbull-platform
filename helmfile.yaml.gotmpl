@@ -87,33 +87,13 @@ releases:
   # postgres bundled *inside* temporal-stack wouldn't exist yet at that point.
   - name: temporal-postgresql
     namespace: temporal
-    chart: oci://registry-1.docker.io/bitnamicharts/postgresql
-    version: 18.7.3
+    chart: ./charts/temporal-postgresql
     needs:
       - default/namespaces
     values:
-      - fullnameOverride: temporal-postgresql
-        global:
-          compatibility:
-            openshift:
-              adaptSecurityContext: auto
-        image:
-          registry: docker.io
-          repository: bitnamilegacy/postgresql
-          tag: 17.6.0-debian-12-r4
-        auth:
-          enablePostgresUser: true
-          postgresPassword: {{ .Values.temporalPostgresql.password | quote }}
-          database: temporal
-        architecture: standalone
-        primary:
-          persistence:
-            enabled: true
-            size: 10Gi
-            storageClass: ""
-          resources:
-            requests: { cpu: 250m, memory: 512Mi }
-            limits:   { cpu: "2",  memory: 1Gi }
+      - postgresql:
+          auth:
+            postgresPassword: {{ .Values.temporalPostgresql.password | quote }}
 
   - name: temporal-stack
     namespace: temporal

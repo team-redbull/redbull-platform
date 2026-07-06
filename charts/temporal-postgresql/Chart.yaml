@@ -1,0 +1,12 @@
+apiVersion: v2
+name: temporal-postgresql
+description: >-
+  Platform-owned glue chart: standalone PostgreSQL backing the Temporal stack,
+  deployed as its own release so it's ready before temporal-stack's
+  pre-install schema job runs.
+type: application
+version: 0.1.0
+dependencies:
+  - name: postgresql
+    version: 18.7.3
+    repository: oci://registry-1.docker.io/bitnamicharts
