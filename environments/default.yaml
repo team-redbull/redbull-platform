@@ -15,6 +15,11 @@ refs:
 crossplane:
   version: "2.3.2"
 
+# Standalone PostgreSQL backing the Temporal stack. Deployed as its own release
+# so it exists (and is ready) before temporal-stack's pre-install schema job runs.
+temporalPostgresql:
+  password: "temporal-postgres-pw"
+
 providerHttp:
   package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
