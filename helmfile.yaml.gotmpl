@@ -1,23 +1,7 @@
-# ===========================================================================
-# redbull-platform — one command deploys every team-redbull service.
-#
-#   helmfile sync          # install/upgrade everything in dependency order
-#   helmfile -e prod sync  # with a different environment
-#   helmfile destroy       # tear everything down
-#
-# Service charts are pulled DYNAMICALLY from each source repo at sync time
-# (git:: refs) — nothing is vendored here except the two platform-owned glue
-# charts under ./charts (namespaces, provider-http).
-# ===========================================================================
-
 environments:
   default:
     values:
       - environments/default.yaml
-  prod:
-    values:
-      - environments/default.yaml
-      # - environments/prod.yaml   # create to override refs/registries/endpoints
 
 ---
 
@@ -31,10 +15,14 @@ helmDefaults:
   createNamespace: false   # namespaces are created by the 'namespaces' release
 
 releases:
-  # --- foundation: namespaces every other release installs into -------------
   - name: namespaces
-    namespace: default      # cluster-scoped objects; release record lives in default
+    namespace: default
     chart: ./charts/namespaces
+    values:
+      - ghcrPullSecret:
+          enabled: true
+          username: {{ requiredEnv "GHCR_USER" | quote }}
+          password: {{ requiredEnv "GHCR_TOKEN" | quote }}
 
   # --- Crossplane core ------------------------------------------------------
   - name: crossplane
@@ -82,9 +70,6 @@ releases:
           name: {{ .Values.providerHttp.providerConfigName | quote }}
 
   # --- Temporal stack -------------------------------------------------------
-  # Postgres is deployed as its own release so it exists (and helmfile has
-  # waited for it) before temporal-stack's pre-install schema job runs. A
-  # postgres bundled *inside* temporal-stack wouldn't exist yet at that point.
   - name: temporal-postgresql
     namespace: temporal
     chart: ./charts/temporal-postgresql
@@ -108,15 +93,33 @@ releases:
           host: temporal-postgresql
           existingSecret: temporal-postgresql
 
-  # --- segments-manager (needs external MongoDB) ----------------------------
+  # --- segments-manager -------------------------------------------------------
+  # segments-manager starts.
+  - name: segments-manager-mongodb
+    namespace: segments-manager
+    chart: ./charts/segments-manager-mongodb
+    needs:
+      - default/namespaces
+    values:
+      - mongodb:
+          auth:
+            rootPassword: {{ .Values.segmentsManagerMongodb.rootPassword | quote }}
+            passwords:
+              - {{ .Values.segmentsManagerMongodb.password | quote }}
+
   - name: segments-manager
     namespace: segments-manager
     chart: git::https://github.com/team-redbull/segment_manager.git@deploy/helm?ref={{ .Values.refs.segmentManager }}
     needs:
       - default/namespaces
+      - segments-manager/segments-manager-mongodb
     values:
       - mongodb:
-          url: {{ .Values.segmentsManager.mongodbUrl | quote }}
+          url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
+          dbName: segments_manager
+        image:
+          pullSecrets:
+            - name: ghcr-pull-secret
 
   # --- segment-allocation (Temporal workers; chart creates its own namespace) -
   # Release record lives in redbull-platform; the chart creates+populates the

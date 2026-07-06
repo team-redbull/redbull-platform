@@ -20,14 +20,16 @@ crossplane:
 temporalPostgresql:
   password: "temporal-postgres-pw"
 
+# Standalone MongoDB backing segments-manager. Deployed as its own release so
+# it's ready before segments-manager starts.
+segmentsManagerMongodb:
+  rootPassword: "segments-manager-mongo-root-pw"
+  password: "segments-manager-mongo-pw"
+
 providerHttp:
   package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
   providerConfigName: dhcp-http # shared with the dhcp integration below
-
-# segments-manager needs an external MongoDB. Point this at your instance.
-segmentsManager:
-  mongodbUrl: "mongodb://mongodb.segments-manager.svc.cluster.local:27017"  # TODO: real MongoDB
 
 # segment-allocation (Temporal workers) wiring to the in-cluster Temporal + segments-manager.
 segmentAllocation:

@@ -7,3 +7,17 @@ namespaces:
   - bmh-system
   - server-scanner
   - redbull-platform   # hosts the segment-allocation release record (see helmfile)
+
+# GHCR pull secret for private team-redbull images. Each developer runs
+# `helmfile sync` with their own personal access token (see README) — nothing
+# shared, nothing committed to git. Recreated in the listed namespaces on every
+# sync, so it survives a namespace/cluster rebuild without any manual kubectl step.
+# Consuming charts reference it by name (imagePullSecrets / image.pullSecrets).
+ghcrPullSecret:
+  enabled: false
+  name: ghcr-pull-secret
+  registry: ghcr.io
+  username: ""
+  password: ""
+  namespaces:
+    - segments-manager

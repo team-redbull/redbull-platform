@@ -1,0 +1,34 @@
+mongodb:
+  # Deterministic name so segments-manager can reference the service & secret.
+  fullnameOverride: segments-mongodb
+
+  # Auto-strip runAsUser/fsGroup so it runs under OpenShift's assigned UID range.
+  global:
+    compatibility:
+      openshift:
+        adaptSecurityContext: auto
+
+  architecture: standalone
+
+  auth:
+    enabled: true
+    rootUser: root
+    # Overridden via helmfile values (segmentsManagerMongodb.rootPassword).
+    rootPassword: ""
+    usernames:
+      - segments_manager
+    # Overridden via helmfile values (segmentsManagerMongodb.password).
+    passwords:
+      - ""
+    databases:
+      - segments_manager
+
+  persistence:
+    enabled: true
+    size: 10Gi
+    # Empty => cluster default StorageClass (ocs-external-storagecluster-ceph-rbd).
+    storageClass: ""
+
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
+    limits:   { cpu: "2",  memory: 1Gi }
