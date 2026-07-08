@@ -109,7 +109,7 @@ releases:
 
   - name: segments-manager
     namespace: segments-manager
-    chart: git::https://github.com/team-redbull/segment_manager.git@deploy/helm?ref={{ .Values.refs.segmentManager }}
+    chart: git::https://github.com/team-redbull/segments-manager.git@deploy/helm?ref={{ .Values.refs.segmentManager }}
     needs:
       - default/namespaces
       - segments-manager/segments-manager-mongodb

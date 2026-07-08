@@ -169,4 +169,19 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   workflow (`ghcr-build-push.yml`) for building/versioning/pushing images to GHCR
   and bumping each repo's Helm chart values. `team-redbull/segments-manager` calls
   it; other service repos should be migrated to it too rather than keeping their
-  own copy of the build flow.
+  own copy of the build flow. Non-`main` branches get tagged
+  `<branch-slug>-<short-sha>` instead of bumping the shared `vX.Y.Z` sequence.
+- **New service repo → Actions doesn't run silently**: GitHub Actions must be
+  enabled per-repo (repo Settings → Actions → General), separately from the
+  org-wide "Allow all actions and reusable workflows" policy. A repo with
+  Actions disabled shows zero workflow runs via the UI *and* the API — no
+  error, no failed run, just nothing — which looks identical to a billing/quota
+  block. Check `Settings → Actions → General` on the specific repo first.
+- **New service repo → `startup_failure` with zero jobs**: once Actions is
+  enabled, a repo's default `GITHUB_TOKEN` permissions are `read`-only unless
+  changed. `ghcr-build-push.yml` needs `contents: write` + `packages: write`,
+  which exceeds that default and gets rejected before any job starts (no logs,
+  no job entries — just `startup_failure`). The caller workflow (e.g.
+  `segments-manager/.github/workflows/build.yml`) must declare
+  `permissions: {contents: write, packages: write}` explicitly rather than
+  relying on the repo's default setting.
