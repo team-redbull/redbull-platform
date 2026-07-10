@@ -43,20 +43,25 @@ secret literally named `segments-manager-mongodb`. Naming the Mongo release's
 uses `fullnameOverride: segments-mongodb` (no `-manager`) instead of the more
 obvious `segments-manager-mongodb`.
 
-## GHCR pull secret
+## No GHCR pull secret (images are public)
 
-`segments-manager`'s image (`ghcr.io/team-redbull/segments-manager` or
-`ghcr.io/<owner>/segments-manager` depending which fork is deployed) is private.
-`charts/namespaces` creates `ghcr-pull-secret` in the `segments-manager`
-namespace only (not cluster-wide — deliberately scoped down after an earlier
-iteration that templated it across every namespace was rejected as
-overengineered for current needs). Credentials come from `requiredEnv
-"GHCR_USER"` / `requiredEnv "GHCR_TOKEN"` in `helmfile.yaml.gotmpl` — each
-developer exports their own PAT (`read:packages` scope) in their shell profile
-before running `helmfile sync`. Nothing is shared or committed. If another
-release starts pulling private images, add its namespace to
-`charts/namespaces` values' `ghcrPullSecret.namespaces` list and wire
-`imagePullSecrets`/`image.pullSecrets` in that release's `values:` block.
+All `ghcr.io/team-redbull/*` images (including `segments-manager`) are public
+packages — verified 2026-07-10 via `gh api orgs/team-redbull/packages`
+(`"visibility":"public"`) and by pulling a manifest anonymously with no
+credentials. There used to be a `ghcr-pull-secret` created by
+`charts/namespaces` from `requiredEnv "GHCR_USER"`/`requiredEnv "GHCR_TOKEN"`,
+which forced every developer to export a personal PAT before every
+`helmfile sync`. That machinery has been removed entirely (not just disabled)
+— it was solving a problem that doesn't exist for a public registry.
+
+**If a `team-redbull` image ever goes private again**, pulls will fail with no
+warning (no pull secret exists to catch it). At that point, re-add a
+`kubernetes.io/dockerconfigjson` Secret (a prior version of this lived at
+`charts/namespaces/templates/ghcr-pull-secret.yaml`, git history has it) and
+wire it via `imagePullSecrets`/`image.pullSecrets` in that release's `values:`
+block — but prefer a shared robot/service-account token created once directly
+in-cluster over per-developer `requiredEnv` PATs, since the credential doesn't
+need to vary per developer.
 
 ## OCI chart references in helmfile
 

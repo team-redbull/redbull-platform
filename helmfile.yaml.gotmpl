@@ -18,11 +18,6 @@ releases:
   - name: namespaces
     namespace: default
     chart: ./charts/namespaces
-    values:
-      - ghcrPullSecret:
-          enabled: true
-          username: {{ requiredEnv "GHCR_USER" | quote }}
-          password: {{ requiredEnv "GHCR_TOKEN" | quote }}
 
   # --- Crossplane core ------------------------------------------------------
   - name: crossplane
@@ -117,9 +112,6 @@ releases:
       - mongodb:
           url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
           dbName: segments_manager
-        image:
-          pullSecrets:
-            - name: ghcr-pull-secret
 
   # --- segment-allocation (Temporal workers; chart creates its own namespace) -
   # Release record lives in redbull-platform; the chart creates+populates the

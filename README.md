@@ -38,23 +38,9 @@ that reference it) are applied.
 - `helm` 3.x, `helmfile` 1.x, and the `helm-diff` plugin
   (`helm plugin install https://github.com/databus23/helm-diff`)
 - `kubectl`/`oc` logged into the target cluster (the hooks use `kubectl wait`)
-- A **GitHub personal access token** with `read:packages` scope, so Kubernetes can
-  pull the private `ghcr.io/team-redbull/*` images. Each developer creates their
-  own — nothing shared, nothing committed to git:
 
-  1. https://github.com/settings/tokens → **Generate new token (classic)** → check
-     `read:packages` → generate, copy it (shown once).
-  2. Export it in the shell you run `helmfile` from (e.g. add to `~/.zshrc`):
-
-     ```sh
-     export GHCR_USER="your-github-username"
-     export GHCR_TOKEN="ghp_xxxxxxxxxxxx"
-     ```
-
-  `helmfile sync` reads these each run and (re)creates the `ghcr-pull-secret` in
-  `segments-manager`, so it survives a namespace/cluster rebuild without any
-  manual `kubectl create secret` step. Missing either var fails the sync with a
-  clear "requiredEnv" error rather than a silent bad deploy.
+All `ghcr.io/team-redbull/*` images are public, so no pull secret or GHCR
+credentials are needed to sync this platform.
 
 ## Usage
 
@@ -148,10 +134,11 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
      `providerHttp.packagePullSecrets: [artifactory]`.
    - Service images (temporal, segments-manager, etc.) — see each chart's README
      (e.g. `temporal-stack` documents its full image list and air-gap steps).
-3. **Pull secrets** — `charts/namespaces` already creates `ghcr-pull-secret` in
-   `segments-manager` from `GHCR_USER`/`GHCR_TOKEN` (see Prerequisites above).
-   For other namespaces/registries, add entries the same way and reference them
-   via each chart's `imagePullSecrets` / `image.pullSecrets`.
+3. **Pull secrets** — GHCR images are public, so this platform has no pull-secret
+   machinery today. An internal Artifactory mirror is presumably private, so
+   you'll need to add your own: create a `kubernetes.io/dockerconfigjson`
+   `Secret` per namespace that needs it and reference it via each chart's
+   `imagePullSecrets` / `image.pullSecrets`.
 
 ## Notes / caveats
 
