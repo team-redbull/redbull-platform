@@ -6,7 +6,7 @@
 # Git refs the service charts are pulled from (per repo). Pin to tags for prod.
 refs:
   temporalStack: main
-  segmentManager: feature/mongodb-no-vrf
+  segmentManager: refactor/segments-manager
   workflows: main
   dhcp: main
   bmh: main
