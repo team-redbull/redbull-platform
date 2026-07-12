@@ -26,6 +26,14 @@ segmentsManagerMongodb:
   rootPassword: "segments-manager-mongo-root-pw"
   password: "segments-manager-mongo-pw"
 
+# segments-manager app wiring that isn't a DB credential.
+segmentsManager:
+  # Where segment creation POSTs to start the connectivity workflow — the shared
+  # `workflows-api` Service (one trigger API for every workflow domain) created
+  # by the workflow-worker release in the redbull-workflows namespace.
+  # Cross-namespace, so it MUST be the FQDN.
+  connectivityWorkflowApiUrl: "http://workflows-api.redbull-workflows.svc.cluster.local:8080"
+
 providerHttp:
   package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
@@ -55,11 +63,15 @@ connectivityWorkflow:
   nextOpenRulesUri: "/open-rules-uri"
   nextCheckStatusUri: "/check-request-status"
   domain: "domain1"
-  # Bearer token for mutating Segments Manager calls — MUST match that
-  # deployment's own auth token (segments-manager chart's `auth.existingSecret`,
-  # created out-of-band; see its values.yaml). Placeholder only — override for
-  # non-local environments, never commit the real token here.
-  segmentManagerApiToken: "dev-token"
+  # Name of the out-of-band Secret (in the connectivity release's namespace,
+  # redbull-workflows) holding the Segments Manager API token under key
+  # SEGMENT_MANAGER_API_TOKEN. It MUST hold the same value as segments-manager's
+  # own `segments-manager-api-token` Secret — this is the Segments Manager API
+  # token in general (every environment), created once in-cluster so the real
+  # token never lives in git or Helm values:
+  #   oc create secret generic segment-manager-token -n redbull-workflows \
+  #     --from-literal=SEGMENT_MANAGER_API_TOKEN="<the segments-manager token>"
+  segmentManagerTokenSecret: "segment-manager-token"
 
 # dhcp_scope_manager <-> provider-http. apiUrl is the backend DHCP API the
 # Crossplane Request talks to. No scope Requests are created unless you set

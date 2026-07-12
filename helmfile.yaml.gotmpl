@@ -109,7 +109,15 @@ releases:
       - default/namespaces
       - segments-manager/segments-manager-mongodb
     values:
-      - mongodb:
+      - config:
+          # Cross-namespace URL of the shared workflow trigger API
+          # (workflow-worker release's `workflows-api` Service in
+          # redbull-workflows). Segment creation POSTs here to start the
+          # workflow. Must be the Service FQDN — a bare `workflows-api`
+          # would resolve inside the segments-manager namespace, where no
+          # such Service exists.
+          connectivityWorkflowApiUrl: {{ .Values.segmentsManager.connectivityWorkflowApiUrl | quote }}
+        mongodb:
           url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
           dbName: segments_manager
 
@@ -168,7 +176,12 @@ releases:
           nextCheckStatusUri: {{ .Values.connectivityWorkflow.nextCheckStatusUri | quote }}
           domain: {{ .Values.connectivityWorkflow.domain | quote }}
         secrets:
-          segmentManagerApiToken: {{ .Values.connectivityWorkflow.segmentManagerApiToken | quote }}
+          # The connectivity worker authenticates its mutating Segments Manager
+          # calls with an out-of-band Secret (key SEGMENT_MANAGER_API_TOKEN),
+          # created once in-cluster and holding the SAME value as
+          # segments-manager's own `segments-manager-api-token` Secret. The token
+          # never passes through git or Helm values. See README/CLAUDE.md.
+          existingSecret: {{ .Values.connectivityWorkflow.segmentManagerTokenSecret | quote }}
 
   # --- BareMetalHost generator operator -------------------------------------
   - name: bmh-generator-operator
