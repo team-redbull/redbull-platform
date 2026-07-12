@@ -43,12 +43,17 @@ temporal:
 # and the next (firewall) service.
 connectivityWorkflow:
   segmentManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
-  # The next (connectivity/firewall) service is another team's, reached over the
-  # air-gapped network — not deployed by this platform.
-  nextUrl: "https://next-connectivity.lab.local"   # TODO: real next API endpoint
-  nextTokenRenewalUri: "/token-renewal-uri"         # TODO: confirm real prod path
-  nextOpenRulesUri: "/open-rules-uri"               # TODO: confirm real prod path
-  nextCheckStatusUri: "/check-request-status"       # TODO: confirm real prod path
+  # In production the next (connectivity/firewall) service is another team's,
+  # reached over the air-gapped network — not deployed by this platform. Here
+  # it points at this platform's own `mock-connectivity` release instead
+  # (see helmfile.yaml.gotmpl), so e2e tests can exercise the full
+  # submit -> poll -> complete cycle without the real service.
+  # TODO: for a real prod environment, override nextUrl (and re-verify these
+  # URI paths against the real API) to point at the actual next service.
+  nextUrl: "http://mock-connectivity.redbull-workflows.svc.cluster.local:9000"
+  nextTokenRenewalUri: "/token-renewal-uri"
+  nextOpenRulesUri: "/open-rules-uri"
+  nextCheckStatusUri: "/check-request-status"
   domain: "domain1"
   # Bearer token for mutating Segments Manager calls — MUST match that
   # deployment's own auth token (segments-manager chart's `auth.existingSecret`,

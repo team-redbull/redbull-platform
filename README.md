@@ -21,7 +21,8 @@ glue charts under `charts/` (`namespaces`, `provider-http`, `temporal-postgresql
 | `segments-manager-mongodb` | `segments-manager` | local `charts/segments-manager-mongodb` (Bitnami MongoDB) | namespaces |
 | `segments-manager` | `segments-manager` | `team-redbull/segment_manager` (`deploy/helm`) | namespaces, segments-manager-mongodb |
 | `workflow-worker` | `redbull-workflows` | `team-redbull/workflows` (`helm/workflow-worker`) | temporal-stack |
-| `connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/connectivity`) | temporal-stack, segments-manager, workflow-worker |
+| `mock-connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/mock-connectivity`) | namespaces |
+| `connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/connectivity`) | temporal-stack, segments-manager, workflow-worker, mock-connectivity |
 | `bmh-generator-operator` | `bmh-system` | `team-redbull/BareMetalHostUCS` | namespaces |
 | `server-scanner-dashboard` | `server-scanner` | `team-redbull/ServerScanner` | namespaces |
 | `hosted-cluster-integration` | `crossplane-system` | `team-redbull/dhcp_scope_manager` (`helm`) | provider-http-config |
@@ -30,8 +31,14 @@ glue charts under `charts/` (`namespaces`, `provider-http`, `temporal-postgresql
 workflow domain, not per-domain. `connectivity` is the first per-domain
 activity-worker release (the connectivity limb); future domains add their own
 chart + release alongside it, all still depending on the one `workflow-worker`.
-Each image is built and tagged independently by `team-redbull/workflows`' CI.
-Neither chart creates its own namespace — see `CLAUDE.md`.
+`mock-connectivity` is a test-only stand-in for the real "next" (firewall)
+service that `connectivity` talks to — it exists so e2e tests can run the full
+submit -> poll -> complete cycle without the real, air-gapped next service;
+never install it alongside a production `connectivity` release (see `refs.workflows`
+pinning to a real tag, and override `connectivityWorkflow.nextUrl` at the real
+next endpoint, for that case). Each image is built and tagged independently by
+`team-redbull/workflows`' CI. None of the three charts creates its own
+namespace — see `CLAUDE.md`.
 
 **Ordering** is enforced with Helmfile `needs:`. Crossplane installs first; the
 `provider-http` Provider package installs next; a `presync` hook waits for the
@@ -83,7 +90,7 @@ helmfile -l namespace=crossplane-system sync
 
 Release names: `namespaces`, `crossplane`, `provider-http`, `provider-http-config`,
 `temporal-postgresql`, `temporal-stack`, `segments-manager-mongodb`, `segments-manager`,
-`workflow-worker`, `connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
+`workflow-worker`, `mock-connectivity`, `connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`.
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts

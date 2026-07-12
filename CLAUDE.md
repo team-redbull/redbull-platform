@@ -126,6 +126,8 @@ issue, don't try to "fix" it in the helmfile.
   migrate them to call the shared workflow rather than editing their local
   copies when the build flow needs to change.
 - `team-redbull/workflows` — Temporal worker charts consuming `temporal-stack`
-  + `segments-manager`: `helm/workflow-worker` (the brain, one shared release)
-  and `helm/connectivity` (the connectivity limb; the first of what will be
-  several per-domain charts).
+  + `segments-manager`: `helm/workflow-worker` (the brain, one shared release),
+  `helm/connectivity` (the connectivity limb; the first of what will be
+  several per-domain charts), and `helm/mock-connectivity` (test-only stand-in
+  for the real "next" firewall service `connectivity` talks to — e2e/test
+  environments only, never alongside a production `connectivity` release).
