@@ -43,6 +43,35 @@ secret literally named `segments-manager-mongodb`. Naming the Mongo release's
 uses `fullnameOverride: segments-mongodb` (no `-manager`) instead of the more
 obvious `segments-manager-mongodb`.
 
+## connectivity-workflow: pre-created namespace, chart's own Namespace disabled
+
+`team-redbull/workflows`' `helm/connectivity` chart (consumed here as the
+`connectivity-workflow` release) ships its own `templates/namespace.yaml` that
+unconditionally creates a `Namespace` object named `.Values.namespace` — handy
+for standalone use (e.g. a local kind cluster) where nothing else provisions
+that namespace first.
+
+This platform's `namespaces` release already pre-creates `redbull-workflows`
+up front (same pattern as `temporal`, `segments-manager`, etc.), and the
+`connectivity-workflow` release's Helmfile-level `namespace:` field points at
+that same pre-created namespace (`helmDefaults.createNamespace: false` means
+Helm needs it to exist before writing the release record). If the chart's own
+`templates/namespace.yaml` *also* ran, it would try to create/adopt a
+`Namespace` object already owned by the `namespaces` release — the same
+"invalid ownership metadata" failure as the segments-manager-mongodb Secret
+collision above, just for a `Namespace` instead of a `Secret`.
+
+Fix: `helm/connectivity/templates/namespace.yaml` in `team-redbull/workflows`
+now gates creation behind `.Values.createNamespace` (defaults to `true`, so
+the chart is still self-sufficient standalone). This platform's
+`helmfile.yaml.gotmpl` sets `createNamespace: false` on the
+`connectivity-workflow` release's `values:` block since `redbull-workflows`
+already exists by the time that release syncs.
+
+**Do not drop `createNamespace: false` here, and do not remove
+`redbull-workflows` from `charts/namespaces/values.yaml`**, without
+re-deriving this conflict first.
+
 ## No GHCR pull secret (images are public)
 
 All `ghcr.io/team-redbull/*` images (including `segments-manager`) are public

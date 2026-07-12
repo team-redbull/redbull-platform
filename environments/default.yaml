@@ -31,9 +31,9 @@ providerHttp:
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
   providerConfigName: dhcp-http # shared with the dhcp integration below
 
-# connectivity (Temporal workflow-brain + connectivity-activity workers) wiring
-# to the in-cluster Temporal, segments-manager, and the next (firewall) service.
-connectivity:
+# connectivity-workflow (Temporal workflow-brain + connectivity-activity workers)
+# wiring to the in-cluster Temporal, segments-manager, and the next (firewall) service.
+connectivityWorkflow:
   temporalHost: "temporal-frontend.temporal.svc.cluster.local:7233"
   temporalNamespace: "default"
   segmentManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"

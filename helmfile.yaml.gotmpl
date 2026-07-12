@@ -113,31 +113,36 @@ releases:
           url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
           dbName: segments_manager
 
-  # --- connectivity (Temporal workflow-brain + connectivity-activity workers; -
-  # chart creates its own namespace) - Release record lives in redbull-platform;
-  # the chart creates+populates the connectivity namespace itself. The chart's
-  # own values.yaml carries workflowWorker.image / activityWorker.image (bumped
-  # by CI in team-redbull/workflows) — not overridden here.
-  - name: connectivity
-    namespace: redbull-platform
+  # --- connectivity-workflow (Temporal workflow-brain + connectivity-activity -
+  # workers) - Deploys into redbull-workflows, pre-created by the namespaces
+  # release like every other app namespace. createNamespace: false stops the
+  # chart's own templates/namespace.yaml from also trying to create that
+  # Namespace object — it would otherwise collide with the namespaces release's
+  # ownership of it (same failure mode as the segments-manager-mongodb Secret
+  # collision documented in CLAUDE.md). The chart's own values.yaml carries
+  # workflowWorker.image / activityWorker.image (bumped by CI in
+  # team-redbull/workflows) — not overridden here.
+  - name: connectivity-workflow
+    namespace: redbull-workflows
     chart: git::https://github.com/team-redbull/workflows.git@helm/connectivity?ref={{ .Values.refs.workflows }}
     needs:
       - default/namespaces
       - temporal/temporal-stack
       - segments-manager/segments-manager
     values:
-      - namespace: connectivity
+      - namespace: redbull-workflows
+        createNamespace: false
         config:
-          temporalHost: {{ .Values.connectivity.temporalHost | quote }}
-          temporalNamespace: {{ .Values.connectivity.temporalNamespace | quote }}
-          segmentManagerUrl: {{ .Values.connectivity.segmentManagerUrl | quote }}
-          nextUrl: {{ .Values.connectivity.nextUrl | quote }}
-          nextTokenRenewalUri: {{ .Values.connectivity.nextTokenRenewalUri | quote }}
-          nextOpenRulesUri: {{ .Values.connectivity.nextOpenRulesUri | quote }}
-          nextCheckStatusUri: {{ .Values.connectivity.nextCheckStatusUri | quote }}
-          domain: {{ .Values.connectivity.domain | quote }}
+          temporalHost: {{ .Values.connectivityWorkflow.temporalHost | quote }}
+          temporalNamespace: {{ .Values.connectivityWorkflow.temporalNamespace | quote }}
+          segmentManagerUrl: {{ .Values.connectivityWorkflow.segmentManagerUrl | quote }}
+          nextUrl: {{ .Values.connectivityWorkflow.nextUrl | quote }}
+          nextTokenRenewalUri: {{ .Values.connectivityWorkflow.nextTokenRenewalUri | quote }}
+          nextOpenRulesUri: {{ .Values.connectivityWorkflow.nextOpenRulesUri | quote }}
+          nextCheckStatusUri: {{ .Values.connectivityWorkflow.nextCheckStatusUri | quote }}
+          domain: {{ .Values.connectivityWorkflow.domain | quote }}
         secrets:
-          segmentManagerApiToken: {{ .Values.connectivity.segmentManagerApiToken | quote }}
+          segmentManagerApiToken: {{ .Values.connectivityWorkflow.segmentManagerApiToken | quote }}
 
   # --- BareMetalHost generator operator -------------------------------------
   - name: bmh-generator-operator

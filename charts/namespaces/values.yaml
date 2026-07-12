@@ -1,9 +1,8 @@
-# Namespaces this platform creates up front. The connectivity namespace is
-# intentionally NOT here — the workflows chart creates and owns it itself.
+# Namespaces this platform creates up front.
 namespaces:
   - crossplane-system
   - temporal
   - segments-manager
   - bmh-system
   - server-scanner
-  - redbull-platform   # hosts the connectivity release record (see helmfile)
+  - redbull-workflows   # hosts the connectivity-workflow release (see helmfile)
