@@ -20,15 +20,18 @@ glue charts under `charts/` (`namespaces`, `provider-http`, `temporal-postgresql
 | `temporal-stack` | `temporal` | `team-redbull/temporal-stack` | namespaces, temporal-postgresql |
 | `segments-manager-mongodb` | `segments-manager` | local `charts/segments-manager-mongodb` (Bitnami MongoDB) | namespaces |
 | `segments-manager` | `segments-manager` | `team-redbull/segment_manager` (`deploy/helm`) | namespaces, segments-manager-mongodb |
-| `connectivity-workflow` | `redbull-workflows` | `team-redbull/workflows` (`helm/connectivity`) | temporal-stack, segments-manager |
+| `workflow-worker` | `redbull-workflows` | `team-redbull/workflows` (`helm/workflow-worker`) | temporal-stack |
+| `connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/connectivity`) | temporal-stack, segments-manager, workflow-worker |
 | `bmh-generator-operator` | `bmh-system` | `team-redbull/BareMetalHostUCS` | namespaces |
 | `server-scanner-dashboard` | `server-scanner` | `team-redbull/ServerScanner` | namespaces |
 | `hosted-cluster-integration` | `crossplane-system` | `team-redbull/dhcp_scope_manager` (`helm`) | provider-http-config |
 
-`connectivity-workflow` deploys two Deployments — a workflow-brain worker and a
-connectivity-activity worker — from two separate images, each built and tagged
-independently by `team-redbull/workflows`' CI. See `CLAUDE.md` for why its
-`values.createNamespace` is set to `false` here.
+`workflow-worker` is the Temporal workflow-brain — ONE shared release for every
+workflow domain, not per-domain. `connectivity` is the first per-domain
+activity-worker release (the connectivity limb); future domains add their own
+chart + release alongside it, all still depending on the one `workflow-worker`.
+Each image is built and tagged independently by `team-redbull/workflows`' CI.
+Neither chart creates its own namespace — see `CLAUDE.md`.
 
 **Ordering** is enforced with Helmfile `needs:`. Crossplane installs first; the
 `provider-http` Provider package installs next; a `presync` hook waits for the
@@ -80,7 +83,7 @@ helmfile -l namespace=crossplane-system sync
 
 Release names: `namespaces`, `crossplane`, `provider-http`, `provider-http-config`,
 `temporal-postgresql`, `temporal-stack`, `segments-manager-mongodb`, `segments-manager`,
-`connectivity-workflow`, `bmh-generator-operator`, `server-scanner-dashboard`,
+`workflow-worker`, `connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`.
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts
@@ -115,10 +118,12 @@ All tunables live in `environments/default.yaml`:
   backing Temporal (`charts/temporal-postgresql`).
 - **`segmentsManagerMongodb.{rootPassword,password}`** — credentials for the
   in-cluster MongoDB backing segments-manager (`charts/segments-manager-mongodb`).
-- **`connectivityWorkflow.*`** — wiring of the Temporal workflow-brain + connectivity-activity
-  workers to the in-cluster Temporal frontend and segments-manager service
-  (pre-filled with cluster DNS), plus the next (firewall) service endpoint/URI
-  paths and the Segments Manager API token. **(TODO: set real next endpoint +
+- **`temporal.{host,namespace}`** — the in-cluster Temporal frontend, shared by
+  every workflow-domain release (`workflow-worker`, `connectivity`, and any
+  future domain chart) — one place to change it for the whole platform.
+- **`connectivityWorkflow.*`** — the `connectivity` release's own domain-specific
+  wiring: the segments-manager service, the next (firewall) service endpoint/URI
+  paths, and the Segments Manager API token. **(TODO: set real next endpoint +
   URI paths, and the real Segments Manager API token for non-local environments.)**
 - **`dhcp.apiUrl`** — backend DHCP API the Crossplane `Request` talks to.
   **(TODO: set real endpoint.)**
@@ -152,11 +157,10 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   subcharts, so they exist and are ready before `temporal-stack`'s pre-install
   schema job and `segments-manager` start. See `needs:` in `helmfile.yaml.gotmpl`,
   and `CLAUDE.md` for the full story on why this shape was necessary.
-- **`connectivity-workflow` deploys into `redbull-workflows`**, pre-created by the
-  `namespaces` release like every other app namespace. Its chart can also
-  self-create that namespace (useful standalone, e.g. a local kind cluster), but
-  this platform sets `values.createNamespace: false` to avoid a Helm
-  ownership clash with the `namespaces` release. See `CLAUDE.md`.
+- **`workflow-worker` and `connectivity` both deploy into `redbull-workflows`**,
+  pre-created by the `namespaces` release like every other app namespace.
+  Neither chart has a Namespace template of its own — namespace ownership
+  belongs solely to the `namespaces` release. See `CLAUDE.md`.
 - **OpenShift SCC**: Crossplane and provider-http pods run as nonroot and generally
   work under `restricted-v2`; if a provider pod is denied, grant its service account
   the appropriate SCC.

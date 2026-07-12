@@ -31,11 +31,17 @@ providerHttp:
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
   providerConfigName: dhcp-http # shared with the dhcp integration below
 
-# connectivity-workflow (Temporal workflow-brain + connectivity-activity workers)
-# wiring to the in-cluster Temporal, segments-manager, and the next (firewall) service.
+# Shared Temporal connection info — every workflow-domain release (workflow-worker,
+# connectivity, and any future domain chart) reads its own copy of these into its
+# own Deployment, since each is an independent Temporal client. Kept here, once,
+# so there's a single place to change the Temporal endpoint for the whole platform.
+temporal:
+  host: "temporal-frontend.temporal.svc.cluster.local:7233"
+  namespace: "default"
+
+# connectivity (activity limb) release's domain-specific wiring: segments-manager
+# and the next (firewall) service.
 connectivityWorkflow:
-  temporalHost: "temporal-frontend.temporal.svc.cluster.local:7233"
-  temporalNamespace: "default"
   segmentManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
   # The next (connectivity/firewall) service is another team's, reached over the
   # air-gapped network — not deployed by this platform.

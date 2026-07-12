@@ -113,28 +113,42 @@ releases:
           url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
           dbName: segments_manager
 
-  # --- connectivity-workflow (Temporal workflow-brain + connectivity-activity -
-  # workers) - Deploys into redbull-workflows, pre-created by the namespaces
-  # release like every other app namespace. createNamespace: false stops the
-  # chart's own templates/namespace.yaml from also trying to create that
-  # Namespace object — it would otherwise collide with the namespaces release's
-  # ownership of it (same failure mode as the segments-manager-mongodb Secret
-  # collision documented in CLAUDE.md). The chart's own values.yaml carries
-  # workflowWorker.image / activityWorker.image (bumped by CI in
+  # --- workflow-worker (the Temporal workflow "brain") ----------------------
+  # ONE release, shared by every workflow domain (not per-domain). Deploys into
+  # redbull-workflows, pre-created by the namespaces release like every other
+  # app namespace — this chart has no templates/namespace.yaml of its own and
+  # takes no createNamespace value, so there's no ownership collision to guard
+  # against (same failure mode as the segments-manager-mongodb Secret collision
+  # documented in CLAUDE.md, avoided here by construction). The chart's own
+  # values.yaml carries image.repository/tag (bumped by CI in
   # team-redbull/workflows) — not overridden here.
-  - name: connectivity-workflow
+  - name: workflow-worker
+    namespace: redbull-workflows
+    chart: git::https://github.com/team-redbull/workflows.git@helm/workflow-worker?ref={{ .Values.refs.workflows }}
+    needs:
+      - default/namespaces
+      - temporal/temporal-stack
+    values:
+      - config:
+          temporalHost: {{ .Values.temporal.host | quote }}
+          temporalNamespace: {{ .Values.temporal.namespace | quote }}
+
+  # --- connectivity (the connectivity-activity limb) ------------------------
+  # One chart per workflow domain (this is the first of what will be several).
+  # Same redbull-workflows namespace as workflow-worker, same "no Namespace of
+  # its own" story — see comment above.
+  - name: connectivity
     namespace: redbull-workflows
     chart: git::https://github.com/team-redbull/workflows.git@helm/connectivity?ref={{ .Values.refs.workflows }}
     needs:
       - default/namespaces
       - temporal/temporal-stack
       - segments-manager/segments-manager
+      - redbull-workflows/workflow-worker
     values:
-      - namespace: redbull-workflows
-        createNamespace: false
-        config:
-          temporalHost: {{ .Values.connectivityWorkflow.temporalHost | quote }}
-          temporalNamespace: {{ .Values.connectivityWorkflow.temporalNamespace | quote }}
+      - config:
+          temporalHost: {{ .Values.temporal.host | quote }}
+          temporalNamespace: {{ .Values.temporal.namespace | quote }}
           segmentManagerUrl: {{ .Values.connectivityWorkflow.segmentManagerUrl | quote }}
           nextUrl: {{ .Values.connectivityWorkflow.nextUrl | quote }}
           nextTokenRenewalUri: {{ .Values.connectivityWorkflow.nextTokenRenewalUri | quote }}

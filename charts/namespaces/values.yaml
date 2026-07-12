@@ -5,4 +5,4 @@ namespaces:
   - segments-manager
   - bmh-system
   - server-scanner
-  - redbull-workflows   # hosts the connectivity-workflow release (see helmfile)
+  - redbull-workflows   # hosts the workflow-worker + connectivity releases (see helmfile)

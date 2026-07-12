@@ -43,34 +43,34 @@ secret literally named `segments-manager-mongodb`. Naming the Mongo release's
 uses `fullnameOverride: segments-mongodb` (no `-manager`) instead of the more
 obvious `segments-manager-mongodb`.
 
-## connectivity-workflow: pre-created namespace, chart's own Namespace disabled
+## workflows charts: no chart ever creates its own Namespace
 
-`team-redbull/workflows`' `helm/connectivity` chart (consumed here as the
-`connectivity-workflow` release) ships its own `templates/namespace.yaml` that
-unconditionally creates a `Namespace` object named `.Values.namespace` — handy
-for standalone use (e.g. a local kind cluster) where nothing else provisions
-that namespace first.
+`team-redbull/workflows` used to ship a single `helm/connectivity` chart with
+its own `templates/namespace.yaml` (unconditionally, then later gated behind
+`.Values.createNamespace`) — handy for standalone use (e.g. a local kind
+cluster) where nothing else provisions the namespace first, but a source of
+Helm ownership conflicts here: this platform's `namespaces` release already
+pre-creates `redbull-workflows` up front (same pattern as `temporal`,
+`segments-manager`, etc.), so a second chart trying to create/adopt that same
+`Namespace` object hits the same "invalid ownership metadata" failure as the
+segments-manager-mongodb Secret collision above, just for a `Namespace`
+instead of a `Secret`.
 
-This platform's `namespaces` release already pre-creates `redbull-workflows`
-up front (same pattern as `temporal`, `segments-manager`, etc.), and the
-`connectivity-workflow` release's Helmfile-level `namespace:` field points at
-that same pre-created namespace (`helmDefaults.createNamespace: false` means
-Helm needs it to exist before writing the release record). If the chart's own
-`templates/namespace.yaml` *also* ran, it would try to create/adopt a
-`Namespace` object already owned by the `namespaces` release — the same
-"invalid ownership metadata" failure as the segments-manager-mongodb Secret
-collision above, just for a `Namespace` instead of a `Secret`.
+As of the `helm/workflow-worker` + `helm/connectivity` split (the brain now
+has its own chart, decoupled from any one workflow domain — see
+`team-redbull/workflows`' CLAUDE.md §1–2), **neither chart has a
+`templates/namespace.yaml` or a `createNamespace`/`namespace` value at all**.
+Both releases below rely entirely on `helmDefaults.createNamespace: false` +
+their Helmfile-level `namespace: redbull-workflows` field, which requires that
+namespace to already exist by the time they sync — guaranteed by `needs:
+[default/namespaces]` on both releases.
 
-Fix: `helm/connectivity/templates/namespace.yaml` in `team-redbull/workflows`
-now gates creation behind `.Values.createNamespace` (defaults to `true`, so
-the chart is still self-sufficient standalone). This platform's
-`helmfile.yaml.gotmpl` sets `createNamespace: false` on the
-`connectivity-workflow` release's `values:` block since `redbull-workflows`
-already exists by the time that release syncs.
-
-**Do not drop `createNamespace: false` here, and do not remove
-`redbull-workflows` from `charts/namespaces/values.yaml`**, without
-re-deriving this conflict first.
+**Do not add a per-chart Namespace template or `createNamespace` value back
+into any `team-redbull/workflows` chart (or any future per-domain chart under
+`helm/<domain>/`), and do not remove `redbull-workflows` from
+`charts/namespaces/values.yaml`**, without re-deriving this conflict first —
+every workflow-domain chart shares this one namespace, so its ownership
+belongs solely to the `namespaces` release.
 
 ## No GHCR pull secret (images are public)
 
@@ -125,6 +125,7 @@ issue, don't try to "fix" it in the helmfile.
   `ServerScanner`, `dhcp_scope_manager`) still have their own inline copies —
   migrate them to call the shared workflow rather than editing their local
   copies when the build flow needs to change.
-- `team-redbull/workflows` (`helm/connectivity`) — Temporal worker chart
-  (workflow-brain + connectivity-activity Deployments) consuming `temporal-stack`
-  + `segments-manager`.
+- `team-redbull/workflows` — Temporal worker charts consuming `temporal-stack`
+  + `segments-manager`: `helm/workflow-worker` (the brain, one shared release)
+  and `helm/connectivity` (the connectivity limb; the first of what will be
+  several per-domain charts).
