@@ -113,22 +113,31 @@ releases:
           url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
           dbName: segments_manager
 
-  # --- segment-allocation (Temporal workers; chart creates its own namespace) -
-  # Release record lives in redbull-platform; the chart creates+populates the
-  # segment-allocation namespace itself.
-  - name: segment-allocation
+  # --- connectivity (Temporal workflow-brain + connectivity-activity workers; -
+  # chart creates its own namespace) - Release record lives in redbull-platform;
+  # the chart creates+populates the connectivity namespace itself. The chart's
+  # own values.yaml carries workflowWorker.image / activityWorker.image (bumped
+  # by CI in team-redbull/workflows) — not overridden here.
+  - name: connectivity
     namespace: redbull-platform
-    chart: git::https://github.com/team-redbull/workflows.git@helm/segment-allocation?ref={{ .Values.refs.workflows }}
+    chart: git::https://github.com/team-redbull/workflows.git@helm/connectivity?ref={{ .Values.refs.workflows }}
     needs:
       - default/namespaces
       - temporal/temporal-stack
       - segments-manager/segments-manager
     values:
-      - namespace: segment-allocation
+      - namespace: connectivity
         config:
-          temporalHost: {{ .Values.segmentAllocation.temporalHost | quote }}
-          temporalNamespace: {{ .Values.segmentAllocation.temporalNamespace | quote }}
-          segmentManagerUrl: {{ .Values.segmentAllocation.segmentManagerUrl | quote }}
+          temporalHost: {{ .Values.connectivity.temporalHost | quote }}
+          temporalNamespace: {{ .Values.connectivity.temporalNamespace | quote }}
+          segmentManagerUrl: {{ .Values.connectivity.segmentManagerUrl | quote }}
+          nextUrl: {{ .Values.connectivity.nextUrl | quote }}
+          nextTokenRenewalUri: {{ .Values.connectivity.nextTokenRenewalUri | quote }}
+          nextOpenRulesUri: {{ .Values.connectivity.nextOpenRulesUri | quote }}
+          nextCheckStatusUri: {{ .Values.connectivity.nextCheckStatusUri | quote }}
+          domain: {{ .Values.connectivity.domain | quote }}
+        secrets:
+          segmentManagerApiToken: {{ .Values.connectivity.segmentManagerApiToken | quote }}
 
   # --- BareMetalHost generator operator -------------------------------------
   - name: bmh-generator-operator

@@ -20,13 +20,16 @@ glue charts under `charts/` (`namespaces`, `provider-http`, `temporal-postgresql
 | `temporal-stack` | `temporal` | `team-redbull/temporal-stack` | namespaces, temporal-postgresql |
 | `segments-manager-mongodb` | `segments-manager` | local `charts/segments-manager-mongodb` (Bitnami MongoDB) | namespaces |
 | `segments-manager` | `segments-manager` | `team-redbull/segment_manager` (`deploy/helm`) | namespaces, segments-manager-mongodb |
-| `segment-allocation` | `segment-allocation`¹ | `team-redbull/workflows` (`helm/segment-allocation`) | temporal-stack, segments-manager |
+| `connectivity` | `connectivity`¹ | `team-redbull/workflows` (`helm/connectivity`) | temporal-stack, segments-manager |
 | `bmh-generator-operator` | `bmh-system` | `team-redbull/BareMetalHostUCS` | namespaces |
 | `server-scanner-dashboard` | `server-scanner` | `team-redbull/ServerScanner` | namespaces |
 | `hosted-cluster-integration` | `crossplane-system` | `team-redbull/dhcp_scope_manager` (`helm`) | provider-http-config |
 
-¹ The `workflows` chart creates and owns the `segment-allocation` namespace itself, so
+¹ The `workflows` chart creates and owns the `connectivity` namespace itself, so
 that release's *record* lives in `redbull-platform` to avoid a Helm namespace-ownership clash.
+It deploys two Deployments — a workflow-brain worker and a connectivity-activity
+worker — from two separate images, each built and tagged independently by
+`team-redbull/workflows`' CI.
 
 **Ordering** is enforced with Helmfile `needs:`. Crossplane installs first; the
 `provider-http` Provider package installs next; a `presync` hook waits for the
@@ -78,7 +81,7 @@ helmfile -l namespace=crossplane-system sync
 
 Release names: `namespaces`, `crossplane`, `provider-http`, `provider-http-config`,
 `temporal-postgresql`, `temporal-stack`, `segments-manager-mongodb`, `segments-manager`,
-`segment-allocation`, `bmh-generator-operator`, `server-scanner-dashboard`,
+`connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`.
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts
@@ -113,8 +116,11 @@ All tunables live in `environments/default.yaml`:
   backing Temporal (`charts/temporal-postgresql`).
 - **`segmentsManagerMongodb.{rootPassword,password}`** — credentials for the
   in-cluster MongoDB backing segments-manager (`charts/segments-manager-mongodb`).
-- **`segmentAllocation.*`** — wiring of the Temporal workers to the in-cluster
-  Temporal frontend and segments-manager service (pre-filled with cluster DNS).
+- **`connectivity.*`** — wiring of the Temporal workflow-brain + connectivity-activity
+  workers to the in-cluster Temporal frontend and segments-manager service
+  (pre-filled with cluster DNS), plus the next (firewall) service endpoint/URI
+  paths and the Segments Manager API token. **(TODO: set real next endpoint +
+  URI paths, and the real Segments Manager API token for non-local environments.)**
 - **`dhcp.apiUrl`** — backend DHCP API the Crossplane `Request` talks to.
   **(TODO: set real endpoint.)**
 - **`providerHttp.*`** — provider-http package image + the shared ProviderConfig name.

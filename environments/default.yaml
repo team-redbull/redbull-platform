@@ -31,11 +31,24 @@ providerHttp:
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
   providerConfigName: dhcp-http # shared with the dhcp integration below
 
-# segment-allocation (Temporal workers) wiring to the in-cluster Temporal + segments-manager.
-segmentAllocation:
+# connectivity (Temporal workflow-brain + connectivity-activity workers) wiring
+# to the in-cluster Temporal, segments-manager, and the next (firewall) service.
+connectivity:
   temporalHost: "temporal-frontend.temporal.svc.cluster.local:7233"
   temporalNamespace: "default"
   segmentManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
+  # The next (connectivity/firewall) service is another team's, reached over the
+  # air-gapped network — not deployed by this platform.
+  nextUrl: "https://next-connectivity.lab.local"   # TODO: real next API endpoint
+  nextTokenRenewalUri: "/token-renewal-uri"         # TODO: confirm real prod path
+  nextOpenRulesUri: "/open-rules-uri"               # TODO: confirm real prod path
+  nextCheckStatusUri: "/check-request-status"       # TODO: confirm real prod path
+  domain: "domain1"
+  # Bearer token for mutating Segments Manager calls — MUST match that
+  # deployment's own auth token (segments-manager chart's `auth.existingSecret`,
+  # created out-of-band; see its values.yaml). Placeholder only — override for
+  # non-local environments, never commit the real token here.
+  segmentManagerApiToken: "dev-token"
 
 # dhcp_scope_manager <-> provider-http. apiUrl is the backend DHCP API the
 # Crossplane Request talks to. No scope Requests are created unless you set

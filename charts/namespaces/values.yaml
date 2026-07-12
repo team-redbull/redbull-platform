@@ -1,4 +1,4 @@
-# Namespaces this platform creates up front. The segment-allocation namespace is
+# Namespaces this platform creates up front. The connectivity namespace is
 # intentionally NOT here — the workflows chart creates and owns it itself.
 namespaces:
   - crossplane-system
@@ -6,4 +6,4 @@ namespaces:
   - segments-manager
   - bmh-system
   - server-scanner
-  - redbull-platform   # hosts the segment-allocation release record (see helmfile)
+  - redbull-platform   # hosts the connectivity release record (see helmfile)

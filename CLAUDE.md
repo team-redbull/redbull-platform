@@ -96,5 +96,6 @@ issue, don't try to "fix" it in the helmfile.
   `ServerScanner`, `dhcp_scope_manager`) still have their own inline copies —
   migrate them to call the shared workflow rather than editing their local
   copies when the build flow needs to change.
-- `team-redbull/workflows` (`helm/segment-allocation`) — Temporal worker chart
-  consuming `temporal-stack` + `segments-manager`.
+- `team-redbull/workflows` (`helm/connectivity`) — Temporal worker chart
+  (workflow-brain + connectivity-activity Deployments) consuming `temporal-stack`
+  + `segments-manager`.
