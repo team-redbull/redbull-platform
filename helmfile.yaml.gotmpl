@@ -87,6 +87,17 @@ releases:
         database:
           host: temporal-postgresql
           existingSecret: temporal-postgresql
+        ui:
+          auth:
+            # "Log in with OpenShift" in front of the Temporal UI: an
+            # oauth-proxy sidecar authenticates cluster users before the UI
+            # is reachable through the Route.
+            enabled: true
+            # Admit ONLY cluster-admins: a wildcard SubjectAccessReview only
+            # matches RBAC rules that themselves grant verb=* on resource=*
+            # (i.e. cluster-admin or an equivalent wildcard role). Everyone
+            # else authenticates fine but gets a 403 from the proxy.
+            sar: { resource: "*", verb: "*" }
 
   # --- segments-manager -------------------------------------------------------
   # segments-manager starts.
