@@ -13,11 +13,12 @@ glue charts under `charts/` (`namespaces`, `provider-http`, `temporal-postgresql
 | Release | Namespace | Source | Depends on |
 |---|---|---|---|
 | `namespaces` | (cluster) | local `charts/namespaces` | — |
+| `htpasswd-idp` | `openshift-config` | local `charts/htpasswd-idp` | — |
 | `crossplane` | `crossplane-system` | crossplane-stable repo | namespaces |
 | `provider-http` | `crossplane-system` | local glue (Provider CR) | crossplane |
 | `provider-http-config` | `crossplane-system` | local glue (ProviderConfig `dhcp-http`) | provider-http |
 | `temporal-postgresql` | `temporal` | local `charts/temporal-postgresql` (Bitnami PostgreSQL) | namespaces |
-| `temporal-stack` | `temporal` | `team-redbull/temporal-stack` | namespaces, temporal-postgresql |
+| `temporal-stack` | `temporal` | `team-redbull/temporal-stack` | namespaces, temporal-postgresql, htpasswd-idp |
 | `segments-manager-mongodb` | `segments-manager` | local `charts/segments-manager-mongodb` (Bitnami MongoDB) | namespaces |
 | `segments-manager` | `segments-manager` | `team-redbull/segment_manager` (`deploy/helm`) | namespaces, segments-manager-mongodb |
 | `workflow-worker` | `redbull-workflows` | `team-redbull/workflows` (`helm/workflow-worker`) | temporal-stack |
@@ -26,6 +27,17 @@ glue charts under `charts/` (`namespaces`, `provider-http`, `temporal-postgresql
 | `bmh-generator-operator` | `bmh-system` | `team-redbull/BareMetalHostUCS` | namespaces |
 | `server-scanner-dashboard` | `server-scanner` | `team-redbull/ServerScanner` | namespaces |
 | `hosted-cluster-integration` | `crossplane-system` | `team-redbull/dhcp_scope_manager` (`helm`) | provider-http-config |
+
+`htpasswd-idp` provisions a bootstrap cluster login (`ocpadmin`, cluster-admin)
+on whatever OpenShift cluster this platform deploys onto. It templates no
+Kubernetes resources itself — a postsync hook merges the configured users
+into whichever HTPasswd identity provider already exists on the cluster (the
+normal case; most clusters are bootstrapped with one out of band), so the
+login screen keeps a single htpasswd option and any pre-existing users are
+preserved. It only creates a brand-new provider + Secret as a fallback, on a
+cluster with no HTPasswd provider at all. It has no `needs:` of its own but
+`temporal-stack` needs it, since the Temporal UI's oauth-proxy only admits
+cluster-admins. See `CLAUDE.md`.
 
 `workflow-worker` is the Temporal workflow-brain — ONE shared release for every
 workflow domain, not per-domain. `connectivity` is the first per-domain
@@ -88,7 +100,7 @@ helmfile -l name=crossplane -l name=provider-http sync
 helmfile -l namespace=crossplane-system sync
 ```
 
-Release names: `namespaces`, `crossplane`, `provider-http`, `provider-http-config`,
+Release names: `namespaces`, `htpasswd-idp`, `crossplane`, `provider-http`, `provider-http-config`,
 `temporal-postgresql`, `temporal-stack`, `segments-manager-mongodb`, `segments-manager`,
 `workflow-worker`, `mock-connectivity`, `connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`.
@@ -121,6 +133,11 @@ All tunables live in `environments/default.yaml`:
 
 - **`refs.*`** — the git ref each service chart is pulled from. Defaults to `main`;
   **pin to tags for production** (e.g. `temporalStack: v0.1.0`).
+- **`htpasswdIdp.*`** — `users` merged into the cluster's existing HTPasswd
+  identity provider (or a new `bootstrapProviderName`/`bootstrapSecretName`
+  provider on a cluster with none), plus `clusterAdmins` to grant. Ships with
+  `ocpadmin`/`Password1` for throwaway/sandbox clusters — **override both
+  before pointing this at anything long-lived.**
 - **`temporalPostgresql.password`** — password for the in-cluster PostgreSQL
   backing Temporal (`charts/temporal-postgresql`).
 - **`segmentsManagerMongodb.{rootPassword,password}`** — credentials for the

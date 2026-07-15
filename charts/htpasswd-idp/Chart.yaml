@@ -1,0 +1,12 @@
+apiVersion: v2
+name: htpasswd-idp
+description: >-
+  Platform-owned chart with no templated resources of its own — it exists
+  purely to carry a postsync hook (scripts/apply-oauth.sh) that merges
+  bootstrap users into cluster login. See helmfile.yaml.gotmpl and
+  CLAUDE.md: oauth/cluster and its backing htpasswd Secret both pre-exist
+  on every OpenShift cluster (owned by the cluster-version-operator /
+  set up out of band), so neither can be a Helm-templated resource without
+  hitting an ownership conflict.
+type: application
+version: 0.1.0

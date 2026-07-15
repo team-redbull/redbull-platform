@@ -19,6 +19,37 @@ releases:
     namespace: default
     chart: ./charts/namespaces
 
+  # --- Cluster authentication (htpasswd identity provider) ------------------
+  # Neither oauth/cluster nor its backing htpasswd Secret can be Helm-owned
+  # templates: both pre-exist on every OpenShift cluster (the singleton is
+  # owned by the cluster-version-operator, and the Secret is normally set up
+  # out of band before this platform ever touches the cluster) — templating
+  # either would hit the same "invalid ownership metadata" conflict documented
+  # in CLAUDE.md for pre-existing Namespaces/Secrets. So this chart carries no
+  # templated resources at all; a postsync hook does the work, merging our
+  # users into whatever HTPasswd provider already exists (falling back to
+  # bootstrapping one only if the cluster has none) — see apply-oauth.sh and
+  # CLAUDE.md. No `needs:` of its own (openshift-config always exists), but
+  # temporal-stack below needs it — the Temporal UI's oauth-proxy only admits
+  # cluster-admins, so the grant must land before that Route comes up.
+  - name: htpasswd-idp
+    namespace: openshift-config
+    chart: ./charts/htpasswd-idp
+    hooks:
+      - events: [postsync]
+        showlogs: true
+        command: ./charts/htpasswd-idp/scripts/apply-oauth.sh
+        args:
+          - {{ .Values.htpasswdIdp.bootstrapProviderName | quote }}
+          - {{ .Values.htpasswdIdp.bootstrapSecretName | quote }}
+          - |
+            {{- range .Values.htpasswdIdp.users }}
+            {{ htpasswd .username .password }}
+            {{- end }}
+          {{- range .Values.htpasswdIdp.clusterAdmins }}
+          - {{ . | quote }}
+          {{- end }}
+
   # --- Crossplane core ------------------------------------------------------
   - name: crossplane
     namespace: crossplane-system
@@ -81,6 +112,7 @@ releases:
     needs:
       - default/namespaces
       - temporal/temporal-postgresql
+      - openshift-config/htpasswd-idp
     values:
       - postgresql:
           enabled: false
@@ -93,11 +125,19 @@ releases:
             # oauth-proxy sidecar authenticates cluster users before the UI
             # is reachable through the Route.
             enabled: true
-            # Admit ONLY cluster-admins: a wildcard SubjectAccessReview only
-            # matches RBAC rules that themselves grant verb=* on resource=*
-            # (i.e. cluster-admin or an equivalent wildcard role). Everyone
-            # else authenticates fine but gets a 403 from the proxy.
-            sar: { resource: "*", verb: "*" }
+            # Admit ONLY the platform's own admin account(s) BY NAME, not
+            # "any cluster-admin". A SAR gate can't express this: cluster-admin
+            # is unconditional verb=*/resource=*, so it satisfies every SAR —
+            # there's no SAR that admits one cluster-admin while excluding the
+            # cluster's other admins. So gate on identity instead: an nginx
+            # sidecar 403s anyone whose authenticated username isn't in this
+            # list (see temporal-stack ui.auth.allowedUsers). Reuses the same
+            # htpasswdIdp.clusterAdmins list this platform grants cluster-admin
+            # to (currently just ocpadmin) as the single source of truth for
+            # "the platform's privileged accounts". To let a cluster-admin in
+            # WITHOUT giving them UI access (or vice versa), set an explicit
+            # list here instead of referencing clusterAdmins.
+            allowedUsers: {{ .Values.htpasswdIdp.clusterAdmins | toJson }}
 
   # --- segments-manager -------------------------------------------------------
   # segments-manager starts.

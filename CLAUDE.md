@@ -31,6 +31,57 @@ this was done proactively for the same "DB must precede app" invariant).
 **Do not re-bundle these into subcharts of their consuming chart** without
 re-deriving this deadlock first.
 
+## Why the htpasswd identity provider is a postsync hook, and merges into the existing provider
+
+`charts/htpasswd-idp` provisions a bootstrap cluster login (`ocpadmin`,
+granted cluster-admin) on every cluster this platform deploys onto. It
+templates **no Kubernetes resources at all** — the release exists purely to
+carry a `postsync` hook (`charts/htpasswd-idp/scripts/apply-oauth.sh`).
+
+Two reasons this is imperative rather than Helm-templated:
+
+1. `oauth.config.openshift.io/cluster`, the object that actually wires an
+   identity provider into cluster login, is a singleton created by the
+   cluster-version-operator (owned by a `ClusterVersion` ownerReference) that
+   already exists before this Helmfile ever touches the cluster. A Helm
+   template for `kind: OAuth, name: cluster` would try to *create* a resource
+   that's already there, hitting the identical "invalid ownership metadata"
+   failure documented below for the segments-manager-mongodb Secret and the
+   workflows Namespace — just for this singleton instead.
+2. Most clusters already have an HTPasswd provider configured out of band
+   (this platform's dev sandbox shipped with one, `htpasswd_provider` /
+   Secret `htpasswd`, containing users unrelated to this repo). Adding a
+   *second* htpasswd provider just to stay Helm-native would show up as a
+   confusing second option on the OpenShift login screen and fragment
+   cluster users across two providers — an earlier version of this chart did
+   exactly that (a standalone `redbull-platform` provider) before being
+   corrected to merge into the existing one instead.
+
+So the hook merges `htpasswdIdp.users` into whichever Secret backs the
+cluster's existing HTPasswd-type provider (found via `oc get oauth cluster
+-o jsonpath='{.spec.identityProviders[?(@.type=="HTPasswd")]...}'`), skipping
+any username already present rather than overwriting it. Only on a cluster
+with **no** HTPasswd provider at all does it fall back to creating one from
+scratch, via `htpasswdIdp.bootstrapProviderName`/`bootstrapSecretName`, using
+a JSON-patch `add` on `/spec/identityProviders/-` (never a `--type=merge`
+replace of the whole list — that would delete every other provider already
+configured on the cluster).
+
+**Do not turn this into a Helm-owned `kind: OAuth`/`Secret` template**, and
+do not make the "bootstrap a new provider" fallback the default behavior,
+without re-deriving both points above first.
+
+**Gotcha if you ever change which provider a username is issued through**:
+OpenShift's identity-to-user mapping is sticky. The first successful login
+permanently creates a `User` + `Identity` object (e.g. `identity
+htpasswd_provider:ocpadmin`), and `mappingMethod: claim` (the default, used
+here) refuses to let a *different* provider claim that same username
+afterward — logins fail with a 500 (`AuthenticationError: user "X" cannot be
+claimed by identity "Y" because it is already mapped to [Z]`), not a clean
+401, which is easy to misdiagnose as a broken htpasswd file. Fix is `oc
+delete identity <old-provider>:<user>` + `oc delete user <user>` before
+retrying under the new provider.
+
 ## Naming collision gotcha
 
 Bitnami subchart resources (Secrets, etc.) are commonly named after

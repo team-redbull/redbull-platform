@@ -15,6 +15,27 @@ refs:
 crossplane:
   version: "2.3.2"
 
+# Cluster authentication: htpasswd users merged into whatever OpenShift
+# cluster this platform deploys onto, plus a cluster-admin grant. If the
+# cluster already has an HTPasswd identity provider (the normal case — most
+# clusters are bootstrapped with one out of band), `users` are merged into
+# ITS backing Secret, preserving whatever users are already there and
+# keeping a single htpasswd option on the login screen. bootstrapProviderName/
+# bootstrapSecretName are only used as a fallback, to create a brand-new
+# provider on a cluster that has no HTPasswd provider at all — see
+# htpasswd-idp's postsync hook (charts/htpasswd-idp/scripts/apply-oauth.sh)
+# and CLAUDE.md. ocpadmin/Password1 is a bootstrap credential for
+# throwaway/sandbox clusters — override both per environment before pointing
+# this at anything long-lived.
+htpasswdIdp:
+  bootstrapProviderName: redbull-platform
+  bootstrapSecretName: redbull-platform-htpasswd
+  users:
+    - username: ocpadmin
+      password: Password1
+  clusterAdmins:
+    - ocpadmin
+
 # Standalone PostgreSQL backing the Temporal stack. Deployed as its own release
 # so it exists (and is ready) before temporal-stack's pre-install schema job runs.
 temporalPostgresql:
