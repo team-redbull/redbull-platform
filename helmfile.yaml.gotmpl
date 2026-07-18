@@ -188,9 +188,15 @@ releases:
       - default/namespaces
       - temporal/temporal-stack
     values:
+      # This release owns `orchestrator-config`, the GLOBAL ConfigMap every
+      # workflow domain shares. The brain itself uses only the Temporal values;
+      # domain + segmentsManagerUrl are published here so the activity limbs
+      # (connectivity, and any future domain) mount them without duplication.
       - config:
           temporalHost: {{ .Values.temporal.host | quote }}
           temporalNamespace: {{ .Values.temporal.namespace | quote }}
+          domain: {{ .Values.orchestrator.domain | quote }}
+          segmentsManagerUrl: {{ .Values.orchestrator.segmentsManagerUrl | quote }}
 
   # --- mock-connectivity (test-only stand-in for the real "next" service) --
   # e2e/test environments ONLY — never install alongside a production
@@ -217,22 +223,22 @@ releases:
       - redbull-workflows/workflow-worker
       - redbull-workflows/mock-connectivity
     values:
+      # Only the connectivity-specific endpoints live here. The Temporal
+      # connection, DOMAIN and SEGMENTS_MANAGER_URL come from the shared
+      # `orchestrator-config` (owned by the workflow-worker release above, which
+      # this release `needs:`), which the activity worker also mounts.
       - config:
-          temporalHost: {{ .Values.temporal.host | quote }}
-          temporalNamespace: {{ .Values.temporal.namespace | quote }}
-          segmentManagerUrl: {{ .Values.connectivityWorkflow.segmentManagerUrl | quote }}
           nextUrl: {{ .Values.connectivityWorkflow.nextUrl | quote }}
           nextTokenRenewalUri: {{ .Values.connectivityWorkflow.nextTokenRenewalUri | quote }}
           nextOpenRulesUri: {{ .Values.connectivityWorkflow.nextOpenRulesUri | quote }}
           nextCheckStatusUri: {{ .Values.connectivityWorkflow.nextCheckStatusUri | quote }}
-          domain: {{ .Values.connectivityWorkflow.domain | quote }}
         secrets:
           # The connectivity worker authenticates its mutating Segments Manager
-          # calls with an out-of-band Secret (key SEGMENT_MANAGER_API_TOKEN),
+          # calls with an out-of-band Secret (key SEGMENTS_MANAGER_API_TOKEN),
           # created once in-cluster and holding the SAME value as
           # segments-manager's own `segments-manager-api-token` Secret. The token
           # never passes through git or Helm values. See README/CLAUDE.md.
-          existingSecret: {{ .Values.connectivityWorkflow.segmentManagerTokenSecret | quote }}
+          existingSecret: {{ .Values.connectivityWorkflow.segmentsManagerTokenSecret | quote }}
 
   # --- BareMetalHost generator operator -------------------------------------
   - name: bmh-generator-operator
