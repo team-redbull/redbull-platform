@@ -49,28 +49,28 @@ segmentsManagerMongodb:
 
 # segments-manager app wiring that isn't a DB credential.
 segmentsManager:
-  # Where segment creation POSTs to start the connectivity workflow — the shared
+  # Where segment creation POSTs to start the segment-connectivity workflow — the shared
   # `workflows-api` Service (one trigger API for every workflow domain) created
-  # by the workflow-worker release in the redbull-workflows namespace.
+  # by the workflows release in the redbull-workflows namespace.
   # Cross-namespace, so it MUST be the FQDN.
-  connectivityWorkflowApiUrl: "http://workflows-api.redbull-workflows.svc.cluster.local:8080"
+  workflowsApiUrl: "http://workflows-api.redbull-workflows.svc.cluster.local:8080"
 
 providerHttp:
   package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
   providerConfigName: dhcp-http # shared with the dhcp integration below
 
-# Shared Temporal connection info. Consumed by the workflow-worker release,
+# Shared Temporal connection info. Consumed by the workflows release,
 # which publishes it (together with the orchestrator globals below) into the
 # redbull-workflows namespace via its `orchestrator-config` ConfigMap. Every
-# workflow-domain limb (connectivity, and any future domain) mounts that
+# workflow-domain limb (segment-connectivity, and any future domain) mounts that
 # ConfigMap, so the Temporal endpoint lives in exactly one place for the platform.
 temporal:
   host: "temporal-frontend.temporal.svc.cluster.local:7233"
   namespace: "default"
 
 # GLOBAL orchestrator values shared by every workflow domain, published by the
-# workflow-worker release into `orchestrator-config` and mounted by every limb.
+# workflows release into `orchestrator-config` and mounted by every limb.
 # Kept here once so a new domain reuses them instead of redeclaring.
 orchestrator:
   # Operator "domain" tag stamped into workflow payloads (e.g. next open-rules).
@@ -78,21 +78,21 @@ orchestrator:
   # Segments Manager base URL (mutating calls also need the token Secret below).
   segmentsManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
 
-# connectivity (activity limb) release's domain-specific wiring: the next
+# segment-connectivity (activity limb) release's domain-specific wiring: the next
 # (firewall) service endpoints + the Segments Manager token Secret.
-connectivityWorkflow:
+segmentConnectivityWorkflow:
   # In production the next (connectivity/firewall) service is another team's,
   # reached over the air-gapped network — not deployed by this platform. Here
-  # it points at this platform's own `mock-connectivity` release instead
+  # it points at this platform's own `mock-segment-connectivity` release instead
   # (see helmfile.yaml.gotmpl), so e2e tests can exercise the full
   # submit -> poll -> complete cycle without the real service.
   # TODO: for a real prod environment, override nextUrl (and re-verify these
   # URI paths against the real API) to point at the actual next service.
-  nextUrl: "http://mock-connectivity.redbull-workflows.svc.cluster.local:9000"
+  nextUrl: "http://mock-segment-connectivity.redbull-workflows.svc.cluster.local:9000"
   nextTokenRenewalUri: "/token-renewal-uri"
   nextOpenRulesUri: "/open-rules-uri"
   nextCheckStatusUri: "/check-request-status"
-  # Name of the out-of-band Secret (in the connectivity release's namespace,
+  # Name of the out-of-band Secret (in the segment-connectivity release's namespace,
   # redbull-workflows) holding the Segments Manager API token under key
   # SEGMENTS_MANAGER_API_TOKEN. It MUST hold the same value as segments-manager's
   # own `segments-manager-api-token` Secret — this is the Segments Manager API

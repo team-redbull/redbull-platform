@@ -21,9 +21,9 @@ glue charts under `charts/` (`namespaces`, `provider-http`, `temporal-postgresql
 | `temporal-stack` | `temporal` | `team-redbull/temporal-stack` | namespaces, temporal-postgresql, htpasswd-idp |
 | `segments-manager-mongodb` | `segments-manager` | local `charts/segments-manager-mongodb` (Bitnami MongoDB) | namespaces |
 | `segments-manager` | `segments-manager` | `team-redbull/segment_manager` (`deploy/helm`) | namespaces, segments-manager-mongodb |
-| `workflow-worker` | `redbull-workflows` | `team-redbull/workflows` (`helm/workflow-worker`) | temporal-stack |
-| `mock-connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/mock-connectivity`) | namespaces |
-| `connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/connectivity`) | temporal-stack, segments-manager, workflow-worker, mock-connectivity |
+| `workflows` | `redbull-workflows` | `team-redbull/workflows` (`helm/workflows`) | temporal-stack |
+| `mock-segment-connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/mock-segment-connectivity`) | namespaces |
+| `segment-connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/segment-connectivity`) | temporal-stack, segments-manager, workflows, mock-segment-connectivity |
 | `bmh-generator-operator` | `bmh-system` | `team-redbull/BareMetalHostUCS` | namespaces |
 | `server-scanner-dashboard` | `server-scanner` | `team-redbull/ServerScanner` | namespaces |
 | `hosted-cluster-integration` | `crossplane-system` | `team-redbull/dhcp_scope_manager` (`helm`) | provider-http-config |
@@ -39,15 +39,15 @@ cluster with no HTPasswd provider at all. It has no `needs:` of its own but
 `temporal-stack` needs it, since the Temporal UI's oauth-proxy only admits
 cluster-admins. See `CLAUDE.md`.
 
-`workflow-worker` is the Temporal workflow-brain — ONE shared release for every
-workflow domain, not per-domain. `connectivity` is the first per-domain
-activity-worker release (the connectivity limb); future domains add their own
-chart + release alongside it, all still depending on the one `workflow-worker`.
-`mock-connectivity` is a test-only stand-in for the real "next" (firewall)
-service that `connectivity` talks to — it exists so e2e tests can run the full
+`workflows` is the Temporal workflow-brain — ONE shared release for every
+workflow domain, not per-domain. `segment-connectivity` is the first per-domain
+activity-worker release (the segment-connectivity limb); future domains add their own
+chart + release alongside it, all still depending on the one `workflows`.
+`mock-segment-connectivity` is a test-only stand-in for the real "next" (firewall)
+service that `segment-connectivity` talks to — it exists so e2e tests can run the full
 submit -> poll -> complete cycle without the real, air-gapped next service;
-never install it alongside a production `connectivity` release (see `refs.workflows`
-pinning to a real tag, and override `connectivityWorkflow.nextUrl` at the real
+never install it alongside a production `segment-connectivity` release (see `refs.workflows`
+pinning to a real tag, and override `segmentConnectivityWorkflow.nextUrl` at the real
 next endpoint, for that case). Each image is built and tagged independently by
 `team-redbull/workflows`' CI. None of the three charts creates its own
 namespace — see `CLAUDE.md`.
@@ -102,7 +102,7 @@ helmfile -l namespace=crossplane-system sync
 
 Release names: `namespaces`, `htpasswd-idp`, `crossplane`, `provider-http`, `provider-http-config`,
 `temporal-postgresql`, `temporal-stack`, `segments-manager-mongodb`, `segments-manager`,
-`workflow-worker`, `mock-connectivity`, `connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
+`workflows`, `mock-segment-connectivity`, `segment-connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`.
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts
@@ -143,9 +143,9 @@ All tunables live in `environments/default.yaml`:
 - **`segmentsManagerMongodb.{rootPassword,password}`** — credentials for the
   in-cluster MongoDB backing segments-manager (`charts/segments-manager-mongodb`).
 - **`temporal.{host,namespace}`** — the in-cluster Temporal frontend, shared by
-  every workflow-domain release (`workflow-worker`, `connectivity`, and any
+  every workflow-domain release (`workflows`, `segment-connectivity`, and any
   future domain chart) — one place to change it for the whole platform.
-- **`connectivityWorkflow.*`** — the `connectivity` release's own domain-specific
+- **`segmentConnectivityWorkflow.*`** — the `segment-connectivity` release's own domain-specific
   wiring: the segments-manager service, the next (firewall) service endpoint/URI
   paths, and the Segments Manager API token. **(TODO: set real next endpoint +
   URI paths, and the real Segments Manager API token for non-local environments.)**
@@ -181,7 +181,7 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   subcharts, so they exist and are ready before `temporal-stack`'s pre-install
   schema job and `segments-manager` start. See `needs:` in `helmfile.yaml.gotmpl`,
   and `CLAUDE.md` for the full story on why this shape was necessary.
-- **`workflow-worker` and `connectivity` both deploy into `redbull-workflows`**,
+- **`workflows` and `segment-connectivity` both deploy into `redbull-workflows`**,
   pre-created by the `namespaces` release like every other app namespace.
   Neither chart has a Namespace template of its own — namespace ownership
   belongs solely to the `namespaces` release. See `CLAUDE.md`.

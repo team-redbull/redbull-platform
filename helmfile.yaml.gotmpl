@@ -162,17 +162,17 @@ releases:
     values:
       - config:
           # Cross-namespace URL of the shared workflow trigger API
-          # (workflow-worker release's `workflows-api` Service in
+          # (workflows release's `workflows-api` Service in
           # redbull-workflows). Segment creation POSTs here to start the
           # workflow. Must be the Service FQDN — a bare `workflows-api`
           # would resolve inside the segments-manager namespace, where no
           # such Service exists.
-          connectivityWorkflowApiUrl: {{ .Values.segmentsManager.connectivityWorkflowApiUrl | quote }}
+          workflowsApiUrl: {{ .Values.segmentsManager.workflowsApiUrl | quote }}
         mongodb:
           url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
           dbName: segments_manager
 
-  # --- workflow-worker (the Temporal workflow "brain") ----------------------
+  # --- workflows (the Temporal workflow "brain") ----------------------
   # ONE release, shared by every workflow domain (not per-domain). Deploys into
   # redbull-workflows, pre-created by the namespaces release like every other
   # app namespace — this chart has no templates/namespace.yaml of its own and
@@ -181,9 +181,9 @@ releases:
   # documented in CLAUDE.md, avoided here by construction). The chart's own
   # values.yaml carries image.repository/tag (bumped by CI in
   # team-redbull/workflows) — not overridden here.
-  - name: workflow-worker
+  - name: workflows
     namespace: redbull-workflows
-    chart: git::https://github.com/team-redbull/workflows.git@helm/workflow-worker?ref={{ .Values.refs.workflows }}
+    chart: git::https://github.com/team-redbull/workflows.git@helm/workflows?ref={{ .Values.refs.workflows }}
     needs:
       - default/namespaces
       - temporal/temporal-stack
@@ -191,54 +191,54 @@ releases:
       # This release owns `orchestrator-config`, the GLOBAL ConfigMap every
       # workflow domain shares. The brain itself uses only the Temporal values;
       # domain + segmentsManagerUrl are published here so the activity limbs
-      # (connectivity, and any future domain) mount them without duplication.
+      # (segment-connectivity, and any future domain) mount them without duplication.
       - config:
           temporalHost: {{ .Values.temporal.host | quote }}
           temporalNamespace: {{ .Values.temporal.namespace | quote }}
           domain: {{ .Values.orchestrator.domain | quote }}
           segmentsManagerUrl: {{ .Values.orchestrator.segmentsManagerUrl | quote }}
 
-  # --- mock-connectivity (test-only stand-in for the real "next" service) --
+  # --- mock-segment-connectivity (test-only stand-in for the real "next" service) --
   # e2e/test environments ONLY — never install alongside a production
-  # `connectivity` release. Same redbull-workflows namespace, same "no
-  # Namespace of its own" story — see comment above. connectivity's
+  # `segment-connectivity` release. Same redbull-workflows namespace, same "no
+  # Namespace of its own" story — see comment above. segment-connectivity's
   # `nextUrl` below points at this release's in-cluster Service.
-  - name: mock-connectivity
+  - name: mock-segment-connectivity
     namespace: redbull-workflows
-    chart: git::https://github.com/team-redbull/workflows.git@helm/mock-connectivity?ref={{ .Values.refs.workflows }}
+    chart: git::https://github.com/team-redbull/workflows.git@helm/mock-segment-connectivity?ref={{ .Values.refs.workflows }}
     needs:
       - default/namespaces
 
-  # --- connectivity (the connectivity-activity limb) ------------------------
+  # --- segment-connectivity (the segment-connectivity-activity limb) ------------------------
   # One chart per workflow domain (this is the first of what will be several).
-  # Same redbull-workflows namespace as workflow-worker, same "no Namespace of
+  # Same redbull-workflows namespace as workflows, same "no Namespace of
   # its own" story — see comment above.
-  - name: connectivity
+  - name: segment-connectivity
     namespace: redbull-workflows
-    chart: git::https://github.com/team-redbull/workflows.git@helm/connectivity?ref={{ .Values.refs.workflows }}
+    chart: git::https://github.com/team-redbull/workflows.git@helm/segment-connectivity?ref={{ .Values.refs.workflows }}
     needs:
       - default/namespaces
       - temporal/temporal-stack
       - segments-manager/segments-manager
-      - redbull-workflows/workflow-worker
-      - redbull-workflows/mock-connectivity
+      - redbull-workflows/workflows
+      - redbull-workflows/mock-segment-connectivity
     values:
-      # Only the connectivity-specific endpoints live here. The Temporal
+      # Only the segment-connectivity-specific endpoints live here. The Temporal
       # connection, DOMAIN and SEGMENTS_MANAGER_URL come from the shared
-      # `orchestrator-config` (owned by the workflow-worker release above, which
+      # `orchestrator-config` (owned by the workflows release above, which
       # this release `needs:`), which the activity worker also mounts.
       - config:
-          nextUrl: {{ .Values.connectivityWorkflow.nextUrl | quote }}
-          nextTokenRenewalUri: {{ .Values.connectivityWorkflow.nextTokenRenewalUri | quote }}
-          nextOpenRulesUri: {{ .Values.connectivityWorkflow.nextOpenRulesUri | quote }}
-          nextCheckStatusUri: {{ .Values.connectivityWorkflow.nextCheckStatusUri | quote }}
+          nextUrl: {{ .Values.segmentConnectivityWorkflow.nextUrl | quote }}
+          nextTokenRenewalUri: {{ .Values.segmentConnectivityWorkflow.nextTokenRenewalUri | quote }}
+          nextOpenRulesUri: {{ .Values.segmentConnectivityWorkflow.nextOpenRulesUri | quote }}
+          nextCheckStatusUri: {{ .Values.segmentConnectivityWorkflow.nextCheckStatusUri | quote }}
         secrets:
-          # The connectivity worker authenticates its mutating Segments Manager
+          # The segment-connectivity worker authenticates its mutating Segments Manager
           # calls with an out-of-band Secret (key SEGMENTS_MANAGER_API_TOKEN),
           # created once in-cluster and holding the SAME value as
           # segments-manager's own `segments-manager-api-token` Secret. The token
           # never passes through git or Helm values. See README/CLAUDE.md.
-          existingSecret: {{ .Values.connectivityWorkflow.segmentsManagerTokenSecret | quote }}
+          existingSecret: {{ .Values.segmentConnectivityWorkflow.segmentsManagerTokenSecret | quote }}
 
   # --- BareMetalHost generator operator -------------------------------------
   - name: bmh-generator-operator

@@ -96,7 +96,7 @@ obvious `segments-manager-mongodb`.
 
 ## workflows charts: no chart ever creates its own Namespace
 
-`team-redbull/workflows` used to ship a single `helm/connectivity` chart with
+`team-redbull/workflows` used to ship a single `helm/segment-connectivity` chart with
 its own `templates/namespace.yaml` (unconditionally, then later gated behind
 `.Values.createNamespace`) — handy for standalone use (e.g. a local kind
 cluster) where nothing else provisions the namespace first, but a source of
@@ -107,7 +107,7 @@ pre-creates `redbull-workflows` up front (same pattern as `temporal`,
 segments-manager-mongodb Secret collision above, just for a `Namespace`
 instead of a `Secret`.
 
-As of the `helm/workflow-worker` + `helm/connectivity` split (the brain now
+As of the `helm/workflows` + `helm/segment-connectivity` split (the brain now
 has its own chart, decoupled from any one workflow domain — see
 `team-redbull/workflows`' CLAUDE.md §1–2), **neither chart has a
 `templates/namespace.yaml` or a `createNamespace`/`namespace` value at all**.
@@ -177,8 +177,8 @@ issue, don't try to "fix" it in the helmfile.
   migrate them to call the shared workflow rather than editing their local
   copies when the build flow needs to change.
 - `team-redbull/workflows` — Temporal worker charts consuming `temporal-stack`
-  + `segments-manager`: `helm/workflow-worker` (the brain, one shared release),
-  `helm/connectivity` (the connectivity limb; the first of what will be
-  several per-domain charts), and `helm/mock-connectivity` (test-only stand-in
-  for the real "next" firewall service `connectivity` talks to — e2e/test
-  environments only, never alongside a production `connectivity` release).
+  + `segments-manager`: `helm/workflows` (the brain, one shared release),
+  `helm/segment-connectivity` (the segment-connectivity limb; the first of what will be
+  several per-domain charts), and `helm/mock-segment-connectivity` (test-only stand-in
+  for the real "next" firewall service `segment-connectivity` talks to — e2e/test
+  environments only, never alongside a production `segment-connectivity` release).
