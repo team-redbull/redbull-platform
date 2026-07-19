@@ -188,7 +188,7 @@ releases:
       - default/namespaces
       - temporal/temporal-stack
     values:
-      # This release owns `orchestrator-config`, the GLOBAL ConfigMap every
+      # This release owns `workflows-config`, the GLOBAL ConfigMap every
       # workflow domain shares. The brain itself uses only the Temporal values;
       # domain + segmentsManagerUrl are published here so the activity limbs
       # (segment-connectivity, and any future domain) mount them without duplication.
@@ -225,7 +225,7 @@ releases:
     values:
       # Only the segment-connectivity-specific endpoints live here. The Temporal
       # connection, DOMAIN and SEGMENTS_MANAGER_URL come from the shared
-      # `orchestrator-config` (owned by the workflows release above, which
+      # `workflows-config` (owned by the workflows release above, which
       # this release `needs:`), which the activity worker also mounts.
       - config:
           nextUrl: {{ .Values.segmentConnectivityWorkflow.nextUrl | quote }}

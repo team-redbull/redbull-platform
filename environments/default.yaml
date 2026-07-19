@@ -62,7 +62,7 @@ providerHttp:
 
 # Shared Temporal connection info. Consumed by the workflows release,
 # which publishes it (together with the orchestrator globals below) into the
-# redbull-workflows namespace via its `orchestrator-config` ConfigMap. Every
+# redbull-workflows namespace via its `workflows-config` ConfigMap. Every
 # workflow-domain limb (segment-connectivity, and any future domain) mounts that
 # ConfigMap, so the Temporal endpoint lives in exactly one place for the platform.
 temporal:
@@ -70,7 +70,7 @@ temporal:
   namespace: "default"
 
 # GLOBAL orchestrator values shared by every workflow domain, published by the
-# workflows release into `orchestrator-config` and mounted by every limb.
+# workflows release into `workflows-config` and mounted by every limb.
 # Kept here once so a new domain reuses them instead of redeclaring.
 orchestrator:
   # Operator "domain" tag stamped into workflow payloads (e.g. next open-rules).
