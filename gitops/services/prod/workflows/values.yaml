@@ -1,0 +1,7 @@
+# Helm values for the workflows brain (dev). Its only wiring is the shared globals in
+# gitops/values/dev.yaml (config.temporalHost/temporalNamespace/domain/segmentsManagerUrl,
+# which this chart publishes into workflows-config) plus the chart's own defaults
+# (image.repository/tag, bumped by CI in helm-charts-workflows). Nothing service-specific
+# here yet — kept as an explicit file so the ApplicationSet's valueFiles path always
+# resolves. Add workflows-only overrides here if they ever appear.
+{}

@@ -1,0 +1,85 @@
+# THE one generic ApplicationSet. Sweeps gitops/services/<env>/<service>/app.yaml and
+# generates one Argo CD Application per (env, service). Adding a service = a new folder;
+# adding an env = a new services/<env>/ folder + values/<env>.yaml. No new ApplicationSet.
+#
+# Lives in the OpenShift GitOps instance namespace (user1-argocd).
+#
+# Git host is the ONLY thing that changes moving to the air-gapped GitLab — the three
+# repoURLs marked below and the project sourceRepos. GitHub is flat (helm-charts-<name>);
+# GitLab uses a real subgroup (helm-charts/<name>). See README "Air-gapped GitLab".
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+metadata:
+  name: redbull-services
+  namespace: user1-argocd
+spec:
+  goTemplate: true
+  goTemplateOptions: ["missingkey=error"]
+  generators:
+    - git:
+        # ← host: GitLab in the air-gapped env
+        repoURL: https://github.com/team-redbull/redbull-platform.git
+        revision: main
+        files:
+          - path: gitops/services/*/*/app.yaml
+  # When an Application leaves the generator (e.g. a folder rename/removal), ORPHAN its
+  # resources instead of pruning them — so a rename adopts the running objects instead of
+  # destroy+recreate, and a generator glitch can't mass-delete live workloads.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
+  template:
+    metadata:
+      # env = 3rd path segment (gitops/services/<env>/<service>), service = folder name.
+      # prod is canonical → unprefixed (temporal); every other env gets an <env>- prefix
+      # (dev-temporal). One conditional, easy to extend.
+      name: '{{ if eq (index .path.segments 2) "prod" }}{{ .path.basename }}{{ else }}{{ index .path.segments 2 }}-{{ .path.basename }}{{ end }}'
+    spec:
+      project: redbull-platform
+      sources:
+        # 1) the service's chart — its own repo in the helm-charts group, chart at root.
+        #    ← host+layout: GitLab subgroup 'helm-charts/{{ .path.basename }}' in air-gapped
+        - repoURL: 'https://github.com/team-redbull/helm-charts-{{ .path.basename }}.git'
+          targetRevision: '{{ .revision }}'
+          path: .
+          helm:
+            # Release name = the SERVICE (env-independent), not the Argo app name.
+            # So resources are named the same in every env (temporal-*, segments-manager,
+            # …) — env separation is by NAMESPACE, not by resource name. This is why no
+            # chart needs a per-env fullnameOverride (the charts' fullname helpers collapse
+            # to the release name / hardcode their names).
+            releaseName: '{{ .path.basename }}'
+            valueFiles:
+              # shared env globals first, then this service's own values (override).
+              - '$values/gitops/values/{{ index .path.segments 2 }}.yaml'
+              - '$values/{{ .path.path }}/values.yaml'
+        # 2) this repo, only as the $values source for the valueFiles above.
+        #    ← host: GitLab in the air-gapped env
+        - repoURL: https://github.com/team-redbull/redbull-platform.git
+          targetRevision: main
+          ref: values
+      destination:
+        # optional per-service override (other cluster, e.g. a future Vault limb);
+        # defaults to the cluster this ApplicationSet runs on.
+        name: '{{ dig "destination" "cluster" "in-cluster" . }}'
+        namespace: '{{ .namespace }}'
+      syncPolicy:
+        automated: { prune: true, selfHeal: true }
+        # NO CreateNamespace / managedNamespaceMetadata: this is a *namespaced*
+        # OpenShift GitOps instance, whose application-controller has no RBAC on
+        # cluster-scoped Namespace objects (it can't create OR patch them). The
+        # `namespaces` Helmfile release pre-creates every target namespace AND
+        # stamps the argocd.argoproj.io/managed-by label that grants this instance
+        # its in-namespace RBAC — so Argo never needs to touch the Namespace itself.
+        # (The namespaces release runs in every environment, including air-gapped
+        # ones where the DBs are external — it doesn't depend on the DBs.)
+        retry:
+          limit: 10
+          backoff: { duration: 15s, factor: 2, maxDuration: 5m }
+  # Optional raw Application-spec fragment per service (app.yaml `overrides:` key),
+  # strategic-merged onto the generated Application. Empty object when absent.
+  templatePatch: |
+    {{- if hasKey . "overrides" }}
+    {{ toYaml .overrides }}
+    {{- else }}
+    {}
+    {{- end }}

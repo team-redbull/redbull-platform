@@ -1,8 +1,23 @@
 # Namespaces this platform creates up front.
 namespaces:
   - crossplane-system
-  - temporal
-  - segments-manager
+  - temporal              # Argo-managed: the `temporal` app deploys here
+  - segments-manager      # Argo `segments-manager` app + Helmfile mongodb release
   - bmh-system
   - server-scanner
-  - redbull-workflows   # hosts the workflows + segment-connectivity releases (see helmfile)
+  - redbull-workflows     # Argo workflows + segment-connectivity apps + Helmfile mock release
+
+# OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. Its controller
+# is namespace-scoped (installed in `user1-argocd`), so it only gets RBAC in namespaces
+# labeled `argocd.argoproj.io/managed-by: <instance>`. We stamp that label here on the
+# namespaces the Argo apps deploy into, so the apps can sync into pre-created namespaces.
+# (Namespaces Argo creates itself — e.g. where the DBs are external — get the label from
+# each app's managedNamespaceMetadata instead; see gitops/appset.yaml.) Leave managedBy
+# empty to disable, or if the instance is cluster-scoped (then the label is a harmless
+# no-op anyway).
+argocd:
+  managedBy: user1-argocd
+  managedNamespaces:
+    - temporal
+    - segments-manager
+    - redbull-workflows

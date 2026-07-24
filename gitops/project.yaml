@@ -1,0 +1,27 @@
+# AppProject for every team-redbull service Argo CD owns (see gitops/appset.yaml).
+# Lives in the OpenShift GitOps instance namespace (user1-argocd), NOT the default
+# `argocd` namespace — this cluster's instance is user1-argocd.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: redbull-platform
+  namespace: user1-argocd
+spec:
+  description: team-redbull platform services (CD via the redbull-services ApplicationSet)
+  sourceRepos:
+    # GitHub today. Air-gapped GitLab: 'https://gitlab.airgap.local/team-redbull/**'
+    - 'https://github.com/team-redbull/*'
+  destinations:
+    - { server: '*', namespace: temporal }
+    - { server: '*', namespace: segments-manager }
+    # trailing * covers per-env namespace suffixes (e.g. redbull-workflows-prod) if
+    # dev and prod ever share one cluster
+    - { server: '*', namespace: 'redbull-workflows*' }
+  clusterResourceWhitelist:
+    # The 4 apps create only namespaced resources; namespaces are pre-created by the
+    # `namespaces` Helmfile release (this namespaced GitOps instance can't create
+    # cluster-scoped objects). Kept only so that IF Argo is ever granted namespace
+    # RBAC + CreateNamespace=true, the project already permits it. Otherwise inert.
+    - { group: "", kind: Namespace }
+  namespaceResourceWhitelist:
+    - { group: "*", kind: "*" }

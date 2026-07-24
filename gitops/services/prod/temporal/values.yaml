@@ -1,0 +1,23 @@
+# Helm values for the combined `temporal` chart (dev) = helm-charts-temporal.
+#
+# The chart's OWN defaults already run in bundled-PostgreSQL mode:
+#   postgresql.enabled: true, service `temporal-postgresql`, and database.* auto-resolve
+#   to the subchart (host + admin secret). The schema Job is an Argo Sync hook (wave 1),
+#   the server/UI are wave 2. So we override almost nothing here — only the UI auth gate.
+#
+# (The old Helmfile release overrode postgresql.enabled=false to use the *external*
+# temporal-postgresql release; the Argo chart deliberately does NOT — it bundles.)
+
+ui:
+  auth:
+    # "Log in with OpenShift" oauth-proxy in front of the Temporal UI Route, then an
+    # nginx sidecar 403s anyone whose username isn't in allowedUsers. Keep this list in
+    # sync with htpasswdIdp.clusterAdmins in environments/default.yaml — single source of
+    # truth for the platform's privileged accounts. See CLAUDE.md.
+    enabled: true
+    allowedUsers:
+      - ocpadmin
+
+# TODO(secrets): the bundled postgres password is the chart default
+# (postgresql.auth.postgresPassword: "temporal-postgres-pw"). Migrate to ESO+Vault —
+# see gitops/SECRETS.md.

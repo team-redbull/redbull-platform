@@ -96,51 +96,13 @@ releases:
           name: {{ .Values.providerHttp.providerConfigName | quote }}
 
   # --- Temporal stack -------------------------------------------------------
-  - name: temporal-postgresql
-    namespace: temporal
-    chart: ./charts/temporal-postgresql
-    needs:
-      - default/namespaces
-    values:
-      - postgresql:
-          auth:
-            postgresPassword: {{ .Values.temporalPostgresql.password | quote }}
+  # MOVED TO ARGO CD. `temporal-postgresql` + `temporal-stack` are now a single
+  # combined `temporal` chart in helm-charts-temporal, deployed by the redbull-services
+  # ApplicationSet (gitops/services/dev/temporal). PostgreSQL is bundled as a subchart —
+  # safe under Argo because sync waves express Postgres->schema->server ordering (no
+  # helmDefaults.wait deadlock). See gitops/ and CLAUDE.md "Combined temporal chart".
 
-  - name: temporal-stack
-    namespace: temporal
-    chart: git::https://github.com/team-redbull/temporal-stack.git@.?ref={{ .Values.refs.temporalStack }}
-    needs:
-      - default/namespaces
-      - temporal/temporal-postgresql
-      - openshift-config/htpasswd-idp
-    values:
-      - postgresql:
-          enabled: false
-        database:
-          host: temporal-postgresql
-          existingSecret: temporal-postgresql
-        ui:
-          auth:
-            # "Log in with OpenShift" in front of the Temporal UI: an
-            # oauth-proxy sidecar authenticates cluster users before the UI
-            # is reachable through the Route.
-            enabled: true
-            # Admit ONLY the platform's own admin account(s) BY NAME, not
-            # "any cluster-admin". A SAR gate can't express this: cluster-admin
-            # is unconditional verb=*/resource=*, so it satisfies every SAR —
-            # there's no SAR that admits one cluster-admin while excluding the
-            # cluster's other admins. So gate on identity instead: an nginx
-            # sidecar 403s anyone whose authenticated username isn't in this
-            # list (see temporal-stack ui.auth.allowedUsers). Reuses the same
-            # htpasswdIdp.clusterAdmins list this platform grants cluster-admin
-            # to (currently just ocpadmin) as the single source of truth for
-            # "the platform's privileged accounts". To let a cluster-admin in
-            # WITHOUT giving them UI access (or vice versa), set an explicit
-            # list here instead of referencing clusterAdmins.
-            allowedUsers: {{ .Values.htpasswdIdp.clusterAdmins | toJson }}
-
-  # --- segments-manager -------------------------------------------------------
-  # segments-manager starts.
+  # --- segments-manager MongoDB (segments-manager itself is on Argo CD) -------
   - name: segments-manager-mongodb
     namespace: segments-manager
     chart: ./charts/segments-manager-mongodb
@@ -153,92 +115,28 @@ releases:
             passwords:
               - {{ .Values.segmentsManagerMongodb.password | quote }}
 
-  - name: segments-manager
-    namespace: segments-manager
-    chart: git::https://github.com/team-redbull/segments-manager.git@deploy/helm?ref={{ .Values.refs.segmentManager }}
-    needs:
-      - default/namespaces
-      - segments-manager/segments-manager-mongodb
-    values:
-      - config:
-          # Cross-namespace URL of the shared workflow trigger API
-          # (workflows release's `workflows-api` Service in
-          # redbull-workflows). Segment creation POSTs here to start the
-          # workflow. Must be the Service FQDN — a bare `workflows-api`
-          # would resolve inside the segments-manager namespace, where no
-          # such Service exists.
-          workflowsApiUrl: {{ .Values.segmentsManager.workflowsApiUrl | quote }}
-        mongodb:
-          url: "mongodb://segments_manager:{{ .Values.segmentsManagerMongodb.password }}@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
-          dbName: segments_manager
+  # segments-manager itself MOVED TO ARGO CD (chart in helm-charts-segments-manager,
+  # deployed by the redbull-services ApplicationSet — gitops/services/dev/segments-manager).
+  # Only its in-cluster MongoDB stays here: the app's DB must exist before its pods start,
+  # and this is a plain Bitnami release with no schema-job pattern of its own.
 
-  # --- workflows (the Temporal workflow "brain") ----------------------
-  # ONE release, shared by every workflow domain (not per-domain). Deploys into
-  # redbull-workflows, pre-created by the namespaces release like every other
-  # app namespace — this chart has no templates/namespace.yaml of its own and
-  # takes no createNamespace value, so there's no ownership collision to guard
-  # against (same failure mode as the segments-manager-mongodb Secret collision
-  # documented in CLAUDE.md, avoided here by construction). The chart's own
-  # values.yaml carries image.repository/tag (bumped by CI in
-  # team-redbull/workflows) — not overridden here.
-  - name: workflows
-    namespace: redbull-workflows
-    chart: git::https://github.com/team-redbull/workflows.git@helm/workflows?ref={{ .Values.refs.workflows }}
-    needs:
-      - default/namespaces
-      - temporal/temporal-stack
-    values:
-      # This release owns `workflows-config`, the GLOBAL ConfigMap every
-      # workflow domain shares. The brain itself uses only the Temporal values;
-      # domain + segmentsManagerUrl are published here so the activity limbs
-      # (segment-connectivity, and any future domain) mount them without duplication.
-      - config:
-          temporalHost: {{ .Values.temporal.host | quote }}
-          temporalNamespace: {{ .Values.temporal.namespace | quote }}
-          domain: {{ .Values.orchestrator.domain | quote }}
-          segmentsManagerUrl: {{ .Values.orchestrator.segmentsManagerUrl | quote }}
+  # --- workflows + segment-connectivity MOVED TO ARGO CD --------------------
+  # The workflow "brain" (helm-charts-workflows) and the segment-connectivity limb
+  # (helm-charts-segment-connectivity) are now Argo apps (gitops/services/dev/workflows,
+  # gitops/services/dev/segment-connectivity). The Temporal endpoint + orchestrator
+  # globals they share live once in gitops/values/dev.yaml. Only `mock-segment-connectivity`
+  # (test-only) stays on Helmfile below — segment-connectivity's `nextUrl` points at it.
 
   # --- mock-segment-connectivity (test-only stand-in for the real "next" service) --
   # e2e/test environments ONLY — never install alongside a production
-  # `segment-connectivity` release. Same redbull-workflows namespace, same "no
-  # Namespace of its own" story — see comment above. segment-connectivity's
-  # `nextUrl` below points at this release's in-cluster Service.
+  # `segment-connectivity` release. Same redbull-workflows namespace as the Argo-managed
+  # workflows/segment-connectivity apps. The Argo `segment-connectivity` app's `nextUrl`
+  # (gitops/services/dev/segment-connectivity/values.yaml) points at this release's Service.
   - name: mock-segment-connectivity
     namespace: redbull-workflows
     chart: git::https://github.com/team-redbull/workflows.git@helm/mock-segment-connectivity?ref={{ .Values.refs.workflows }}
     needs:
       - default/namespaces
-
-  # --- segment-connectivity (the segment-connectivity-activity limb) ------------------------
-  # One chart per workflow domain (this is the first of what will be several).
-  # Same redbull-workflows namespace as workflows, same "no Namespace of
-  # its own" story — see comment above.
-  - name: segment-connectivity
-    namespace: redbull-workflows
-    chart: git::https://github.com/team-redbull/workflows.git@helm/segment-connectivity?ref={{ .Values.refs.workflows }}
-    needs:
-      - default/namespaces
-      - temporal/temporal-stack
-      - segments-manager/segments-manager
-      - redbull-workflows/workflows
-      - redbull-workflows/mock-segment-connectivity
-    values:
-      # Only the segment-connectivity-specific endpoints live here. The Temporal
-      # connection, DOMAIN and SEGMENTS_MANAGER_URL come from the shared
-      # `workflows-config` (owned by the workflows release above, which
-      # this release `needs:`), which the activity worker also mounts.
-      - config:
-          nextUrl: {{ .Values.segmentConnectivityWorkflow.nextUrl | quote }}
-          nextTokenRenewalUri: {{ .Values.segmentConnectivityWorkflow.nextTokenRenewalUri | quote }}
-          nextOpenRulesUri: {{ .Values.segmentConnectivityWorkflow.nextOpenRulesUri | quote }}
-          nextCheckStatusUri: {{ .Values.segmentConnectivityWorkflow.nextCheckStatusUri | quote }}
-        secrets:
-          # The segment-connectivity worker authenticates its mutating Segments Manager
-          # calls with an out-of-band Secret (key SEGMENTS_MANAGER_API_TOKEN),
-          # created once in-cluster and holding the SAME value as
-          # segments-manager's own `segments-manager-api-token` Secret. The token
-          # never passes through git or Helm values. See README/CLAUDE.md.
-          existingSecret: {{ .Values.segmentConnectivityWorkflow.segmentsManagerTokenSecret | quote }}
 
   # --- BareMetalHost generator operator -------------------------------------
   - name: bmh-generator-operator

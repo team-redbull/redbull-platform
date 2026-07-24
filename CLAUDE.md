@@ -1,9 +1,85 @@
 # redbull-platform — context for future sessions
 
-One Helmfile deploys every team-redbull service onto an OpenShift cluster. See
-`README.md` for the release table, usage, and configuration. This file covers
-the non-obvious *why* behind the current shape, so it doesn't get re-litigated
-or accidentally reverted.
+CD is **split in two**: a **Helmfile bootstrap layer** (this repo's
+`helmfile.yaml.gotmpl` + `charts/`) plus an **Argo CD service layer** (this repo's
+`gitops/`). See `README.md` for the release table, usage, and configuration. This
+file covers the non-obvious *why* behind the current shape, so it doesn't get
+re-litigated or accidentally reverted.
+
+## The CD split: Helmfile bootstrap + Argo CD service layer
+
+**Helmfile** (`helmfile.yaml.gotmpl`) owns only the **bootstrap + order-sensitive**
+layer: `namespaces`, `htpasswd-idp` (local-shell postsync hook, see below),
+`crossplane` → `provider-http` → `provider-http-config` (the one genuinely hard
+CRD-before-CR ordering), plus the still-Helmfile-managed `segments-manager-mongodb`
+and `mock-segment-connectivity`, and the not-yet-migrated `bmh-generator-operator`,
+`server-scanner-dashboard`, `hosted-cluster-integration`. Argo CD is **already
+installed** (OpenShift GitOps, namespace `user1-argocd`) — this platform does not
+deploy it.
+
+**Argo CD** owns the stateless service layer via **one generic ApplicationSet**
+(`gitops/appset.yaml`) over `gitops/services/<env>/<service>/{app.yaml,values.yaml}`:
+`temporal`, `segments-manager`, `workflows`, `segment-connectivity`. Each service's
+chart lives in its **own repo in the `helm-charts` git group** (`helm-charts-<name>`,
+chart at repo root) — the sole, hand-edited copy; the code repos no longer carry a
+`helm/` chart folder (except `workflows` keeps `helm/mock-segment-connectivity`).
+
+Why keep Helmfile at all instead of going all-Argo: the bootstrap layer is
+cluster-scoped, order-sensitive, and its hooks need an admin kubeconfig
+(`apply-oauth.sh`, the `kubectl wait` presyncs) — none of which is a
+continuously-reconciled concern. Splitting this way means **Argo inherits zero hard
+ordering**: every dependency left in the Argo layer is soft (a worker crash-loops
+until Temporal is up, then connects) and recovers via `retry`/`selfHeal`. The only
+real ordering (Postgres→schema→server) is now *intra-chart* — see next section.
+
+**Do not** move the bootstrap releases into Argo, or add cross-app sync-wave/RollingSync
+ordering to the ApplicationSet, without re-deriving the above.
+
+## Why Postgres/Mongo are separate releases, not bundled subcharts
+
+`temporal-stack`'s schema-init Job originally ran as a `post-install,post-upgrade`
+Helm hook. With `helmDefaults.wait: true`, Helm waits for all Deployments to be
+`Ready` *before* running post-install hooks — but the Temporal server pods can't
+become ready without the schema existing yet. Deadlock: pods crash-loop on
+`pq: relation "schema_version" does not exist`, the release sits in
+`pending-install` until it times out.
+
+Fix (in `team-redbull/temporal-stack`, commit `0e213ad`): the schema Job is now
+`pre-install,pre-upgrade`. But a `pre-install` hook runs *before any resource in
+the chart is created* — including a bundled Postgres subchart's StatefulSet. So
+Postgres can no longer live inside `temporal-stack`; it has to already exist
+when that chart installs.
+
+Solution: `temporal-postgresql` (`charts/temporal-postgresql`, wrapping the
+Bitnami `postgresql` chart) is its own helmfile release, sequenced before
+`temporal-stack` via `needs:`. `segments-manager-mongodb` exists for the
+identical reason relative to `segments-manager` (its Deployment can't come up
+without Mongo already reachable, and helmfile's wait would otherwise block
+similarly at scale — plus segments-manager has no schema-job pattern of its own,
+this was done proactively for the same "DB must precede app" invariant).
+
+**Do not re-bundle these into subcharts of their consuming chart *under Helmfile***
+without re-deriving this deadlock first.
+
+### Exception under Argo CD: `temporal` bundles Postgres (this is intentional)
+
+The whole deadlock above is a **Helmfile artifact** — it is caused by
+`helmDefaults.wait: true`, which has no Argo CD equivalent. Argo uses **sync waves**
+and waits for each wave to be Healthy before the next, which expresses
+Postgres→schema→server ordering natively. So the Argo-managed `temporal` chart
+(`helm-charts-temporal`, the combined + renamed successor to `temporal-stack` +
+`temporal-postgresql`) **does** bundle Bitnami PostgreSQL as a subchart, safely:
+
+- Postgres subchart → sync-wave `"0"`.
+- Schema Job → an **Argo `Sync` hook** at sync-wave `"1"` with
+  `hook-delete-policy: BeforeHookCreation`. It must **NOT** carry Helm
+  `pre-install`/`pre-upgrade` annotations — Argo maps those to `PreSync`, which runs
+  *before* the Postgres subchart, reintroducing the exact original deadlock.
+- Temporal server/frontend/UI → sync-wave `"2"`.
+
+This bundling applies **only** to the Argo-managed `temporal` chart. `segments-manager`
++ `segments-manager-mongodb` stay split (Mongo is a separate Helmfile release). Don't
+"unify" them by analogy without re-deriving — the two live under different tools.
 
 ## Why Postgres/Mongo are separate releases, not bundled subcharts
 
@@ -123,6 +199,24 @@ into any `team-redbull/workflows` chart (or any future per-domain chart under
 every workflow-domain chart shares this one namespace, so its ownership
 belongs solely to the `namespaces` release.
 
+Now that `workflows`/`segment-connectivity` are **Argo-managed**, the `namespaces`
+release is the **sole** namespace mechanism: it pre-creates `redbull-workflows` and
+stamps the `argocd.argoproj.io/managed-by` label that grants this namespaced GitOps
+instance its in-namespace RBAC. The ApplicationSet deliberately does **NOT** use
+`CreateNamespace=true`/`managedNamespaceMetadata` — verified live: the namespaced
+`user1-argo` application-controller has no cluster RBAC for the cluster-scoped
+Namespace object and gets `forbidden` trying to create or patch one. This is fine
+because the `namespaces` release runs in the bootstrap of *every* environment (it
+builds namespaces from a static list, independent of whether the DBs/mock are
+deployed there — so even the air-gapped "external DBs" case has its namespaces
+pre-created). The charts themselves still template **no** Namespace.
+
+**If you ever want Argo to create namespaces itself** (a cluster-scoped instance, or
+an env without the namespaces release), grant the application-controller SA a
+ClusterRole for `namespaces` create/patch and re-add `CreateNamespace=true` — but
+that weakens the namespaced instance's isolation; keeping the namespaces release is
+preferred.
+
 ## No GHCR pull secret (images are public)
 
 All `ghcr.io/team-redbull/*` images (including `segments-manager`) are public
@@ -158,27 +252,51 @@ invocation), which breaks `helmfile template`/`sync` with permission-denied
 errors. Fix is `sudo chown -R $(whoami):staff` on those paths — not a repo
 issue, don't try to "fix" it in the helmfile.
 
+## The `helm-charts` git group (Argo CD chart source)
+
+Every Argo-managed service's chart lives in its **own repo** in a `helm-charts` git
+group, chart at repo **root**, referenced by `gitops/appset.yaml` as
+`helm-charts-<service>`:
+
+- `helm-charts-temporal` — the combined + renamed successor to `team-redbull/temporal-stack`
+  (bundles Bitnami PostgreSQL; schema Job is an Argo Sync hook — see the temporal
+  exception section above). Created by renaming `temporal-stack` in place.
+- `helm-charts-segments-manager` — extracted from `team-redbull/segments-manager`'s
+  `deploy/helm`.
+- `helm-charts-workflows` — extracted from `team-redbull/workflows`' `helm/workflows`.
+- `helm-charts-segment-connectivity` — extracted from `team-redbull/workflows`'
+  `helm/segment-connectivity`.
+
+Each `helm-charts-<name>` repo is the **sole, hand-edited copy** of its chart; the
+source chart folder is deleted from the code repo after extraction. CI (the shared
+`ghcr-build-push.yml`) cross-commits image-tag bumps into these repos using the
+`REDBULL_WRITE_TOKEN` PAT (the default `GITHUB_TOKEN` can't write to another repo).
+
+**GitHub is flat (`helm-charts-<name>`); the air-gapped GitLab uses a real subgroup
+(`helm-charts/<name>`)** — the only difference when moving there is the `repoURL` host
+in `gitops/appset.yaml` + `sourceRepos` in `gitops/project.yaml`. See README.
+
 ## Related repos
 
-- `team-redbull/temporal-stack` — Temporal server chart. Schema Job hook
-  timing lives here (see above).
+- `team-redbull/temporal-stack` → **renamed to `helm-charts-temporal`** (Argo-managed;
+  see the `helm-charts` group above). Schema Job hook timing still originates here.
 - `team-redbull/segment_manager` — original segments-manager chart/source,
   `deploy/helm` path. Still on the old Docker Hub-based build workflow.
 - `team-redbull/segments-manager` (also cloned locally at
   `/Users/itayherzberg/Projctes/segments-manager`) — newer rework in progress,
   actively developed on `feature/mongodb-no-vrf`. Chart is still internally
   named/labeled `vlan-manager` (stale branding, not yet renamed) even though
-  the repo and GHCR image are `segments-manager`.
-- `team-redbull/.github` — new (this session) org-wide reusable workflows
-  repo. Hosts `ghcr-build-push.yml`, the canonical build/version/GHCR-push/
-  Helm-bump flow. `segments-manager`'s `build.yml` is a 9-line caller into it.
-  Other service repos (`segment_manager`, `workflows`, `BareMetalHostUCS`,
-  `ServerScanner`, `dhcp_scope_manager`) still have their own inline copies —
-  migrate them to call the shared workflow rather than editing their local
-  copies when the build flow needs to change.
-- `team-redbull/workflows` — Temporal worker charts consuming `temporal-stack`
-  + `segments-manager`: `helm/workflows` (the brain, one shared release),
-  `helm/segment-connectivity` (the segment-connectivity limb; the first of what will be
-  several per-domain charts), and `helm/mock-segment-connectivity` (test-only stand-in
-  for the real "next" firewall service `segment-connectivity` talks to — e2e/test
+  the repo and GHCR image are `segments-manager`. Its chart moves to
+  `helm-charts-segments-manager`; the `deploy/helm` folder is deleted after extraction.
+- `team-redbull/.github` — org-wide reusable workflows repo. Hosts
+  `ghcr-build-push.yml`, the canonical build/version/GHCR-push/Helm-bump flow. Needs a
+  `chart-repo` input + `REDBULL_WRITE_TOKEN` to cross-commit bumps into the `helm-charts`
+  repos. `segments-manager`'s `build.yml` is a 9-line caller into it. Other service
+  repos (`segment_manager`, `workflows`, `BareMetalHostUCS`, `ServerScanner`,
+  `dhcp_scope_manager`) still have their own inline copies.
+- `team-redbull/workflows` — Temporal worker code + charts. `helm/workflows` →
+  `helm-charts-workflows` and `helm/segment-connectivity` → `helm-charts-segment-connectivity`
+  (both Argo-managed, deleted from this repo after extraction). `helm/mock-segment-connectivity`
+  **stays here** — it's the only chart still Helmfile-pulled (`git::`), a test-only
+  stand-in for the real "next" firewall service `segment-connectivity` talks to (e2e/test
   environments only, never alongside a production `segment-connectivity` release).

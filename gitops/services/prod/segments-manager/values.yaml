@@ -1,0 +1,19 @@
+# Helm values for segments-manager. Mirrors the old segments-manager release
+# `values:` block from the Helmfile.
+#
+# No fullnameOverride needed: the appset sets helm.releaseName to the service name
+# (`segments-manager`), and this chart's fullname helper collapses to the release name
+# when it contains the chart name — so resources are named `segments-manager` in every
+# env, which the cross-service FQDN `segments-manager.<ns>.svc` relies on.
+config:
+  # Cross-namespace FQDN of the shared workflow trigger API (workflows release's
+  # workflows-api Service in redbull-workflows). Segment creation POSTs here to start the
+  # workflow. MUST be the FQDN — a bare name would resolve in segments-manager's own ns.
+  workflowsApiUrl: "http://workflows-api.redbull-workflows.svc.cluster.local:8080"
+mongodb:
+  # In-cluster MongoDB (Helmfile-managed segments-manager-mongodb release, service
+  # `segments-mongodb`). TODO(secrets): the password is interpolated inline here — this
+  # whole URL must move to an ESO-composed Secret; segments-manager then reads it via
+  # existingSecret. See gitops/SECRETS.md (the non-obvious migration item).
+  url: "mongodb://segments_manager:segments-manager-mongo-pw@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
+  dbName: segments_manager

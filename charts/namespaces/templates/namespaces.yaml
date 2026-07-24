@@ -6,5 +6,10 @@ metadata:
   labels:
     app.kubernetes.io/managed-by: helmfile
     redbull.platform/managed: "true"
+    {{- /* Grants the namespaced OpenShift GitOps instance RBAC here so its Argo apps
+           can sync into this pre-created namespace. See values.yaml + gitops/. */}}
+    {{- if and $.Values.argocd.managedBy (has . $.Values.argocd.managedNamespaces) }}
+    argocd.argoproj.io/managed-by: {{ $.Values.argocd.managedBy }}
+    {{- end }}
 ---
 {{- end }}
