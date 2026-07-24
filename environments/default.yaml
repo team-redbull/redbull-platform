@@ -1,13 +1,21 @@
 # ---------------------------------------------------------------------------
-# Default environment values for the redbull-platform helmfile.
-# Override per environment (e.g. environments/prod.yaml) or with `helmfile --state-values-set`.
+# Default environment values for the redbull-platform BOOTSTRAP helmfile.
+#
+# Only the bootstrap + still-Helmfile-managed services live here now. The
+# stateless service layer (temporal, segments-manager, workflows,
+# segment-connectivity) moved to Argo CD — its values live under gitops/ (shared
+# globals in gitops/values/<env>.yaml, per-service in
+# gitops/services/<env>/<service>/values.yaml).
+#
+# Override per environment (e.g. environments/prod.yaml) or with
+# `helmfile --state-values-set`.
 # ---------------------------------------------------------------------------
 
-# Git refs the service charts are pulled from (per repo). Pin to tags for prod.
+# Git refs the CHARTS STILL PULLED BY HELMFILE come from. Pin to tags for prod.
+# (temporalStack/segmentManager refs are gone — those charts are Argo-managed now,
+# pinned per-app in gitops/services/<env>/<svc>/app.yaml `revision:`.)
 refs:
-  temporalStack: main
-  segmentManager: refactor/segments-manager
-  workflows: main
+  workflows: main        # only mock-segment-connectivity is still Helmfile-pulled from this repo
   dhcp: main
   bmh: main
   serverScanner: main
@@ -15,18 +23,15 @@ refs:
 crossplane:
   version: "2.3.2"
 
-# Cluster authentication: htpasswd users merged into whatever OpenShift
-# cluster this platform deploys onto, plus a cluster-admin grant. If the
-# cluster already has an HTPasswd identity provider (the normal case — most
-# clusters are bootstrapped with one out of band), `users` are merged into
-# ITS backing Secret, preserving whatever users are already there and
-# keeping a single htpasswd option on the login screen. bootstrapProviderName/
-# bootstrapSecretName are only used as a fallback, to create a brand-new
-# provider on a cluster that has no HTPasswd provider at all — see
-# htpasswd-idp's postsync hook (charts/htpasswd-idp/scripts/apply-oauth.sh)
-# and CLAUDE.md. ocpadmin/Password1 is a bootstrap credential for
-# throwaway/sandbox clusters — override both per environment before pointing
-# this at anything long-lived.
+# Cluster authentication: htpasswd users merged into whatever OpenShift cluster this
+# platform deploys onto, plus a cluster-admin grant. See htpasswd-idp's postsync hook
+# (charts/htpasswd-idp/scripts/apply-oauth.sh) and CLAUDE.md. ocpadmin/Password1 is a
+# bootstrap credential for throwaway/sandbox clusters — override both per environment
+# before pointing this at anything long-lived.
+#
+# NOTE: `clusterAdmins` is also the source of truth for the Temporal UI's allowedUsers,
+# now set in gitops/services/<env>/temporal/values.yaml (ui.auth.allowedUsers). Keep the
+# two in sync until secrets/identity move to a single source (see gitops/SECRETS.md).
 htpasswdIdp:
   bootstrapProviderName: redbull-platform
   bootstrapSecretName: redbull-platform-htpasswd
@@ -36,74 +41,22 @@ htpasswdIdp:
   clusterAdmins:
     - ocpadmin
 
-# Standalone PostgreSQL backing the Temporal stack. Deployed as its own release
-# so it exists (and is ready) before temporal-stack's pre-install schema job runs.
-temporalPostgresql:
-  password: "temporal-postgres-pw"
-
-# Standalone MongoDB backing segments-manager. Deployed as its own release so
-# it's ready before segments-manager starts.
+# Standalone MongoDB backing segments-manager, deployed as its own Helmfile release so
+# it's ready before the Argo-managed segments-manager app starts. The segments-manager
+# app reads this same password in its Mongo connection URL
+# (gitops/services/<env>/segments-manager/values.yaml) — kept in sync by hand until ESO
+# composes the URL from Vault (see gitops/SECRETS.md).
 segmentsManagerMongodb:
   rootPassword: "segments-manager-mongo-root-pw"
   password: "segments-manager-mongo-pw"
-
-# segments-manager app wiring that isn't a DB credential.
-segmentsManager:
-  # Where segment creation POSTs to start the segment-connectivity workflow — the shared
-  # `workflows-api` Service (one trigger API for every workflow domain) created
-  # by the workflows release in the redbull-workflows namespace.
-  # Cross-namespace, so it MUST be the FQDN.
-  workflowsApiUrl: "http://workflows-api.redbull-workflows.svc.cluster.local:8080"
 
 providerHttp:
   package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
   providerConfigName: dhcp-http # shared with the dhcp integration below
 
-# Shared Temporal connection info. Consumed by the workflows release,
-# which publishes it (together with the orchestrator globals below) into the
-# redbull-workflows namespace via its `workflows-config` ConfigMap. Every
-# workflow-domain limb (segment-connectivity, and any future domain) mounts that
-# ConfigMap, so the Temporal endpoint lives in exactly one place for the platform.
-temporal:
-  host: "temporal-frontend.temporal.svc.cluster.local:7233"
-  namespace: "default"
-
-# GLOBAL orchestrator values shared by every workflow domain, published by the
-# workflows release into `workflows-config` and mounted by every limb.
-# Kept here once so a new domain reuses them instead of redeclaring.
-orchestrator:
-  # Operator "domain" tag stamped into workflow payloads (e.g. next open-rules).
-  domain: "domain1"
-  # Segments Manager base URL (mutating calls also need the token Secret below).
-  segmentsManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
-
-# segment-connectivity (activity limb) release's domain-specific wiring: the next
-# (firewall) service endpoints + the Segments Manager token Secret.
-segmentConnectivityWorkflow:
-  # In production the next (connectivity/firewall) service is another team's,
-  # reached over the air-gapped network — not deployed by this platform. Here
-  # it points at this platform's own `mock-segment-connectivity` release instead
-  # (see helmfile.yaml.gotmpl), so e2e tests can exercise the full
-  # submit -> poll -> complete cycle without the real service.
-  # TODO: for a real prod environment, override nextUrl (and re-verify these
-  # URI paths against the real API) to point at the actual next service.
-  nextUrl: "http://mock-segment-connectivity.redbull-workflows.svc.cluster.local:9000"
-  nextTokenRenewalUri: "/token-renewal-uri"
-  nextOpenRulesUri: "/open-rules-uri"
-  nextCheckStatusUri: "/check-request-status"
-  # Name of the out-of-band Secret (in the segment-connectivity release's namespace,
-  # redbull-workflows) holding the Segments Manager API token under key
-  # SEGMENTS_MANAGER_API_TOKEN. It MUST hold the same value as segments-manager's
-  # own `segments-manager-api-token` Secret — this is the Segments Manager API
-  # token in general (every environment), created once in-cluster so the real
-  # token never lives in git or Helm values:
-  #   oc create secret generic segments-manager-token -n redbull-workflows \
-  #     --from-literal=SEGMENTS_MANAGER_API_TOKEN="<the segments-manager token>"
-  segmentsManagerTokenSecret: "segments-manager-token"
-
-# dhcp_scope_manager <-> provider-http. apiUrl is the backend DHCP API the
-# Crossplane Request talks to. No scope Requests are created unless you set
-# dhcp_values below (the chart guards on dhcp_values.scopeName).
+# dhcp_scope_manager <-> provider-http. apiUrl is the backend DHCP API the Crossplane
+# Request talks to. No scope Requests are created unless you set dhcp_values below (the
+# chart guards on dhcp_values.scopeName).
 dhcp:
   apiUrl: "https://dhcp-api.lab.local"   # TODO: real DHCP API endpoint

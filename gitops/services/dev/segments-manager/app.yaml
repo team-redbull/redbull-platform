@@ -1,0 +1,6 @@
+# Argo config for `segments-manager` (dev). app = dev-segments-manager,
+# chart = helm-charts-segments-manager. Its MongoDB is the Helmfile-managed
+# segments-manager-mongodb release (stays in helmfile.yaml.gotmpl), reachable at the
+# FQDN in values.yaml.
+namespace: segments-manager
+revision: v0.1.0   # tag in helm-charts-segments-manager. TODO: bump to the real initial tag.

@@ -1,0 +1,21 @@
+# Helm values for segment-connectivity (dev). Mirrors the old segment-connectivity
+# release `values:` block. Only the segment-connectivity-specific endpoints live here;
+# the Temporal connection, DOMAIN and SEGMENTS_MANAGER_URL come from the shared
+# workflows-config ConfigMap (owned by the workflows release), mounted at runtime.
+config:
+  # In dev, `next` points at the Helmfile-managed mock-segment-connectivity Service so
+  # e2e tests can run the full submit -> poll -> complete cycle without the real
+  # (air-gapped) firewall service. TODO(prod): override nextUrl at the real next endpoint
+  # and re-verify these URI paths against the real API.
+  nextUrl: "http://mock-segment-connectivity.redbull-workflows.svc.cluster.local:9000"
+  nextTokenRenewalUri: "/token-renewal-uri"
+  nextOpenRulesUri: "/open-rules-uri"
+  nextCheckStatusUri: "/check-request-status"
+secrets:
+  # Out-of-band Secret (key SEGMENTS_MANAGER_API_TOKEN) created once in-cluster, holding
+  # the SAME value as segments-manager's own segments-manager-api-token Secret. The token
+  # never passes through git or Helm values:
+  #   oc create secret generic segments-manager-token -n redbull-workflows \
+  #     --from-literal=SEGMENTS_MANAGER_API_TOKEN="<the segments-manager token>"
+  # See gitops/SECRETS.md.
+  existingSecret: segments-manager-token

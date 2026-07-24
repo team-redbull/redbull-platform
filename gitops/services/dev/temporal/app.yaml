@@ -1,0 +1,5 @@
+# Argo config for the `temporal` service (dev). Name/service/chart-repo derive from the
+# folder: app = dev-temporal, chart = helm-charts-temporal. Combined chart bundles
+# PostgreSQL (was the separate temporal-postgresql release) — see CLAUDE.md.
+namespace: temporal
+revision: v0.1.0   # tag in helm-charts-temporal — pin, don't track a branch. TODO: bump to the real initial tag.

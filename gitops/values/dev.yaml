@@ -1,0 +1,13 @@
+# Shared globals for the DEV environment. The ApplicationSet lists this file FIRST in
+# valueFiles, so every service's own values.yaml is merged on top (and wins). Keys a
+# given chart doesn't read are harmlessly ignored by Helm — so this is the single place
+# to change values consumed across the platform.
+#
+# Today that's the Temporal endpoint + orchestrator globals: the `workflows` chart reads
+# them and publishes them into the `workflows-config` ConfigMap that every workflow limb
+# (segment-connectivity, future domains) mounts at runtime. Change temporal here once.
+config:
+  temporalHost: "temporal-frontend.temporal.svc.cluster.local:7233"
+  temporalNamespace: "default"
+  domain: "domain1"
+  segmentsManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
