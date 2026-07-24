@@ -1,0 +1,8 @@
+# Helm values for rhokp. No overrides yet — the chart's own default values.yaml
+# (registry.redhat.io image, route, resources, probes) applies as-is.
+#
+# TODO(secrets): imagePullSecret.dockerUsername/dockerPassword and accessKey.secretValue
+# are the chart's literal placeholder values ("tomer123"), not real credentials. The
+# rhokp pod WILL fail to pull its image / authenticate until these are overridden here
+# with real registry.redhat.io creds + a real RHOKP access key (see gitops/SECRETS.md
+# for the plaintext-in-git precedent this repo currently follows, pending Vault/ESO).

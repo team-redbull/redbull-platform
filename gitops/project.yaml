@@ -17,6 +17,7 @@ spec:
     # trailing * covers per-env namespace suffixes (e.g. redbull-workflows-prod) if
     # dev and prod ever share one cluster
     - { server: '*', namespace: 'redbull-workflows*' }
+    - { server: '*', namespace: rhokp }
   clusterResourceWhitelist:
     # The 4 apps create only namespaced resources; namespaces are pre-created by the
     # `namespaces` Helmfile release (this namespaced GitOps instance can't create

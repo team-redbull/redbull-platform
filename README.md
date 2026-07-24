@@ -44,6 +44,7 @@ One `Application` per row, generated from `gitops/services/<env>/<service>/` by 
 | `segments-manager` | `segments-manager` | `helm-charts-segments-manager` | uses the Helmfile-managed `segments-manager-mongodb` |
 | `workflows` | `redbull-workflows` | `helm-charts-workflows` | the shared workflow "brain"; owns `workflows-config` |
 | `segment-connectivity` | `redbull-workflows` | `helm-charts-segment-connectivity` | activity limb; `nextUrl` → `mock-segment-connectivity` in dev |
+| `rhokp` | `rhokp` | `helm-charts-rhokp` | Red Hat Offline Knowledge Portal; ships with placeholder registry/access-key secrets — see `values.yaml` TODO |
 
 Cross-app ordering is **not** enforced (soft deps self-heal via `retry`/`selfHeal`); the
 only ordering is intra-chart in `temporal` (Postgres → schema → server, via sync waves).
