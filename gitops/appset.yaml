@@ -53,14 +53,14 @@ spec:
         namespace: '{{ .namespace }}'
       syncPolicy:
         automated: { prune: true, selfHeal: true }
-        syncOptions:
-          - CreateNamespace=true
-        managedNamespaceMetadata:
-          # label any namespace Argo creates so the namespaced GitOps instance's
-          # controller has RBAC there (pre-created namespaces get this from the
-          # `namespaces` Helmfile release instead).
-          labels:
-            argocd.argoproj.io/managed-by: user1-argocd
+        # NO CreateNamespace / managedNamespaceMetadata: this is a *namespaced*
+        # OpenShift GitOps instance, whose application-controller has no RBAC on
+        # cluster-scoped Namespace objects (it can't create OR patch them). The
+        # `namespaces` Helmfile release pre-creates every target namespace AND
+        # stamps the argocd.argoproj.io/managed-by label that grants this instance
+        # its in-namespace RBAC — so Argo never needs to touch the Namespace itself.
+        # (The namespaces release runs in every environment, including air-gapped
+        # ones where the DBs are external — it doesn't depend on the DBs.)
         retry:
           limit: 10
           backoff: { duration: 15s, factor: 2, maxDuration: 5m }
