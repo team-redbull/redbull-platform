@@ -18,8 +18,10 @@ spec:
     # dev and prod ever share one cluster
     - { server: '*', namespace: 'redbull-workflows*' }
   clusterResourceWhitelist:
-    # REQUIRED: the apps use syncOptions CreateNamespace=true, which creates a
-    # cluster-scoped Namespace object — a non-default project must allow it.
+    # The 4 apps create only namespaced resources; namespaces are pre-created by the
+    # `namespaces` Helmfile release (this namespaced GitOps instance can't create
+    # cluster-scoped objects). Kept only so that IF Argo is ever granted namespace
+    # RBAC + CreateNamespace=true, the project already permits it. Otherwise inert.
     - { group: "", kind: Namespace }
   namespaceResourceWhitelist:
     - { group: "*", kind: "*" }

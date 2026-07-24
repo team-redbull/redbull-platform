@@ -253,8 +253,9 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
 - **`workflows` and `segment-connectivity` (Argo apps) both deploy into
   `redbull-workflows`**, pre-created and labeled `argocd.argoproj.io/managed-by:
   user1-argocd` by the `namespaces` release. Neither chart has a Namespace template of
-  its own; the ApplicationSet's `CreateNamespace=true` is a non-owning fallback. See
-  `CLAUDE.md`.
+  its own, and the ApplicationSet does **not** use `CreateNamespace=true` — a
+  namespaced GitOps instance can't create/patch cluster-scoped Namespaces, so the
+  `namespaces` release is the sole mechanism (it runs in every env). See `CLAUDE.md`.
 - **OpenShift SCC**: Crossplane and provider-http pods run as nonroot and generally
   work under `restricted-v2`; if a provider pod is denied, grant its service account
   the appropriate SCC.

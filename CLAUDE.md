@@ -199,13 +199,23 @@ into any `team-redbull/workflows` chart (or any future per-domain chart under
 every workflow-domain chart shares this one namespace, so its ownership
 belongs solely to the `namespaces` release.
 
-Now that `workflows`/`segment-connectivity` are **Argo-managed**, namespace
-creation is handled two ways that don't collide: the `namespaces` release
-pre-creates `redbull-workflows` (and stamps the `argocd.argoproj.io/managed-by`
-label so the namespaced GitOps instance gets RBAC there), and the ApplicationSet's
-`CreateNamespace=true` is a non-owning create-if-absent fallback for environments
-where the Helmfile bootstrap doesn't run (e.g. where the DBs/mock are external). The
-charts themselves still template **no** Namespace — the rule above is unchanged.
+Now that `workflows`/`segment-connectivity` are **Argo-managed**, the `namespaces`
+release is the **sole** namespace mechanism: it pre-creates `redbull-workflows` and
+stamps the `argocd.argoproj.io/managed-by` label that grants this namespaced GitOps
+instance its in-namespace RBAC. The ApplicationSet deliberately does **NOT** use
+`CreateNamespace=true`/`managedNamespaceMetadata` — verified live: the namespaced
+`user1-argo` application-controller has no cluster RBAC for the cluster-scoped
+Namespace object and gets `forbidden` trying to create or patch one. This is fine
+because the `namespaces` release runs in the bootstrap of *every* environment (it
+builds namespaces from a static list, independent of whether the DBs/mock are
+deployed there — so even the air-gapped "external DBs" case has its namespaces
+pre-created). The charts themselves still template **no** Namespace.
+
+**If you ever want Argo to create namespaces itself** (a cluster-scoped instance, or
+an env without the namespaces release), grant the application-controller SA a
+ClusterRole for `namespaces` create/patch and re-add `CreateNamespace=true` — but
+that weakens the namespaced instance's isolation; keeping the namespaces release is
+preferred.
 
 ## No GHCR pull secret (images are public)
 
