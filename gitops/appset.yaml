@@ -22,6 +22,11 @@ spec:
         revision: main
         files:
           - path: gitops/services/*/*/app.yaml
+  # When an Application leaves the generator (e.g. a folder rename/removal), ORPHAN its
+  # resources instead of pruning them — so a rename adopts the running objects instead of
+  # destroy+recreate, and a generator glitch can't mass-delete live workloads.
+  syncPolicy:
+    preserveResourcesOnDeletion: true
   template:
     metadata:
       # env = 3rd path segment (gitops/services/<env>/<service>), service = folder name.
@@ -37,6 +42,12 @@ spec:
           targetRevision: '{{ .revision }}'
           path: .
           helm:
+            # Release name = the SERVICE (env-independent), not the Argo app name.
+            # So resources are named the same in every env (temporal-*, segments-manager,
+            # …) — env separation is by NAMESPACE, not by resource name. This is why no
+            # chart needs a per-env fullnameOverride (the charts' fullname helpers collapse
+            # to the release name / hardcode their names).
+            releaseName: '{{ .path.basename }}'
             valueFiles:
               # shared env globals first, then this service's own values (override).
               - '$values/gitops/values/{{ index .path.segments 2 }}.yaml'
