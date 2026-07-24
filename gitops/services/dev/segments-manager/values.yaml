@@ -1,5 +1,13 @@
 # Helm values for segments-manager (dev). Mirrors the old segments-manager release
 # `values:` block from the Helmfile.
+#
+# fullnameOverride pins the resource/Service name to `segments-manager` regardless of the
+# Argo release name (the app is `dev-segments-manager`). Without this, the chart would
+# name the Service `dev-segments-manager`, breaking the cross-service FQDN
+# `segments-manager.segments-manager.svc...` that workflows/limbs use
+# (orchestrator.segmentsManagerUrl in gitops/values/dev.yaml). temporal/workflows/
+# segment-connectivity charts already fix their names internally; this one didn't.
+fullnameOverride: segments-manager
 config:
   # Cross-namespace FQDN of the shared workflow trigger API (workflows release's
   # workflows-api Service in redbull-workflows). Segment creation POSTs here to start the
