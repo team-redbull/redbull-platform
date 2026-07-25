@@ -3,4 +3,4 @@
 # segments-manager-mongodb release (stays in helmfile.yaml.gotmpl), reachable at the
 # FQDN in values.yaml.
 namespace: segments-manager
-revision: v0.1.1   # helm-charts-segments-manager (v0.1.1 fixes the CONNECTIVITY_WORKFLOW_API_URL env name)
+revision: main   # branch in helm-charts-segments-manager — main = latest prod (has the CONNECTIVITY_WORKFLOW_API_URL env fix). A different version = a different branch.

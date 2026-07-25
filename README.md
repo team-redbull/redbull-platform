@@ -213,14 +213,33 @@ Tip: to make custom groupings (e.g. all apps vs. the platform layer), add a
 
 **Service tunables** live under `gitops/`:
 
-- **`gitops/services/<env>/<service>/app.yaml`** — `revision:` (the chart tag to deploy —
-  pin to tags), `namespace`, optional `destination`/`overrides`.
+- **`gitops/services/<env>/<service>/app.yaml`** — `revision:` (the chart **branch** to
+  track — `main` = latest prod, a different version is a different branch), `namespace`,
+  optional `destination`/`overrides`. See "Chart versions are branches" below.
 - **`gitops/services/<env>/<service>/values.yaml`** — that service's Helm values (e.g.
   segment-connectivity's `config.nextUrl`/URI paths + `secrets.existingSecret`).
 - **`gitops/values/<env>.yaml`** — shared globals (the Temporal endpoint + orchestrator
   `domain`/`segmentsManagerUrl`) — one place to change for the whole workflow layer.
 - Secrets are still plaintext/out-of-band for now; the ESO+Vault plan is in
   **`gitops/SECRETS.md`**.
+
+### Chart versions are branches, not tags
+
+Each Argo app's `revision:` points at a **branch** of its `helm-charts-<name>` repo:
+`main` is the latest prod version, and a different version is simply a different branch
+(CI mirrors each code-repo branch to the same-named chart-repo branch). Argo tracks the
+branch HEAD and re-syncs on every new commit, so **merging to a chart repo's `main` rolls
+that version out to prod**. `prod`/`dev` doesn't change this — any app, in any env, can
+point at any branch.
+
+This is deliberately the *opposite* choice from the Helmfile-pulled charts above (whose
+`refs.*` should still **pin tags** for prod): Helmfile caches a git chart by its mutable
+branch name and won't re-fetch on a new commit (the branch-ref staleness this project
+already hit), but Argo does a real fetch each reconcile, so tracking a branch is safe and
+idiomatic. **Image** tags stay immutable either way (`vX.Y.Z` on `main`,
+`<branch>-<sha>` off it) — only the chart's git ref that Argo *follows* is a branch. CI
+still cuts a `vX.Y.Z` tag on each `main` build, but only as the image-version counter and
+a rollback marker; Argo does not pin it.
 
 ## Air-gapped install
 
@@ -275,7 +294,8 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   the `helm-charts-*` repos, store it as an **organization** Actions secret named
   `REDBULL_WRITE_TOKEN` (the `GITHUB_` prefix is reserved by GitHub), and pass it to
   `ghcr-build-push.yml` (which checks out the chart repo, bumps `helm-image-path`,
-  commits, and tags — the tag a service `app.yaml`'s `revision` pins to).
+  commits to the matching branch, and — on `main` — cuts a `vX.Y.Z` tag as the
+  image-version counter/rollback marker; Argo tracks the chart **branch**, not the tag).
 - **New service repo → Actions doesn't run silently**: GitHub Actions must be
   enabled per-repo (repo Settings → Actions → General), separately from the
   org-wide "Allow all actions and reusable workflows" policy. A repo with

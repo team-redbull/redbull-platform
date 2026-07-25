@@ -1,4 +1,4 @@
 # Argo config for `rhokp` (Red Hat Offline Knowledge Portal). app = rhokp (prod is
 # canonical/unprefixed), chart = helm-charts-rhokp.
 namespace: rhokp
-revision: v0.1.0   # helm-charts-rhokp, initial release (matches chart's own 0.1.0)
+revision: main   # branch in helm-charts-rhokp — main = latest prod; a different version = a different branch.

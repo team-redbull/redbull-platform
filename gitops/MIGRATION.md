@@ -28,8 +28,10 @@ done
 # then in each: git add/commit, and `git tag v0.1.0 && git push --tags`
 ```
 
-The `revision:` in each `gitops/services/dev/<svc>/app.yaml` is currently `v0.1.0` —
-match it to the real initial tag you push (or bump the app.yaml).
+The `revision:` in each `gitops/services/<env>/<svc>/app.yaml` is a **branch** (`main` =
+latest prod), not a tag — so a fresh chart repo just needs its `main` branch populated;
+Argo tracks that branch's HEAD. (A `v0.1.0` tag is still worth pushing as the image-version
+counter's starting point, but no app pins it.) See README "Chart versions are branches".
 
 ## 2. Build the COMBINED temporal chart (`helm-charts-temporal`)
 

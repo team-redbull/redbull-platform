@@ -2,4 +2,4 @@
 # every workflow domain. app = dev-workflows, chart = helm-charts-workflows. Deploys into
 # redbull-workflows and owns the `workflows-config` ConfigMap every limb mounts.
 namespace: redbull-workflows
-revision: v0.1.1   # helm-charts-workflows tag; git tag == image == appVersion (lockstep)
+revision: main   # branch in helm-charts-workflows — main = latest prod; a different version = a different branch.
