@@ -3,4 +3,4 @@
 # redbull-workflows namespace as workflows; gets Temporal/domain/segmentsManagerUrl from
 # the shared workflows-config ConfigMap at runtime (not via its own Helm values).
 namespace: redbull-workflows
-revision: v0.1.0   # tag in helm-charts-segment-connectivity. TODO: bump to the real initial tag.
+revision: v0.1.1   # helm-charts-segment-connectivity tag; git tag == image == appVersion (lockstep)
