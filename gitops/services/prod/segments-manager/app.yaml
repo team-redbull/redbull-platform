@@ -3,4 +3,8 @@
 # segments-manager-mongodb release (stays in helmfile.yaml.gotmpl), reachable at the
 # FQDN in values.yaml.
 namespace: segments-manager
-revision: main   # branch in helm-charts-segments-manager — main = latest prod (has the CONNECTIVITY_WORKFLOW_API_URL env fix). A different version = a different branch.
+# segments-manager has no prod (code-main) release yet — it's mid-refactor, and the
+# running image is a refactor-branch build. So it tracks the matching chart branch, not
+# main. Repoint to `main` once segments-manager releases on its code main. CI mirrors the
+# code repo's refactor/segments-manager branch to the same-named chart branch.
+revision: refactor/segments-manager   # branch in helm-charts-segments-manager
