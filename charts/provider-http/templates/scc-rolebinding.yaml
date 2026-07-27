@@ -1,0 +1,19 @@
+{{- if and .Values.provider.enabled .Values.deploymentRuntimeConfig.enabled }}
+# Declarative equivalent of `oc adm policy add-scc-to-user nonroot-v2 -z <sa>`:
+# on OpenShift an SCC is granted by binding the ClusterRole that holds `use` on it.
+# Keeping it in the chart means a fresh cluster needs no out-of-band admin step.
+# Binds the stable SA pinned by the DeploymentRuntimeConfig alongside this file.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.deploymentRuntimeConfig.serviceAccountName }}-scc
+  namespace: {{ .Release.Namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.deploymentRuntimeConfig.sccClusterRole }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.deploymentRuntimeConfig.serviceAccountName }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

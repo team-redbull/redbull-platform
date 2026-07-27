@@ -51,12 +51,28 @@ releases:
           {{- end }}
 
   # --- Crossplane core ------------------------------------------------------
+  # The upstream chart pins runAsUser/runAsGroup to 65532. On OpenShift that is
+  # rejected outright: the `restricted-v2` SCC allocates each namespace its own
+  # UID range (e.g. 1000970000-1000979999) and 65532 falls outside it, so the
+  # ReplicaSets never create a pod ("unable to validate against any security
+  # context constraint") and the release fails on helmDefaults.wait. Nulling both
+  # IDs drops the fields from the manifest entirely, letting the SCC assign an
+  # in-range UID and mutate in the capabilities/seccomp defaults it requires.
+  # Prefer this over granting the SAs the nonroot-v2 SCC — that would be an
+  # imperative, per-cluster step, and this bootstrap must work on any cluster.
   - name: crossplane
     namespace: crossplane-system
     chart: crossplane-stable/crossplane
     version: {{ .Values.crossplane.version | quote }}
     needs:
       - default/namespaces
+    values:
+      - securityContextCrossplane:
+          runAsUser: null
+          runAsGroup: null
+        securityContextRBACManager:
+          runAsUser: null
+          runAsGroup: null
 
   # --- provider-http: Provider package, then ProviderConfig -----------------
   - name: provider-http

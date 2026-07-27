@@ -122,6 +122,26 @@ The only thing that changes deploying to the air-gapped GitLab is the git **host
 
 dev and prod share the host, so they remain the **one** ApplicationSet in both.
 
+**If your internal repo also drops the `gitops/` top-level folder** (e.g. a leaner
+mirror with `services/`, `values/`, `project.yaml`, `appset.yaml` at repo root instead
+of nested under `gitops/`) — this is a *further* deviation beyond the documented
+host-only change above, and needs more edits than just the repoURLs:
+
+- Remove the `gitops/` prefix from the git generator's `files: path:` pattern and from
+  the shared-globals `valueFiles` entry in `gitops/appset.yaml`.
+- Every hardcoded `index .path.segments 2` in `gitops/appset.yaml` (the name template's
+  two occurrences, plus the shared-globals `valueFiles` entry) must become
+  `index .path.segments 1` — dropping one leading path segment shifts the env segment
+  from index 2 to index 1. `.path.basename` is unaffected (always the last segment).
+- Symptom if you miss this: every service's Application gets double-named, e.g.
+  `rhokp-rhokp` instead of `rhokp` (env index resolves to the service's own basename,
+  so the `if eq ... "prod"` check fails and both halves of the else-branch print the
+  same string).
+
+This flattening is **not** part of the documented "only the host changes" design —
+track it as a local divergence in your internal fork so a future sync from the
+canonical repo doesn't silently reintroduce the bug.
+
 ## Prerequisites
 
 - `helm` 3.x, `helmfile` 1.x, and the `helm-diff` plugin

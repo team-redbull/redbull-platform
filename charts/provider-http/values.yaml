@@ -11,6 +11,18 @@ provider:
   # Names of packagePullSecrets (must exist in crossplane-system).
   packagePullSecrets: []
 
+# OpenShift only: the provider package runs as UID 2000, which the default
+# restricted-v2 SCC rejects (it demands a UID from the namespace's assigned range),
+# leaving the Provider stuck at HEALTHY=False. Pins the runtime ServiceAccount to a
+# stable name and grants it nonroot-v2, which accepts any non-root UID. See
+# templates/deploymentruntimeconfig.yaml. Set enabled=false on vanilla Kubernetes —
+# there is no SCC admission there, so the package's own UID is used as-is.
+deploymentRuntimeConfig:
+  enabled: true
+  name: provider-http-openshift
+  serviceAccountName: provider-http
+  sccClusterRole: system:openshift:scc:nonroot-v2
+
 providerConfig:
   enabled: false
   # Must match what consumers reference (dhcp_scope_manager expects "dhcp-http").

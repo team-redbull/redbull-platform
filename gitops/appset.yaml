@@ -22,11 +22,14 @@ spec:
         revision: main
         files:
           - path: gitops/services/*/*/app.yaml
-  # When an Application leaves the generator (e.g. a folder rename/removal), ORPHAN its
-  # resources instead of pruning them — so a rename adopts the running objects instead of
-  # destroy+recreate, and a generator glitch can't mass-delete live workloads.
+  # When an Application leaves the generator (e.g. a folder rename/removal), PRUNE its
+  # resources along with it — deleting a service's gitops/services/<env>/<service>/ folder
+  # tears the workload down instead of leaving it running unmanaged in the cluster. Trade-off:
+  # a generator glitch (e.g. a transient git-fetch failure that empties the file list) or a
+  # folder rename can mass-delete or destroy+recreate live workloads. false is also the
+  # ApplicationSet default, so this line is just making the choice explicit.
   syncPolicy:
-    preserveResourcesOnDeletion: true
+    preserveResourcesOnDeletion: false
   template:
     metadata:
       # env = 3rd path segment (gitops/services/<env>/<service>), service = folder name.
@@ -64,14 +67,19 @@ spec:
         namespace: '{{ .namespace }}'
       syncPolicy:
         automated: { prune: true, selfHeal: true }
-        # NO CreateNamespace / managedNamespaceMetadata: this is a *namespaced*
-        # OpenShift GitOps instance, whose application-controller has no RBAC on
-        # cluster-scoped Namespace objects (it can't create OR patch them). The
-        # `namespaces` Helmfile release pre-creates every target namespace AND
-        # stamps the argocd.argoproj.io/managed-by label that grants this instance
-        # its in-namespace RBAC — so Argo never needs to touch the Namespace itself.
-        # (The namespaces release runs in every environment, including air-gapped
-        # ones where the DBs are external — it doesn't depend on the DBs.)
+        # CreateNamespace is commented out, not enabled: this is a *namespaced* OpenShift
+        # GitOps instance, whose application-controller has no RBAC on cluster-scoped
+        # Namespace objects today (verified live — it gets `forbidden` trying to create OR
+        # patch one). Uncommenting the line below will make every sync fail until that SA
+        # is granted a ClusterRole for namespaces create/patch — which also weakens this
+        # instance's namespace isolation, so do that deliberately, not as a side effect of
+        # copy-pasting this line. Until then, the `namespaces` Helmfile release pre-creates
+        # every target namespace AND stamps the argocd.argoproj.io/managed-by label that
+        # grants this instance its in-namespace RBAC — so Argo never needs to touch the
+        # Namespace itself. (The namespaces release runs in every environment, including
+        # air-gapped ones where the DBs are external — it doesn't depend on the DBs.)
+        # syncOptions:
+        #   - CreateNamespace=true
         retry:
           limit: 10
           backoff: { duration: 15s, factor: 2, maxDuration: 5m }

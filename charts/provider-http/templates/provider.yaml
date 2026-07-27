@@ -5,6 +5,10 @@ metadata:
   name: {{ .Values.provider.name }}
 spec:
   package: {{ .Values.provider.package }}
+  {{- if .Values.deploymentRuntimeConfig.enabled }}
+  runtimeConfigRef:
+    name: {{ .Values.deploymentRuntimeConfig.name }}
+  {{- end }}
   {{- with .Values.provider.packagePullSecrets }}
   packagePullSecrets:
     {{- range . }}
