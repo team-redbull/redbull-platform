@@ -22,14 +22,6 @@ spec:
         revision: main
         files:
           - path: gitops/services/*/*/app.yaml
-  # When an Application leaves the generator (e.g. a folder rename/removal), PRUNE its
-  # resources along with it — deleting a service's gitops/services/<env>/<service>/ folder
-  # tears the workload down instead of leaving it running unmanaged in the cluster. Trade-off:
-  # a generator glitch (e.g. a transient git-fetch failure that empties the file list) or a
-  # folder rename can mass-delete or destroy+recreate live workloads. false is also the
-  # ApplicationSet default, so this line is just making the choice explicit.
-  syncPolicy:
-    preserveResourcesOnDeletion: false
   template:
     metadata:
       # env = 3rd path segment (gitops/services/<env>/<service>), service = folder name.
