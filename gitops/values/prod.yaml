@@ -1,13 +1,20 @@
-# Shared globals for the DEV environment. The ApplicationSet lists this file FIRST in
-# valueFiles, so every service's own values.yaml is merged on top (and wins). Keys a
-# given chart doesn't read are harmlessly ignored by Helm — so this is the single place
-# to change values consumed across the platform.
+# Shared globals for the PROD environment. The ApplicationSet lists this file FIRST in
+# valueFiles (for every service, prod included), so every service's own values.yaml is
+# merged on top (and wins). Keys a given chart doesn't read are harmlessly ignored by
+# Helm — this is the place for a value that's genuinely needed across *multiple*
+# services' charts in this env.
 #
-# Today that's the Temporal endpoint + orchestrator globals: the `workflows` chart reads
-# them and publishes them into the `workflows-config` ConfigMap that every workflow limb
-# (segment-connectivity, future domains) mounts at runtime. Change temporal here once.
-config:
-  temporalHost: "temporal-frontend.temporal.svc.cluster.local:7233"
-  temporalNamespace: "default"
-  domain: "domain1"
-  segmentsManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
+# Nothing qualifies today: the Temporal endpoint + orchestrator globals
+# (temporalHost/temporalNamespace/domain/segmentsManagerUrl) used to live here, but only
+# one chart (`workflows`) ever reads them as Helm values — segment-connectivity (and
+# future workflow-domain charts) get the same facts secondhand, at runtime, via the
+# `workflows-config` ConfigMap `workflows` publishes, not via a second Helm values merge.
+# So they've moved to `gitops/services/prod/workflows/values.yaml`, where they belong to
+# the one chart that actually consumes them — see that file. Deploying only `temporal`
+# (or any other single service) no longer drags in workflows-specific values that don't
+# apply to it.
+#
+# This file still has to exist and parse as valid Helm values (even if empty) — every
+# service's Application unconditionally lists it in valueFiles, unlike the optional
+# per-service `extraValueFiles`. {} below is that placeholder.
+{}

@@ -89,7 +89,9 @@ Everything under [gitops/](gitops/):
 - `gitops/services/<env>/<service>/app.yaml` — Argo config (`namespace`, `revision`;
   optional `destination`, `overrides`). Service name + chart repo derive from the folder.
 - `gitops/services/<env>/<service>/values.yaml` — the service's Helm values.
-- `gitops/values/<env>.yaml` — shared globals merged **under** every service's values.
+- `gitops/values/<env>.yaml` — globals merged **under** every service's values, for a
+  value genuinely needed across *multiple* charts (must still exist, even if empty —
+  see the file itself; today nothing qualifies, it's an unused placeholder).
 - [gitops/SECRETS.md](gitops/SECRETS.md) — the (not-yet-wired) ESO + Vault plan.
 
 **Bring-up** (Argo CD already installed in `user1-argocd`):
@@ -299,10 +301,18 @@ Tip: to make custom groupings (e.g. all apps vs. the platform layer), add a
 - **`gitops/services/<env>/<service>/app.yaml`** — `revision:` (the chart **branch** to
   track — `main` = latest prod, a different version is a different branch), `namespace`,
   optional `destination`/`overrides`. See "Chart versions are branches" below.
-- **`gitops/services/<env>/<service>/values.yaml`** — that service's Helm values (e.g.
-  segment-connectivity's `config.nextUrl`/URI paths + `secrets.existingSecret`).
-- **`gitops/values/<env>.yaml`** — shared globals (the Temporal endpoint + orchestrator
-  `domain`/`segmentsManagerUrl`) — one place to change for the whole workflow layer.
+- **`gitops/services/<env>/<service>/values.yaml`** — that service's Helm values, e.g.
+  segment-connectivity's `config.nextUrl`/URI paths + `secrets.existingSecret`, or
+  **`gitops/services/<env>/workflows/values.yaml`**'s `config.temporalHost` /
+  `temporalNamespace` / `domain` / `segmentsManagerUrl` — the Temporal endpoint +
+  orchestrator globals, one place to change for the whole workflow layer. These live
+  under `workflows` specifically (not the shared env-globals file below) because
+  `workflows` is the only chart that reads them as Helm values — every other workflow
+  limb gets the same facts secondhand, at runtime, from the `workflows-config` ConfigMap
+  `workflows` publishes.
+- **`gitops/values/<env>.yaml`** — globals for a value genuinely needed across
+  *multiple* charts in an env. Currently unused (kept only because every service's
+  Application unconditionally references it).
 - Secrets are still plaintext/out-of-band for now; the ESO+Vault plan is in
   **`gitops/SECRETS.md`**.
 

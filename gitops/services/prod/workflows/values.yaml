@@ -1,7 +1,19 @@
-# Helm values for the workflows brain (dev). Its only wiring is the shared globals in
-# gitops/values/dev.yaml (config.temporalHost/temporalNamespace/domain/segmentsManagerUrl,
-# which this chart publishes into workflows-config) plus the chart's own defaults
-# (image.repository/tag, bumped by CI in helm-charts-workflows). Nothing service-specific
-# here yet — kept as an explicit file so the ApplicationSet's valueFiles path always
-# resolves. Add workflows-only overrides here if they ever appear.
-{}
+# Helm values for the workflows brain (prod). `config.*` is the Temporal endpoint +
+# orchestrator globals: this chart is the one that reads them and publishes them into
+# the `workflows-config` ConfigMap that every workflow limb (segment-connectivity,
+# future domains) mounts at runtime — see helm-charts-workflows' templates/config.yaml
+# and the `workflows` repo's shared/settings.py. Change Temporal's address/namespace or
+# the orchestrator's domain/segments-manager URL here, once, for the whole workflow
+# layer — no other chart needs its own copy of these.
+#
+# (Previously lived in gitops/values/<env>.yaml as a "shared global" — moved here once
+# it became clear only this one chart consumes it as a Helm value; see that file's
+# comment.)
+config:
+  temporalHost: "temporal-frontend.temporal.svc.cluster.local:7233"
+  temporalNamespace: "default"
+  domain: "domain1"
+  segmentsManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
+
+# Plus the chart's own defaults (image.repository/tag, bumped by CI in
+# helm-charts-workflows) — no overrides needed here today.
