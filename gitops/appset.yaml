@@ -48,22 +48,14 @@ spec:
             # chart needs a per-env fullnameOverride (the charts' fullname helpers collapse
             # to the release name / hardcode their names).
             releaseName: '{{ .path.basename }}'
+            # shared env globals first, then this service's own values (override). This
+            # is the common-case default; when a service's app.yaml sets `extraValueFiles`
+            # (or `overrides`), templatePatch below REPLACES this whole `sources` list
+            # wholesale with the fully-resolved version (extras prepended) — see there for
+            # why (Sources is a real typed []string field: a variable-length list can't be
+            # built with a bare {{ range }}/{{ if }} here, that's not valid YAML/JSON at
+            # rest, only inside a string field like templatePatch).
             valueFiles:
-              # Optional, generic hook: this service's app.yaml may list any number of
-              # extra CHART-local value files under `extraValueFiles` (e.g. an
-              # air-gapped image-registry overlay, a regional variant, a feature-flag
-              # file — any file the chart repo itself ships at its root, see e.g.
-              # helm-charts-temporal's values-airgapped.yaml). Listed with no
-              # `$values/` prefix, so each resolves inside source #1 (the chart repo)
-              # rather than this platform repo, in the order given. Placed right after
-              # the chart's implicit values.yaml so both platform layers below can
-              # still override anything they set (e.g. a per-cluster mirror host).
-              # Absent/empty `extraValueFiles` (the common case) adds nothing here —
-              # no ApplicationSet edit needed to use this from any service or env.
-              {{- range (dig "extraValueFiles" (list) .) }}
-              - {{ . }}
-              {{- end }}
-              # shared env globals first, then this service's own values (override).
               - '$values/gitops/values/{{ index .path.segments 2 }}.yaml'
               - '$values/{{ .path.path }}/values.yaml'
         # 2) this repo, only as the $values source for the valueFiles above.
@@ -94,11 +86,33 @@ spec:
         retry:
           limit: 10
           backoff: { duration: 15s, factor: 2, maxDuration: 5m }
-  # Optional raw Application-spec fragment per service (app.yaml `overrides:` key),
-  # strategic-merged onto the generated Application. Empty object when absent.
+  # templatePatch is a plain STRING field — unlike `template.spec` above (a typed
+  # object, so any {{ }} there has to sit entirely inside one already-declared
+  # scalar/field), this whole block is Go-templated as TEXT first and only re-parsed
+  # as YAML afterwards, then JSON-merge-patched onto the generated Application. That's
+  # the one place variable-length lists (e.g. extraValueFiles) can actually be built.
+  #
+  # Always (re)builds `spec.sources` — identical to the static block above when this
+  # service's app.yaml sets neither `extraValueFiles` nor `repoUrl`, but with any
+  # `extraValueFiles` entries prepended to source #1's valueFiles otherwise (see the
+  # "Layering extra chart-local value files" section in README.md). Since JSON merge
+  # patch replaces whole arrays rather than merging them element-wise, both sources
+  # (the chart AND the $values repo) are always spelled out here in full.
+  #
+  # Then deep-merges in this service's `overrides:` key on top, if set — the original,
+  # still-supported escape hatch for anything else (e.g. `destination`), unrelated to
+  # sources.
   templatePatch: |
+    {{- $valueFiles := concat (dig "extraValueFiles" (list) .) (list (printf "$values/gitops/values/%s.yaml" (index .path.segments 2)) (printf "$values/%s/values.yaml" .path.path)) }}
+    {{- $source1 := dict
+          "repoURL" (dig "repoUrl" (printf "https://github.com/team-redbull/helm-charts-%s.git" .path.basename) .)
+          "targetRevision" .revision
+          "path" "."
+          "helm" (dict "releaseName" .path.basename "valueFiles" $valueFiles)
+    }}
+    {{- $source2 := dict "repoURL" "https://github.com/team-redbull/redbull-platform.git" "targetRevision" "main" "ref" "values" }}
+    {{- $patch := dict "spec" (dict "sources" (list $source1 $source2)) }}
     {{- if hasKey . "overrides" }}
-    {{ toYaml .overrides }}
-    {{- else }}
-    {}
+    {{- $patch = mergeOverwrite $patch .overrides }}
     {{- end }}
+    {{ toYaml $patch }}
