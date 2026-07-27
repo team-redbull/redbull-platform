@@ -142,6 +142,46 @@ This flattening is **not** part of the documented "only the host changes" design
 track it as a local divergence in your internal fork so a future sync from the
 canonical repo doesn't silently reintroduce the bug.
 
+### Layering extra chart-local value files (`extraValueFiles`)
+
+The host change above is orthogonal to a **second, per-chart** concern: a
+`helm-charts-<service>` repo may ship extra value files at its chart root beyond
+the default `values.yaml` — an air-gapped image-registry overlay (e.g.
+`helm-charts-temporal`'s `values-airgapped.yaml`, see its README "Air-gapped
+install"), a regional variant, a feature-flag file, etc. These are **not** picked
+up automatically — list any number of them, in order, under `extraValueFiles` in
+that service's `app.yaml`:
+
+Example — deploying `temporal` into a (hypothetical) `airgapped` env, composing
+two independent chart-local overlays instead of one combined file:
+`helm-charts-temporal` ships the first (`values-airgapped.yaml`, the
+image-registry rewrite — see its README "Air-gapped install"); the second shows
+how you'd layer in another one, e.g. swapping the bundled PostgreSQL for a
+hosted instance (that same README's "3a."), as its own file rather than folded
+into the first:
+
+```yaml
+# gitops/services/airgapped/temporal/app.yaml
+namespace: temporal
+revision: main
+extraValueFiles:
+  - values-airgapped.yaml     # image-registry rewrite (ships in the chart repo today)
+  - values-external-db.yaml   # hosted Postgres instead of the bundled subchart (illustrative)
+```
+
+`gitops/appset.yaml` adds each one to the Helm `valueFiles` list (no `$values/`
+prefix — each resolves inside the chart source, not this repo), in the order
+listed, positioned right after the chart's implicit `values.yaml` so both
+`gitops/values/<env>.yaml` and this folder's own `values.yaml` can still override
+anything they set (e.g. a cluster-specific pull secret or a different mirror
+host). No `gitops/services/airgapped/` folder exists in this repo yet — the
+above is illustrative until an actual air-gapped env is stood up; see "Add an
+environment" above for what that involves.
+
+This is a **generic, per (env, service)** mechanism — no ApplicationSet edit is
+needed to use it for another chart, another environment, or a reason other than
+air-gapping; an absent/empty `extraValueFiles` (the common case) adds nothing.
+
 ## Prerequisites
 
 - `helm` 3.x, `helmfile` 1.x, and the `helm-diff` plugin

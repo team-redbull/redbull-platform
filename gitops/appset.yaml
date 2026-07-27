@@ -52,6 +52,20 @@ spec:
             # to the release name / hardcode their names).
             releaseName: '{{ .path.basename }}'
             valueFiles:
+              # Optional, generic hook: this service's app.yaml may list any number of
+              # extra CHART-local value files under `extraValueFiles` (e.g. an
+              # air-gapped image-registry overlay, a regional variant, a feature-flag
+              # file — any file the chart repo itself ships at its root, see e.g.
+              # helm-charts-temporal's values-airgapped.yaml). Listed with no
+              # `$values/` prefix, so each resolves inside source #1 (the chart repo)
+              # rather than this platform repo, in the order given. Placed right after
+              # the chart's implicit values.yaml so both platform layers below can
+              # still override anything they set (e.g. a per-cluster mirror host).
+              # Absent/empty `extraValueFiles` (the common case) adds nothing here —
+              # no ApplicationSet edit needed to use this from any service or env.
+              {{- range (dig "extraValueFiles" (list) .) }}
+              - {{ . }}
+              {{- end }}
               # shared env globals first, then this service's own values (override).
               - '$values/gitops/values/{{ index .path.segments 2 }}.yaml'
               - '$values/{{ .path.path }}/values.yaml'
