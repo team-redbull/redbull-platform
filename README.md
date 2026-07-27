@@ -142,6 +142,29 @@ This flattening is **not** part of the documented "only the host changes" design
 track it as a local divergence in your internal fork so a future sync from the
 canonical repo doesn't silently reintroduce the bug.
 
+### Pointing a service at a chart repo directly (`repoUrl`)
+
+By default the chart source is derived from the service's folder name —
+`helm-charts-<service>` on GitHub, `helm-charts/<service>` on the air-gapped GitLab
+(see above). To source a chart from anywhere else instead — a mono-repo, a repo
+outside the `helm-charts` group, a different host entirely — set `repoUrl` in that
+service's `app.yaml`:
+
+```yaml
+# gitops/services/<env>/<service>/app.yaml
+namespace: temporal
+revision: main
+repoUrl: https://github.com/some-other-org/some-other-repo.git
+```
+
+`gitops/appset.yaml`'s chart-source `repoURL` falls back to the
+`helm-charts-<service>` convention only when `repoUrl` is absent (the common
+case) — no ApplicationSet edit needed to use this, and every other service keeps
+using the default convention untouched. Note this only overrides the **chart**
+source's repo — the chart is still expected at that repo's root (`path: .`) and
+`revision:` still selects the branch/tag; the rest of the Application (namespace,
+`valueFiles`, sync policy) is unaffected.
+
 ### Layering extra chart-local value files (`extraValueFiles`)
 
 The host change above is orthogonal to a **second, per-chart** concern: a

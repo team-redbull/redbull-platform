@@ -41,7 +41,12 @@ spec:
       sources:
         # 1) the service's chart — its own repo in the helm-charts group, chart at root.
         #    ← host+layout: GitLab subgroup 'helm-charts/{{ .path.basename }}' in air-gapped
-        - repoURL: 'https://github.com/team-redbull/helm-charts-{{ .path.basename }}.git'
+        #    Optional escape hatch: this service's app.yaml may set `repoUrl` to point
+        #    the chart source at any repo directly (any host/layout — a mono-repo, a
+        #    per-team mirror, a repo outside the helm-charts group entirely), bypassing
+        #    the helm-charts-<service>/helm-charts/<service> naming convention below.
+        #    Absent (the common case) falls back to that convention unchanged.
+        - repoURL: '{{ dig "repoUrl" (printf "https://github.com/team-redbull/helm-charts-%s.git" .path.basename) . }}'
           targetRevision: '{{ .revision }}'
           path: .
           helm:
