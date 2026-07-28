@@ -1,0 +1,34 @@
+# Helm values for dhcp-scope-manager.
+#
+# image.repository/tag are NOT set here: CI (ghcr-build-push.yml) bumps them in
+# the chart's own values.yaml on every push to the code repo's main, and this
+# file would override that bump and pin the deployment to a stale tag.
+
+dhcp:
+  # The Windows DHCP server this API manages. One explicit host on purpose — see
+  # the chart's values.yaml for why an alias or load balancer breaks GET/PUT
+  # symmetry under failover.
+  #
+  # This is the disposable AWS test box (test-env/ in the dhcp_scope_manager
+  # repo). Its public IP is NOT static: stopping and starting the instance
+  # reassigns it, which also invalidates the WinRM certificate's subject. Update
+  # here after any stop/start, or give the instance an Elastic IP.
+  serverHost: "44.200.61.74"
+
+winrm:
+  # ntlm, not kerberos: the test box is a standalone workgroup server with no
+  # Active Directory to authenticate against. Production should be domain-joined
+  # and use kerberos, which needs no stored password at all.
+  auth: ntlm
+  username: Administrator
+  # The listener uses a self-signed certificate, so validation must be off.
+  # In production this should be true, with a certificate from the internal CA.
+  certValidation: false
+  # Password comes from this Secret, created out of band (gitops/SECRETS.md):
+  #   oc create secret generic dhcp-scope-manager-winrm \
+  #     --from-literal=winrm-password='...' -n dhcp-scope-manager
+  existingSecret: dhcp-scope-manager-winrm
+  passwordKey: winrm-password
+
+route:
+  enabled: true

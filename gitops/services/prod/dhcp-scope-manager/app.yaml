@@ -1,0 +1,8 @@
+# Argo config for `dhcp-scope-manager`. app = dhcp-scope-manager (prod is
+# canonical/unprefixed), chart = helm-charts-dhcp-scope-manager.
+#
+# The API runs here on Linux and drives a *Windows* DHCP server remotely over
+# PSRP/WinRM — the Windows host is not managed by this platform. Crossplane
+# provider-http consumes the API in-cluster via its Service.
+namespace: dhcp-scope-manager
+revision: main   # branch in helm-charts-dhcp-scope-manager

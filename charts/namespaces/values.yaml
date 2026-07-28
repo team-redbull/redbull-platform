@@ -7,6 +7,7 @@ namespaces:
   - server-scanner
   - redbull-workflows     # Argo workflows + segment-connectivity apps + Helmfile mock release
   - rhokp                 # Argo-managed: the `rhokp` app deploys here
+  - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
 
 # OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. Its controller
 # is namespace-scoped (installed in `user1-argocd`), so it only gets RBAC in namespaces
@@ -23,3 +24,4 @@ argocd:
     - segments-manager
     - redbull-workflows
     - rhokp
+    - dhcp-scope-manager
