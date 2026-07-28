@@ -5,4 +5,8 @@
 # PSRP/WinRM — the Windows host is not managed by this platform. Crossplane
 # provider-http consumes the API in-cluster via its Service.
 namespace: dhcp-scope-manager
-revision: main   # branch in helm-charts-dhcp-scope-manager
+# The Linux/PSRP transport is still on a feature branch in the code repo, so this
+# tracks the matching chart branch rather than main: CI mirrors the code repo's
+# branch to a same-named chart branch and lands the image bump there. Same pattern
+# segments-manager uses. Repoint to `main` once refactor/linux-api merges.
+revision: refactor/linux-api   # branch in helm-charts-dhcp-scope-manager
