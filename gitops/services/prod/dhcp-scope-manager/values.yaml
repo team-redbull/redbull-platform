@@ -13,7 +13,7 @@ dhcp:
   # repo). Its public IP is NOT static: stopping and starting the instance
   # reassigns it, which also invalidates the WinRM certificate's subject. Update
   # here after any stop/start, or give the instance an Elastic IP.
-  serverHost: "44.200.61.74"
+  serverHost: "107.20.133.130"
 
 winrm:
   # ntlm, not kerberos: the test box is a standalone workgroup server with no
