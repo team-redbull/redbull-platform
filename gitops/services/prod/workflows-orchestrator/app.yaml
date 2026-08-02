@@ -6,6 +6,7 @@
 #
 # Renamed from `workflows` (folder, Argo app, chart repo and K8s resources): `workflows`
 # collided with the code repo name and with the /workflows API prefix. The API PATHS are
-# unchanged and stay domain-scoped — /workflows/segment-connectivity.
+# unaffected by that rename — they are per workflow under a domain prefix
+# (/workflows/segment-connectivity/open-segment-rules), status on /workflows/runs/{id}.
 namespace: redbull-workflows
 revision: main   # branch in helm-charts-workflows-orchestrator — main = latest prod; a different version = a different branch.
