@@ -8,7 +8,7 @@
 # (temporalHost/temporalNamespace/domain/segmentsManagerUrl) used to live here, but only
 # one chart (`workflows`) ever reads them as Helm values — segment-connectivity (and
 # future workflow-domain charts) get the same facts secondhand, at runtime, via the
-# `workflows-config` ConfigMap `workflows` publishes, not via a second Helm values merge.
+# `workflows-orchestrator-config` ConfigMap `workflows-orchestrator` publishes, not via a second Helm values merge.
 # So they've moved to `gitops/services/prod/workflows/values.yaml`, where they belong to
 # the one chart that actually consumes them — see that file. Deploying only `temporal`
 # (or any other single service) no longer drags in workflows-specific values that don't

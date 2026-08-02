@@ -1,6 +1,6 @@
 # Argo config for `segment-connectivity` — the first per-domain activity-worker limb.
 # app = dev-segment-connectivity, chart = helm-charts-segment-connectivity. Same
 # redbull-workflows namespace as workflows; gets Temporal/domain/segmentsManagerUrl from
-# the shared workflows-config ConfigMap at runtime (not via its own Helm values).
+# the shared workflows-orchestrator-config ConfigMap at runtime (not via its own Helm values).
 namespace: redbull-workflows
 revision: main   # branch in helm-charts-segment-connectivity — main = latest prod; a different version = a different branch.

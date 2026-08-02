@@ -5,11 +5,15 @@
 # (`segments-manager`), and this chart's fullname helper collapses to the release name
 # when it contains the chart name — so resources are named `segments-manager` in every
 # env, which the cross-service FQDN `segments-manager.<ns>.svc` relies on.
-config:
-  # Cross-namespace FQDN of the shared workflow trigger API (workflows release's
-  # workflows-api Service in redbull-workflows). Segment creation POSTs here to start the
-  # workflow. MUST be the FQDN — a bare name would resolve in segments-manager's own ns.
-  workflowsApiUrl: "http://workflows-api.redbull-workflows.svc.cluster.local:8080"
+#
+# No `config.workflowsApiUrl` (and no WORKFLOWS_API_URL env var): segments-manager does
+# not call the workflows API at all. It used to POST there on every segment creation to
+# start the segment-connectivity workflow, which left creation outside Temporal —
+# invisible in the Temporal UI, and silently skipped whenever that best-effort call
+# failed. The direction is now reversed: the workflow is triggered directly by its
+# caller and calls POST /api/segments here as its own first step, so one Temporal run
+# covers the whole segment lifecycle. Traffic between the two namespaces now flows
+# redbull-workflows -> segments-manager only.
 mongodb:
   # In-cluster MongoDB (Helmfile-managed segments-manager-mongodb release, service
   # `segments-mongodb`). TODO(secrets): the password is interpolated inline here — this

@@ -1,7 +1,7 @@
 # Helm values for segment-connectivity (dev). Mirrors the old segment-connectivity
 # release `values:` block. Only the segment-connectivity-specific endpoints live here;
 # the Temporal connection, DOMAIN and SEGMENTS_MANAGER_URL come from the shared
-# workflows-config ConfigMap (owned by the workflows release), mounted at runtime.
+# workflows-orchestrator-config ConfigMap (owned by the workflows-orchestrator release), mounted at runtime.
 config:
   # In dev, `next` points at the Helmfile-managed mock-segment-connectivity Service so
   # e2e tests can run the full submit -> poll -> complete cycle without the real
