@@ -35,6 +35,95 @@ real ordering (Postgres→schema→server) is now *intra-chart* — see next sec
 **Do not** move the bootstrap releases into Argo, or add cross-app sync-wave/RollingSync
 ordering to the ApplicationSet, without re-deriving the above.
 
+### Deleting a service requires the Application finalizer (silent-orphan trap)
+
+Removing a `gitops/services/<env>/<service>/` folder makes the git generator stop
+emitting that service, so the ApplicationSet deletes its Application. But deleting an
+Application **without** `resources-finalizer.argocd.argoproj.io` is a **non-cascading**
+delete — the Application object disappears and every resource it managed is left
+running in the cluster, unowned and invisible to Argo. There is no error; the app
+just vanishes and the workloads stay forever.
+
+Argo CD 3.x's ApplicationSet controller adds that finalizer to generated Applications
+on its own, which makes it look unnecessary on a current cluster — **older controllers
+do not**. Both halves were verified live on the dev cluster (Argo 3.1.16 / GitOps
+1.18.6): an appset-generated app (auto-finalized) cascaded cleanly on folder removal,
+and a hand-made Application with `finalizers: []` orphaned its ConfigMap/Service/SA
+verbatim.
+
+The finalizer is declared here as **defence in depth, not as the diagnosed cause** of
+the 2026-07-28 air-gapped incident — see the deadlock below, which is what actually
+bit.
+
+So `gitops/appset.yaml` now declares the finalizer **explicitly** in
+`template.metadata`. **Do not remove it** because "Argo adds it anyway" — that is only
+true on new enough controllers, and the failure mode is silent. Equally, do not set
+`spec.syncPolicy.preserveResourcesOnDeletion: true`, which suppresses the same cascade.
+
+### The real trap: deleting a service folder deadlocks its own deletion
+
+**Never delete a `gitops/services/<env>/<service>/` folder in a single commit.** Doing
+so hangs the Application in `Unknown`/`Progressing` forever with its finalizer set, and
+**nothing is deleted from the cluster** (observed on the air-gapped env, 2026-07-28,
+deleting `temporal`).
+
+The cause is this appset's own multi-source design. Every Application renders from two
+sources: the chart repo, plus *this* repo as `$values`, with a valueFile at
+`$values/gitops/services/<env>/<service>/values.yaml`. So `app.yaml` (what the git
+generator watches) and `values.yaml` (what the app renders from) sit in the **same
+folder**, and one commit removes both. Then:
+
+1. the generator stops emitting the service → the ApplicationSet deletes the Application;
+2. `resources-finalizer.argocd.argoproj.io` blocks removal until the cascade runs;
+3. the cascade needs a successful reconcile, which needs a successful **manifest render**;
+4. rendering now fails — `values file $values/… does not exist` — so no resource tree is
+   ever computed, nothing is deleted, and the finalizer holds the app forever.
+
+Deleting the service breaks the very thing that makes deleting it possible. The
+finalizer is not missing here, it is *stuck* — which reads exactly like "the finalizer
+didn't work", and sends you chasing the wrong bug.
+
+**Safe procedure — two commits:**
+
+1. `git rm gitops/services/<env>/<service>/app.yaml` — the generator stops emitting the
+   service and the Application is deleted, while `values.yaml` remains so rendering
+   still succeeds and the cascade completes normally.
+2. Once the Application is gone, `git rm -r` the rest of the folder.
+
+**Why not `helm.ignoreMissingValueFiles: true`** (the tempting one-line fix): it does
+work for deletion — verified live, folder removed in one commit, app and resources both
+cleanly deleted. But it cannot distinguish "folder deleted on purpose" from "values file
+missing by mistake", and `syncPolicy.automated` here is `prune: true, selfHeal: true`.
+Verified live on the same harness: with the flag on, deleting **only** `values.yaml`
+(keeping `app.yaml`) made the app silently re-render on chart defaults and auto-apply
+them to the live cluster in **under 10 seconds**, reporting `Synced/Healthy` throughout —
+no error, no warning. For a real service that means chart-default image tags, replica
+counts and resource limits landing in prod, plus pruning of anything gated behind a
+value. Without the flag that same mistake fails loudly and changes nothing. Don't enable
+it without re-deriving this trade.
+
+A structural alternative that gets both properties (single-commit delete *and*
+fail-loud) is moving per-service values out of the service folder — e.g.
+`gitops/values/<env>/<service>.yaml` — so deleting the folder removes only `app.yaml`
+and never breaks rendering. Costs the repo's "adding a service = one new folder"
+ergonomics.
+
+**Recovering a service already stuck this way:** restore only `values.yaml` and push —
+rendering recovers, the pending cascade completes, and the resources are deleted
+properly; then delete `values.yaml` in a follow-up commit. To instead *keep* the
+service, clear the finalizer (`kubectl patch app <name> -n <ns> --type=merge -p
+'{"metadata":{"finalizers":null}}'`), which drops the Application but leaves the
+workloads running, then restore the folder in git — the recreated Application **adopts**
+the live resources, because tracking is by the `app.kubernetes.io/instance` label they
+already carry. No downtime, PVCs preserved.
+
+Note the finalizer fix above only affects deletions from *now on*. Resources already
+orphaned stay orphaned:
+Argo no longer tracks them, so they must be cleaned up by hand (they still carry
+`app.kubernetes.io/instance=<app>` / the `argocd.argoproj.io/tracking-id` annotation,
+which is how you find them). Re-adding the service folder does **not** adopt them
+cleanly either — the new Application collides with the live objects.
+
 ## Crossplane on OpenShift: two *different* SCC fixes, for two different pods
 
 Crossplane's pods are rejected outright by OpenShift's `restricted-v2` SCC, which

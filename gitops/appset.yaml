@@ -28,6 +28,21 @@ spec:
       # prod is canonical → unprefixed (temporal); every other env gets an <env>- prefix
       # (dev-temporal). One conditional, easy to extend.
       name: '{{ if eq (index .path.segments 2) "prod" }}{{ .path.basename }}{{ else }}{{ index .path.segments 2 }}-{{ .path.basename }}{{ end }}'
+      # Cascade-delete guard — deleting a service must delete its workloads.
+      # Without this finalizer, deleting an Application is a NON-CASCADING delete: the
+      # Application object vanishes and every resource it managed is ORPHANED in the
+      # cluster. That is exactly the path taken when a service's folder is removed from
+      # gitops/services/<env>/ — the generator stops emitting it, the ApplicationSet
+      # deletes the Application, and the workloads silently stay behind forever.
+      # Argo CD 3.x adds this finalizer to generated Applications on its own, so on a
+      # current cluster it looks unnecessary; older controllers do NOT. Declaring it
+      # explicitly makes deletion version-independent. This is defence in depth — it is
+      # NOT the diagnosed cause of the 2026-07-28 air-gapped orphaning incident, whose
+      # apps already carried the finalizer (see CLAUDE.md).
+      # Do NOT remove it, and do not set spec.syncPolicy.preserveResourcesOnDeletion:
+      # true (which suppresses the same cascade), without re-deriving the above.
+      finalizers:
+        - resources-finalizer.argocd.argoproj.io
     spec:
       project: redbull-platform
       sources:
