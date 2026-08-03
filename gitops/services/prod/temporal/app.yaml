@@ -3,5 +3,3 @@
 # PostgreSQL (was the separate temporal-postgresql release) — see CLAUDE.md.
 namespace: temporal
 revision: main   # branch in helm-charts-temporal — main = latest prod; deploy a different version by pointing at a different branch. See README "Chart versions are branches".
-extraValueFiles:
-  - values.yaml   # TEMP: verifying templatePatch actually injects extraValueFiles (harmless — same file the chart already loads by default, no behavior change). Revert after confirming.
