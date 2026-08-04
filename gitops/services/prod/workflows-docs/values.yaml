@@ -1,0 +1,13 @@
+# Helm values for the workflows-docs site (prod).
+#
+# Empty on purpose. The chart's own defaults are already the prod configuration:
+# there is nothing environment-specific to set — no endpoints, no credentials,
+# no Temporal connection — and the Route host is left blank so OpenShift
+# generates one from route/namespace/cluster domain.
+#
+# The image tag is bumped in helm-charts-workflows-docs by CI in the `workflows`
+# repo, not here.
+#
+# Set `route.enabled: false` if this cluster's Routes are reachable from
+# somewhere the internal service names in these pages should not be readable.
+{}
