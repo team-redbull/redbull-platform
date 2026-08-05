@@ -10,16 +10,26 @@ dhcp:
   # symmetry under failover.
   #
   # This is the disposable AWS test box (test-env/ in the dhcp_scope_manager
-  # repo). Its public IP is NOT static: stopping and starting the instance
-  # reassigns it, which also invalidates the WinRM certificate's subject. Update
-  # here after any stop/start, or give the instance an Elastic IP.
+  # repo). It now carries an Elastic IP, so this address survives stop/start and
+  # even a full terraform replace of the instance — the EIP is a separate
+  # resource that reattaches. It only changes if the EIP itself is released.
   serverHost: "107.20.133.130"
 
 winrm:
-  # ntlm, not kerberos: the test box is a standalone workgroup server with no
-  # Active Directory to authenticate against. Production should be domain-joined
-  # and use kerberos, which needs no stored password at all.
-  auth: ntlm
+  # credssp, not ntlm. Both are username+password, but only credssp *delegates*
+  # the credential to the DHCP server, and without delegation every failover
+  # cmdlet (CLAUDE.md sections 6-7) fails against the partner — measured on this
+  # very box, where Add-DhcpServerv4FailoverScope fails under ntlm and succeeds
+  # under credssp.
+  #
+  # Not kerberos: this test box is a standalone workgroup server with no Active
+  # Directory. A domain-joined production server could use kerberos, but only
+  # with resource-based constrained delegation configured in AD — plain kerberos
+  # hits the same double hop as ntlm.
+  #
+  # Requires `Enable-WSManCredSSP -Role Server` on serverHost, which the
+  # test-env bootstrap now does. Only that host needs it, not the partner.
+  auth: credssp
   username: Administrator
   # The listener uses a self-signed certificate, so validation must be off.
   # In production this should be true, with a certificate from the internal CA.
