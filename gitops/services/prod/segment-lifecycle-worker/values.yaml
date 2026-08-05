@@ -1,4 +1,4 @@
-# Helm values for segment-lifecycle (dev). Mirrors the old segment-lifecycle
+# Helm values for segment-lifecycle-worker (dev). Mirrors the old segment-lifecycle
 # release `values:` block. Only the segment-lifecycle-specific endpoints live here;
 # the Temporal connection, DOMAIN and SEGMENTS_MANAGER_URL come from the shared
 # workflows-orchestrator-config ConfigMap (owned by the workflows-orchestrator release), mounted at runtime.

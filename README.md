@@ -43,7 +43,7 @@ One `Application` per row, generated from `gitops/services/<env>/<service>/` by 
 | `temporal` | `temporal` | `helm-charts-temporal` | **combined** temporal-stack + PostgreSQL subchart (sync waves) |
 | `segments-manager` | `segments-manager` | `helm-charts-segments-manager` | uses the Helmfile-managed `segments-manager-mongodb` |
 | `workflows` | `redbull-workflows` | `helm-charts-workflows` | the shared workflow "brain"; owns `workflows-config` |
-| `segment-lifecycle` | `redbull-workflows` | `helm-charts-segment-lifecycle` | activity limb; `nextUrl` → `mock-segment-connectivity` in dev |
+| `segment-lifecycle-worker` | `redbull-workflows` | `helm-charts-segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; `nextUrl` → `mock-segment-connectivity` in dev |
 | `rhokp` | `rhokp` | `helm-charts-rhokp` | Red Hat Offline Knowledge Portal; ships with placeholder registry/access-key secrets — see `values.yaml` TODO |
 
 Cross-app ordering is **not** enforced (soft deps self-heal via `retry`/`selfHeal`); the
@@ -63,13 +63,13 @@ its `ui.auth.allowedUsers` (kept in sync with `htpasswdIdp.clusterAdmins`), so t
 grant must land before that UI is reachable. See `CLAUDE.md`.
 
 `workflows` (Argo app) is the Temporal workflow-brain — ONE shared release for every
-workflow domain, not per-domain. `segment-lifecycle` (Argo app) is the first
-per-domain activity-worker limb; future domains add their own `helm-charts-<domain>`
-chart + a `gitops/services/<env>/<domain>/` folder, all still consuming the one
+workflow domain, not per-domain. `segment-lifecycle-worker` (Argo app) is the first
+per-domain activity-worker limb; future domains add their own
+`helm-charts-<domain>-worker` chart + a `gitops/services/<env>/<domain>-worker/` folder, all still consuming the one
 `workflows`. `mock-segment-connectivity` (**Helmfile**) is a test-only stand-in for the
-real "next" (firewall) service `segment-lifecycle` talks to — it lets e2e tests run
+real "next" (firewall) service `segment-lifecycle-worker` talks to — it lets e2e tests run
 the full submit -> poll -> complete cycle without the real, air-gapped next service;
-never install it alongside a production `segment-lifecycle` (pin that app's `revision`
+never install it alongside a production `segment-lifecycle-worker` (pin that app's `revision`
 to a real tag and override `config.nextUrl` at the real next endpoint). None of the
 charts creates its own namespace — see `CLAUDE.md`.
 
@@ -254,7 +254,7 @@ Helmfile release names (bootstrap layer): `namespaces`, `htpasswd-idp`, `crosspl
 `provider-http`, `provider-http-config`, `segments-manager-mongodb`,
 `mock-segment-connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`. (The `temporal`, `segments-manager`, `workflows` and
-`segment-lifecycle` services are Argo CD apps now — select them with
+`segment-lifecycle-worker` services are Argo CD apps now — select them with
 `argocd app`/`kubectl get applications -n user1-argocd`, not `helmfile -l`.)
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts
@@ -302,7 +302,7 @@ Tip: to make custom groupings (e.g. all apps vs. the platform layer), add a
   track — `main` = latest prod, a different version is a different branch), `namespace`,
   optional `destination`/`overrides`. See "Chart versions are branches" below.
 - **`gitops/services/<env>/<service>/values.yaml`** — that service's Helm values, e.g.
-  segment-lifecycle's `config.nextUrl`/URI paths + `secrets.existingSecret`, or
+  segment-lifecycle-worker's `config.nextUrl`/URI paths + `secrets.existingSecret`, or
   **`gitops/services/<env>/workflows/values.yaml`**'s `config.temporalHost` /
   `temporalNamespace` / `domain` / `segmentsManagerUrl` — the Temporal endpoint +
   orchestrator globals, one place to change for the whole workflow layer. These live
@@ -363,7 +363,7 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   contrast, **bundles** PostgreSQL as a subchart — safe under Argo because sync waves
   express Postgres → schema → server ordering (no `helmDefaults.wait` deadlock). See
   `CLAUDE.md` for the full story on both.
-- **`workflows` and `segment-lifecycle` (Argo apps) both deploy into
+- **`workflows` and `segment-lifecycle-worker` (Argo apps) both deploy into
   `redbull-workflows`**, pre-created and labeled `argocd.argoproj.io/managed-by:
   user1-argocd` by the `namespaces` release. Neither chart has a Namespace template of
   its own, and the ApplicationSet does **not** use `CreateNamespace=true` — a

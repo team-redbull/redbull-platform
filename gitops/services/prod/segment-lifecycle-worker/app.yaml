@@ -1,0 +1,10 @@
+# Argo config for `segment-lifecycle-worker` — the first per-domain activity-worker limb.
+# app = segment-lifecycle-worker (prod is unprefixed), chart = the repo of the same name. The
+# folder name drives all three (app name, chart repo, release name), so the -worker
+# suffix here is what makes the workload read as a process rather than a peer service;
+# the domain-scoped names it consumes (segment-lifecycle-config, the
+# segment-lifecycle-activity queue) deliberately stay bare. Same redbull-workflows
+# namespace as workflows; gets Temporal/domain/segmentsManagerUrl from the shared
+# workflows-orchestrator-config ConfigMap at runtime (not via its own Helm values).
+namespace: redbull-workflows
+revision: main   # branch in helm-charts-segment-lifecycle-worker — main = latest prod; a different version = a different branch.

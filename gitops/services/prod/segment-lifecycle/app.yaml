@@ -1,6 +1,0 @@
-# Argo config for `segment-lifecycle` — the first per-domain activity-worker limb.
-# app = dev-segment-lifecycle, chart = helm-charts-segment-lifecycle. Same
-# redbull-workflows namespace as workflows; gets Temporal/domain/segmentsManagerUrl from
-# the shared workflows-orchestrator-config ConfigMap at runtime (not via its own Helm values).
-namespace: redbull-workflows
-revision: main   # branch in helm-charts-segment-lifecycle — main = latest prod; a different version = a different branch.

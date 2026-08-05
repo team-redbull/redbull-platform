@@ -30,7 +30,7 @@ Vault  ──(ClusterSecretStore)──▶  ESO  ──writes──▶  k8s Secr
 |---|---|---|
 | `temporalPostgresql.password` | `gitops/services/dev/temporal/values.yaml` → `postgresql.auth.postgresPassword` (plaintext) | Secret the bundled PostgreSQL subchart reads (`auth.existingSecret`) |
 | `segmentsManagerMongodb.{rootPassword,password}` | `environments/default.yaml` (Helmfile mongodb release) | Secret the Bitnami mongodb chart reads (`auth.existingSecret`) |
-| `segments-manager-token` (`SEGMENTS_MANAGER_API_TOKEN`) | `oc create secret` out-of-band in `redbull-workflows` | `ExternalSecret` → same Secret name; segment-lifecycle already reads it via `secrets.existingSecret` |
+| `segments-manager-token` (`SEGMENTS_MANAGER_API_TOKEN`) | `oc create secret` out-of-band in `redbull-workflows` | `ExternalSecret` → same Secret name; segment-lifecycle-worker already reads it via `secrets.existingSecret` |
 | `htpasswdIdp.users[].password` | `environments/default.yaml` (Helmfile htpasswd-idp) | stays in the bootstrap Helmfile — switch to `requiredEnv`/Vault-pull so it leaves git |
 
 ## The non-obvious one — segments-manager Mongo URL

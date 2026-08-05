@@ -7,13 +7,13 @@
 # The bar for landing here is high, and most things don't clear it. The Temporal
 # endpoint + orchestrator globals (temporalHost/temporalNamespace/domain/
 # segmentsManagerUrl) used to live here, but only one chart (`workflows`) reads them as
-# Helm values — segment-lifecycle gets the same facts secondhand at runtime, via the
+# Helm values — segment-lifecycle-worker gets the same facts secondhand at runtime, via the
 # `workflows-orchestrator-config` ConfigMap that `workflows-orchestrator` publishes. So
 # they moved to `gitops/services/prod/workflows/values.yaml`, where they belong to the
 # one chart that consumes them.
 #
 # Prefer that runtime-ConfigMap pattern whenever it works. `siteNetworks` below is here
-# precisely because it CANNOT: segments-manager and segment-lifecycle run in different
+# precisely because it CANNOT: segments-manager and segment-lifecycle-worker run in different
 # namespaces (`segments-manager` and `redbull-workflows`), and a ConfigMap is
 # namespace-scoped, so neither can mount the other's. Sharing at the Helm-values layer is
 # the only way to keep one definition — which is also the layer where the drift actually
@@ -21,12 +21,12 @@
 
 # ---------------------------------------------------------------------------------
 # Site network topology — THE definition. Rendered verbatim into both
-# segments-manager's ConfigMap and segment-lifecycle's, as SITE_NETWORKS.
+# segments-manager's ConfigMap and segment-lifecycle-worker's, as SITE_NETWORKS.
 #
 #   pool  the CIDR every segment at that site must fall INSIDE. segments-manager
 #         enforces this on every create (subnet_of), and derives its SITES list
 #         from these keys.
-#   bmc   the site's static out-of-band management network. segment-lifecycle
+#   bmc   the site's static out-of-band management network. segment-lifecycle-worker
 #         opens one one-directional rule from each MCE segment toward it.
 #         segments-manager never reads it per-request — only at startup, to verify
 #         no pool collides with a management network.

@@ -5,7 +5,7 @@ namespaces:
   - segments-manager      # Argo `segments-manager` app + Helmfile mongodb release
   - bmh-system
   - server-scanner
-  - redbull-workflows     # Argo workflows + segment-lifecycle apps + Helmfile mock release
+  - redbull-workflows     # Argo workflows + segment-lifecycle-worker apps + Helmfile mock release
   - rhokp                 # Argo-managed: the `rhokp` app deploys here
   - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
 
