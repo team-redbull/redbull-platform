@@ -136,18 +136,18 @@ releases:
   # Only its in-cluster MongoDB stays here: the app's DB must exist before its pods start,
   # and this is a plain Bitnami release with no schema-job pattern of its own.
 
-  # --- workflows + segment-connectivity MOVED TO ARGO CD --------------------
-  # The workflow "brain" (helm-charts-workflows) and the segment-connectivity limb
-  # (helm-charts-segment-connectivity) are now Argo apps (gitops/services/dev/workflows,
-  # gitops/services/dev/segment-connectivity). The Temporal endpoint + orchestrator
+  # --- workflows + segment-lifecycle MOVED TO ARGO CD --------------------
+  # The workflow "brain" (helm-charts-workflows) and the segment-lifecycle limb
+  # (helm-charts-segment-lifecycle) are now Argo apps (gitops/services/dev/workflows,
+  # gitops/services/dev/segment-lifecycle). The Temporal endpoint + orchestrator
   # globals they share live once in gitops/values/dev.yaml. Only `mock-segment-connectivity`
-  # (test-only) stays on Helmfile below — segment-connectivity's `nextUrl` points at it.
+  # (test-only) stays on Helmfile below — segment-lifecycle's `nextUrl` points at it.
 
   # --- mock-segment-connectivity (test-only stand-in for the real "next" service) --
   # e2e/test environments ONLY — never install alongside a production
-  # `segment-connectivity` release. Same redbull-workflows namespace as the Argo-managed
-  # workflows/segment-connectivity apps. The Argo `segment-connectivity` app's `nextUrl`
-  # (gitops/services/dev/segment-connectivity/values.yaml) points at this release's Service.
+  # `segment-lifecycle` release. Same redbull-workflows namespace as the Argo-managed
+  # workflows/segment-lifecycle apps. The Argo `segment-lifecycle` app's `nextUrl`
+  # (gitops/services/dev/segment-lifecycle/values.yaml) points at this release's Service.
   - name: mock-segment-connectivity
     namespace: redbull-workflows
     chart: git::https://github.com/team-redbull/workflows.git@helm/mock-segment-connectivity?ref={{ .Values.refs.workflows }}

@@ -3,7 +3,7 @@
 #
 # Only the bootstrap + still-Helmfile-managed services live here now. The
 # stateless service layer (temporal, segments-manager, workflows,
-# segment-connectivity) moved to Argo CD — its values live under gitops/ (shared
+# segment-lifecycle) moved to Argo CD — its values live under gitops/ (shared
 # globals in gitops/values/<env>.yaml, per-service in
 # gitops/services/<env>/<service>/values.yaml).
 #

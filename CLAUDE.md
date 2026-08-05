@@ -19,7 +19,7 @@ deploy it.
 
 **Argo CD** owns the stateless service layer via **one generic ApplicationSet**
 (`gitops/appset.yaml`) over `gitops/services/<env>/<service>/{app.yaml,values.yaml}`:
-`temporal`, `segments-manager`, `workflows`, `segment-connectivity`. Each service's
+`temporal`, `segments-manager`, `workflows`, `segment-lifecycle`. Each service's
 chart lives in its **own repo in the `helm-charts` git group** (`helm-charts-<name>`,
 chart at repo root) — the sole, hand-edited copy; the code repos no longer carry a
 `helm/` chart folder (except `workflows` keeps `helm/mock-segment-connectivity`).
@@ -341,7 +341,7 @@ into any `team-redbull/workflows` chart (or any future per-domain chart under
 every workflow-domain chart shares this one namespace, so its ownership
 belongs solely to the `namespaces` release.
 
-Now that `workflows`/`segment-connectivity` are **Argo-managed**, the `namespaces`
+Now that `workflows`/`segment-lifecycle` are **Argo-managed**, the `namespaces`
 release is the **sole** namespace mechanism: it pre-creates `redbull-workflows` and
 stamps the `argocd.argoproj.io/managed-by` label that grants this namespaced GitOps
 instance its in-namespace RBAC. The ApplicationSet deliberately does **NOT** use
@@ -406,8 +406,8 @@ group, chart at repo **root**, referenced by `gitops/appset.yaml` as
 - `helm-charts-segments-manager` — extracted from `team-redbull/segments-manager`'s
   `deploy/helm`.
 - `helm-charts-workflows` — extracted from `team-redbull/workflows`' `helm/workflows`.
-- `helm-charts-segment-connectivity` — extracted from `team-redbull/workflows`'
-  `helm/segment-connectivity`.
+- `helm-charts-segment-lifecycle` — extracted from `team-redbull/workflows`'
+  `helm/segment-connectivity` (renamed with the domain).
 
 Each `helm-charts-<name>` repo is the **sole, hand-edited copy** of its chart; the
 source chart folder is deleted from the code repo after extraction. CI (the shared
@@ -437,8 +437,8 @@ in `gitops/appset.yaml` + `sourceRepos` in `gitops/project.yaml`. See README.
   repos (`segment_manager`, `workflows`, `BareMetalHostUCS`, `ServerScanner`,
   `dhcp_scope_manager`) still have their own inline copies.
 - `team-redbull/workflows` — Temporal worker code + charts. `helm/workflows` →
-  `helm-charts-workflows` and `helm/segment-connectivity` → `helm-charts-segment-connectivity`
+  `helm-charts-workflows` and `helm/segment-connectivity` → `helm-charts-segment-lifecycle`
   (both Argo-managed, deleted from this repo after extraction). `helm/mock-segment-connectivity`
   **stays here** — it's the only chart still Helmfile-pulled (`git::`), a test-only
-  stand-in for the real "next" firewall service `segment-connectivity` talks to (e2e/test
-  environments only, never alongside a production `segment-connectivity` release).
+  stand-in for the real "next" firewall service `segment-lifecycle` talks to (e2e/test
+  environments only, never alongside a production `segment-lifecycle` release).

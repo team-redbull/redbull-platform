@@ -8,7 +8,7 @@
 #
 # No `config.workflowsApiUrl` (and no WORKFLOWS_API_URL env var): segments-manager does
 # not call the workflows API at all. It used to POST there on every segment creation to
-# start the segment-connectivity workflow, which left creation outside Temporal —
+# start the segment-lifecycle workflow, which left creation outside Temporal —
 # invisible in the Temporal UI, and silently skipped whenever that best-effort call
 # failed. The direction is now reversed: the workflow is triggered directly by its
 # caller and calls POST /api/segments here as its own first step, so one Temporal run

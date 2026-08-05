@@ -1,6 +1,6 @@
 # Helm values for the workflows-orchestrator brain (prod). `config.*` is the Temporal endpoint +
 # orchestrator globals: this chart is the one that reads them and publishes them into
-# the `workflows-orchestrator-config` ConfigMap that every workflow limb (segment-connectivity,
+# the `workflows-orchestrator-config` ConfigMap that every workflow limb (segment-lifecycle,
 # future domains) mounts at runtime — see helm-charts-workflows-orchestrator' templates/config.yaml
 # and the `workflows` repo's shared/settings.py. Change Temporal's address/namespace or
 # the orchestrator's domain/segments-manager URL here, once, for the whole workflow
