@@ -5,8 +5,13 @@
 # PSRP/WinRM — the Windows host is not managed by this platform. Crossplane
 # provider-http consumes the API in-cluster via its Service.
 namespace: dhcp-scope-manager
-# The Linux/PSRP transport is still on a feature branch in the code repo, so this
-# tracks the matching chart branch rather than main: CI mirrors the code repo's
-# branch to a same-named chart branch and lands the image bump there. Same pattern
-# segments-manager uses. Repoint to `main` once refactor/linux-api merges.
-revision: refactor/linux-api   # branch in helm-charts-dhcp-scope-manager
+# refactor/linux-api has merged, so this tracks main again and picks up the
+# CI-managed vX.Y.Z image bump directly.
+#
+# Moving off that branch turns API auth ON: the chart now generates a token and
+# wires DHCP_API_TOKEN unconditionally, where the old branch had no secret.yaml
+# and left the API open. Crossplane was updated to match in the same change —
+# helm-charts-hostedclusters-setup now defaults dhcp_api.tokenSecretRef to the
+# Secret this release generates. Both halves have to move together, or every
+# Request takes a 401 on every reconcile.
+revision: main   # branch in helm-charts-dhcp-scope-manager
