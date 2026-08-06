@@ -15,7 +15,12 @@ namespace: dhcp-scope-manager
 # release read production's generated API token instead of minting a second
 # credential for the same API.
 repoUrl: https://github.com/team-redbull/helm-charts-dhcp-scope-manager.git
-# Tracks the same chart branch as the production app, for the same reason: the
-# Linux/PSRP work is still on a feature branch and CI lands the image bump on the
-# name-matched chart branch. Repoint to `main` with the production app.
-revision: feat/in-cluster-test-runner
+# Tracks the same chart branch as the production app. Both are on main now that
+# refactor/linux-api and the test-runner work have merged, so this picks up the
+# CI-managed vX.Y.Z image rather than a hand-pinned branch build.
+#
+# Do NOT move this to main ahead of the production app: apiAuth.existingSecret in
+# values.yaml points at the token *that release* generates, and only the main
+# chart carries templates/secret.yaml. Pointing here at main while production
+# still sits on refactor/linux-api leaves this pod in CreateContainerConfigError.
+revision: main
