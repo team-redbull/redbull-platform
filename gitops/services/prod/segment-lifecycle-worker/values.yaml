@@ -11,6 +11,10 @@ config:
   nextTokenRenewalUri: "/token-renewal-uri"
   nextOpenRulesUri: "/open-rules-uri"
   nextCheckStatusUri: "/check-request-status"
+  # allocate-segment's DHCP convergence poll (read-only) — dhcp-scope-manager's
+  # in-cluster Service, NOT its -tests sibling. The chart default points at a
+  # local dev host, so this override is required in-cluster.
+  dhcpApiUrl: "http://dhcp-scope-manager.dhcp-scope-manager.svc.cluster.local:8080"
 secrets:
   # Out-of-band Secret (key SEGMENTS_MANAGER_API_TOKEN) created once in-cluster, holding
   # the SAME value as segments-manager's own segments-manager-api-token Secret. The token
@@ -19,3 +23,12 @@ secrets:
   #     --from-literal=SEGMENTS_MANAGER_API_TOKEN="<the segments-manager token>"
   # See gitops/SECRETS.md.
   existingSecret: segments-manager-token
+  # allocate-segment credentials, same out-of-band pattern. Setting these stops
+  # the chart from rendering its own dev-token Secrets of the same names (which
+  # Argo would then own and stomp the real values with on every sync).
+  #   day1-git-token:  key DAY1_GIT_TOKEN — pushes to gitops-day1-platform-config
+  #   dhcp-api-token:  key DHCP_API_TOKEN — the SAME token dhcp-scope-manager
+  #                    pins via its apiAuth.existingSecret (see that service's
+  #                    values.yaml); rotate the two together.
+  existingDay1Secret: day1-git-token
+  existingDhcpSecret: dhcp-api-token

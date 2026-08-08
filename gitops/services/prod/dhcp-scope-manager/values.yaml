@@ -40,5 +40,19 @@ winrm:
   existingSecret: dhcp-scope-manager-winrm
   passwordKey: winrm-password
 
+apiAuth:
+  # Out-of-band Secret (gitops/SECRETS.md pattern), NOT the chart's generated
+  # one: the chart's lookup-then-generate keeps the token stable under
+  # `helm upgrade`, but Argo CD renders with `helm template`, where `lookup`
+  # returns nothing — so every re-render ROTATED the token while the running
+  # pod kept its startup value (observed live: pod env vs Secret disagreed).
+  # Pinning an existing Secret ends the rotation; segment-lifecycle-worker
+  # holds a copy of the same token (dhcp-api-token in redbull-workflows) for
+  # the allocate-segment convergence poll, and that copy must stay in sync:
+  #   oc create secret generic dhcp-scope-manager-token \
+  #     --from-literal=api-token='...' -n dhcp-scope-manager
+  existingSecret: dhcp-scope-manager-token
+  tokenKey: api-token
+
 route:
   enabled: true
