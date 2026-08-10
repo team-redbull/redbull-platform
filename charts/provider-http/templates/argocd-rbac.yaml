@@ -1,0 +1,58 @@
+{{- if .Values.argocdRbac.enabled }}
+# Lets Argo CD create and manage the provider-http Request objects this provider
+# reconciles.
+#
+# Here rather than as an out-of-band kubectl fixture for the same reason as
+# scc-rolebinding.yaml: a fresh cluster should need no manual admin step. It is also
+# the honest home for it — the grant is a property of installing provider-http
+# alongside a GitOps engine, not of any one values repo, and the air-gapped platform
+# install needs the identical object.
+#
+# Necessary because the ClusterRole the GitOps operator gives a cluster-config
+# instance is get/list/watch-only on arbitrary API groups: it grants full verbs to a
+# fixed set of groups, and http.m.crossplane.io is not among them. Without this every
+# Application fails with "requests.http.m.crossplane.io is forbidden ... cannot create
+# resource requests in API group http.m.crossplane.io".
+#
+# Only the `.m.` group. provider-http also serves a cluster-scoped Request in the
+# legacy http.crossplane.io group, and an RBAC rule naming one group grants nothing
+# for the other — so if Requests ever reappear there, this file is why they cannot be
+# created.
+#
+# NOT sufficient on its own for a non-default Argo CD instance: one that is not listed
+# in the operator's ARGOCD_CLUSTER_CONFIG_NAMESPACES refuses cluster-scoped resources
+# outright, whatever RBAC its ServiceAccount holds.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.argocdRbac.name }}
+rules:
+  - apiGroups: ["http.m.crossplane.io"]
+    resources: ["requests", "requests/status"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Read-only: Argo CD does not own the provider config (the provider-http-config
+  # release installs it), but the application controller has to resolve the
+  # providerConfigRef when it reports a Request's health. Both kinds are listed
+  # because a namespaced Request may reference a namespaced ProviderConfig or a
+  # cluster-wide ClusterProviderConfig — hostedclusters-setup names the latter, and
+  # the controller follows whichever the ref says.
+  - apiGroups: ["http.m.crossplane.io"]
+    resources:
+      ["providerconfigs", "clusterproviderconfigs", "providerconfigusages"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ .Values.argocdRbac.name }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.argocdRbac.name }}
+subjects:
+  {{- range .Values.argocdRbac.serviceAccounts }}
+  - kind: ServiceAccount
+    name: {{ .name }}
+    namespace: {{ .namespace }}
+  {{- end }}
+{{- end }}
