@@ -1,6 +1,30 @@
 {{- if .Values.providerConfig.enabled }}
-# Cluster-scoped ProviderConfig (matches provider-http quickstart). Consumers
-# such as dhcp_scope_manager reference it by name (providerConfigRef.name).
+# ClusterProviderConfig, in Crossplane v2's namespaced API group (http.m.crossplane.io).
+#
+# provider-http v1.0.14 serves two independent API groups, and an object in one cannot be
+# referenced from the other:
+#
+#   http.crossplane.io    Request (Cluster)     ProviderConfig (Cluster)
+#   http.m.crossplane.io  Request (Namespaced)  ClusterProviderConfig (Cluster) / ProviderConfig (Namespaced)
+#
+# hostedclusters-setup renders the *namespaced* Request, whose providerConfigRef carries a
+# required `kind` — so it needs this object, not the legacy one below. Cluster-scoped rather
+# than a namespaced ProviderConfig because one DHCP API serves every hosted cluster: a
+# namespaced config would need a copy in each cluster's namespace.
+apiVersion: http.m.crossplane.io/v1alpha2
+kind: ClusterProviderConfig
+metadata:
+  name: {{ .Values.providerConfig.name }}
+spec:
+  credentials:
+    source: {{ .Values.providerConfig.credentialsSource }}
+{{- if .Values.providerConfig.legacy }}
+---
+# Legacy cluster-scoped ProviderConfig, for the http.crossplane.io group.
+#
+# Kept while cluster-scoped Requests still reference it — it carries an in-use.crossplane.io
+# finalizer, so deleting it under a live Request blocks. Retire it (providerConfig.legacy=false)
+# once `kubectl get requests.http.crossplane.io` is empty.
 apiVersion: http.crossplane.io/v1alpha1
 kind: ProviderConfig
 metadata:
@@ -8,4 +32,5 @@ metadata:
 spec:
   credentials:
     source: {{ .Values.providerConfig.credentialsSource }}
+{{- end }}
 {{- end }}
