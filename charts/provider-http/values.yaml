@@ -26,16 +26,6 @@ deploymentRuntimeConfig:
 providerConfig:
   enabled: false
   # Must match what consumers reference (dhcp_scope_manager expects "dhcp-http").
-  # Shared by both objects below — they sit in different API groups, so one name does
-  # not collide.
   name: dhcp-http
   # provider-http ProviderConfig credentials source: None | Secret
   credentialsSource: None
-
-  # Render the legacy http.crossplane.io ProviderConfig beside the .m.-group
-  # ClusterProviderConfig that hostedclusters-setup's namespaced Request references.
-  #
-  # True through the migration: the legacy object carries an in-use.crossplane.io
-  # finalizer while cluster-scoped Requests still reference it, so removing it early
-  # blocks on them. Set false once `kubectl get requests.http.crossplane.io` is empty.
-  legacy: true
