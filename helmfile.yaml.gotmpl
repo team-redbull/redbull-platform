@@ -92,6 +92,13 @@ releases:
           packagePullSecrets: {{ .Values.providerHttp.packagePullSecrets | toJson }}
         providerConfig:
           enabled: false
+        # Argo CD's grant on Request objects rides with the PROVIDER, not the
+        # ProviderConfig: it is what makes the installed provider usable by the GitOps
+        # engine, and it needs no CRD to exist first — an RBAC rule may name an API
+        # group that is not installed yet.
+        argocdRbac:
+          enabled: true
+          serviceAccounts: {{ .Values.providerHttp.argocdServiceAccounts | toJson }}
 
   - name: provider-http-config
     namespace: crossplane-system

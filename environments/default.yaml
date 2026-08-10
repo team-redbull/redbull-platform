@@ -54,6 +54,20 @@ providerHttp:
   package: xpkg.upbound.io/crossplane-contrib/provider-http:v1.0.14
   packagePullSecrets: []        # e.g. [artifactory] for air-gapped
   providerConfigName: dhcp-http # shared with the dhcp integration below
+  # ServiceAccounts of the Argo CD instance that syncs Request objects, granted
+  # create/update/delete on them. Without this every hosted-cluster Application fails
+  # to sync with "requests.http.m.crossplane.io is forbidden".
+  #
+  # Both SAs of ONE instance: the controller applies the Requests, and the server needs
+  # read access or the UI cannot render the resource tree and a UI "Sync" fails even
+  # though the controller could do it. Only the instance that owns the Applications
+  # belongs here — a second one listed out of caution just holds standing write access
+  # to every DHCP scope. Air-gapped substitutes its own instance's SAs.
+  argocdServiceAccounts:
+    - name: user1-argo-argocd-application-controller
+      namespace: user1-argocd
+    - name: user1-argo-argocd-server
+      namespace: user1-argocd
 
 # dhcp_scope_manager <-> provider-http. apiUrl is the backend DHCP API the Crossplane
 # Request talks to. No scope Requests are created unless you set dhcp_values below (the

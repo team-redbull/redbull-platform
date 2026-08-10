@@ -29,3 +29,25 @@ providerConfig:
   name: dhcp-http
   # provider-http ProviderConfig credentials source: None | Secret
   credentialsSource: None
+
+# Grants Argo CD create/update/delete on the Request objects this provider reconciles.
+# Rendered by the `provider-http` release, since it belongs to installing the provider
+# rather than to configuring it.
+#
+# Without it every hosted-cluster Application fails to sync with "requests
+# .http.m.crossplane.io is forbidden": the GitOps operator's ClusterRole grants full
+# verbs only to a fixed set of API groups, and this is not one of them.
+#
+# serviceAccounts names the Argo CD instance that syncs Requests — both SAs, because
+# the controller applies them and the server needs read access or the UI cannot render
+# the resource tree and a UI "Sync" fails even though the controller could do it. Only
+# the instance that actually owns the Applications belongs here; a second instance
+# listed out of caution just holds standing write access to every DHCP scope.
+argocdRbac:
+  enabled: false
+  name: argocd-crossplane-http-requests
+  serviceAccounts:
+    - name: user1-argo-argocd-application-controller
+      namespace: user1-argocd
+    - name: user1-argo-argocd-server
+      namespace: user1-argocd
