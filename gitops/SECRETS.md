@@ -32,6 +32,22 @@ Vault  ──(ClusterSecretStore)──▶  ESO  ──writes──▶  k8s Secr
 | `segmentsManagerMongodb.{rootPassword,password}` | `environments/default.yaml` (Helmfile mongodb release) | Secret the Bitnami mongodb chart reads (`auth.existingSecret`) |
 | `segments-manager-token` (`SEGMENTS_MANAGER_API_TOKEN`) | `oc create secret` out-of-band in `redbull-workflows` | `ExternalSecret` → same Secret name; segment-lifecycle-worker already reads it via `secrets.existingSecret` |
 | `htpasswdIdp.users[].password` | `environments/default.yaml` (Helmfile htpasswd-idp) | stays in the bootstrap Helmfile — switch to `requiredEnv`/Vault-pull so it leaves git |
+| `dhcp-scope-manager-token` (`api-token`) | **committed in git** — `charts/dhcp-api-token/values.yaml` in helm-charts-dhcp-scope-manager, one value per copy of that repo | `ExternalSecret` rendered by that same subchart: same Secret name, same key, no consumer changes |
+
+The DHCP token is the odd one out and deliberately so. It is neither out-of-band nor
+plaintext-in-values — it is committed in the **chart** repo, because that is the only
+place both consumers reach: the API on the mgmt cluster (as a subchart) and every MCE
+(the same subchart deployed standalone, so each cluster's Crossplane Requests resolve
+one Secret instead of one per hosted-cluster namespace). Two earlier shapes were tried
+and removed: a chart-generated token was re-minted on every Argo sync, because
+`helm template` has no `lookup`; an `oc create secret` one was invisible to git and had
+to be repeated per cluster by hand.
+
+Two consequences worth carrying into the migration. The GitHub copy of that chart is
+**public**, so its token is published — accepted knowingly, since it guards only the
+disposable AWS test box, and the air-gapped copy holds a different value that must never
+be synced across. And git history is permanent, so **the ESO migration for this one must
+include a rotation**, not just a template swap.
 
 ## The non-obvious one — segments-manager Mongo URL
 

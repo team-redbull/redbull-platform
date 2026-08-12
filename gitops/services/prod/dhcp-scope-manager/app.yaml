@@ -8,10 +8,15 @@ namespace: dhcp-scope-manager
 # refactor/linux-api has merged, so this tracks main again and picks up the
 # CI-managed vX.Y.Z image bump directly.
 #
-# Moving off that branch turns API auth ON: the chart now generates a token and
-# wires DHCP_API_TOKEN unconditionally, where the old branch had no secret.yaml
-# and left the API open. Crossplane was updated to match in the same change —
-# helm-charts-hostedclusters-setup now defaults dhcp_api.tokenSecretRef to the
-# Secret this release generates. Both halves have to move together, or every
+# API auth is ON for writes: the chart wires DHCP_API_TOKEN unconditionally from
+# the Secret its dhcp-api-token subchart renders, out of one token committed in
+# the chart repo. Nothing generates it (a generated one was re-minted on every
+# Argo sync) and nothing creates it by hand.
+# helm-charts-hostedclusters-setup points dhcp_api.tokenSecretRef at that same
+# Secret name, key and namespace, so both halves have to move together or every
 # Request takes a 401 on every reconcile.
+#
+# DHCP_API_TOKEN is env, materialised at pod start, so any change to the token
+# needs `oc rollout restart deploy/dhcp-scope-manager -n dhcp-scope-manager`.
+# Argo updating the Secret does NOT restart this Deployment.
 revision: main   # branch in helm-charts-dhcp-scope-manager

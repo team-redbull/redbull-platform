@@ -23,12 +23,15 @@ secrets:
   #     --from-literal=SEGMENTS_MANAGER_API_TOKEN="<the segments-manager token>"
   # See gitops/SECRETS.md.
   existingSecret: segments-manager-token
-  # allocate-segment credentials, same out-of-band pattern. Setting these stops
-  # the chart from rendering its own dev-token Secrets of the same names (which
-  # Argo would then own and stomp the real values with on every sync).
+  # allocate-segment's credential, same out-of-band pattern. Setting this stops
+  # the chart from rendering its own dev-token Secret of the same name (which
+  # Argo would then own and stomp the real value with on every sync).
   #   day1-git-token:  key DAY1_GIT_TOKEN — pushes to gitops-day1-platform-config
-  #   dhcp-api-token:  key DHCP_API_TOKEN — the SAME token dhcp-scope-manager
-  #                    pins via its apiAuth.existingSecret (see that service's
-  #                    values.yaml); rotate the two together.
+  #
+  # No DHCP API token here any more. allocate-segment's convergence poll is a GET,
+  # and that API leaves its scope GETs unauthenticated so this worker needs no
+  # credential for it. The copy that used to live here (dhcp-api-token, key
+  # DHCP_API_TOKEN) held the same value dhcp-scope-manager does and had to rotate
+  # in step with it — that rule is gone with it. Clean up the live Secret:
+  #   oc delete secret dhcp-api-token -n redbull-workflows
   existingDay1Secret: day1-git-token
-  existingDhcpSecret: dhcp-api-token

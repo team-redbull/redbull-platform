@@ -41,17 +41,28 @@ winrm:
   passwordKey: winrm-password
 
 apiAuth:
-  # Out-of-band Secret (gitops/SECRETS.md pattern), NOT the chart's generated
-  # one: the chart's lookup-then-generate keeps the token stable under
-  # `helm upgrade`, but Argo CD renders with `helm template`, where `lookup`
-  # returns nothing — so every re-render ROTATED the token while the running
-  # pod kept its startup value (observed live: pod env vs Secret disagreed).
-  # Pinning an existing Secret ends the rotation; segment-lifecycle-worker
-  # holds a copy of the same token (dhcp-api-token in redbull-workflows) for
-  # the allocate-segment convergence poll, and that copy must stay in sync:
-  #   oc create secret generic dhcp-scope-manager-token \
-  #     --from-literal=api-token='...' -n dhcp-scope-manager
-  existingSecret: dhcp-scope-manager-token
+  # The Secret is now rendered by the chart's own charts/dhcp-api-token subchart,
+  # from the single token committed in that subchart's values.yaml. Nothing here
+  # creates it and nothing generates it — both of those paths were removed:
+  #
+  #   generated — lookup-then-randAlphaNum was stable under `helm upgrade`, but
+  #     Argo CD renders with `helm template`, where `lookup` returns nothing, so
+  #     every re-render ROTATED the token while the running pod kept its startup
+  #     value (observed live: pod env vs Secret disagreed).
+  #   out of band — `oc create secret` ended that rotation but left the live token
+  #     invisible to git, and had to be repeated per cluster by hand.
+  #
+  # These two keys are now just the reference the Deployment resolves. They must
+  # agree with the subchart, which hardcodes both.
+  #
+  # No second copy to keep in sync any more: segment-lifecycle-worker used to hold
+  # one (dhcp-api-token in redbull-workflows) for the allocate-segment convergence
+  # poll. That poll is a GET, and the scope GETs are anonymous now, so the copy is
+  # gone along with the rotate-both-together rule.
+  #
+  # Rotating: edit the token in the chart repo, then roll this Deployment —
+  # DHCP_API_TOKEN is env, so a running pod keeps its startup value.
+  secretName: dhcp-scope-manager-token
   tokenKey: api-token
 
 route:
