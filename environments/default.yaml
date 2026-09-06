@@ -41,6 +41,16 @@ htpasswdIdp:
       password: Password1
   clusterAdmins:
     - ocpadmin
+  # OpenShift group the clusterAdmins above are also added to, purely so they can SEE
+  # anything in the Argo CD UI. OpenShift GitOps' argocd-rbac-cm has an empty
+  # `policy.default` and grants role:admin only to the GROUPS `system:cluster-admins`
+  # and `cluster-admins` — a user who is cluster-admin via a direct User binding
+  # matches neither and gets an empty, error-free application list. Membership here
+  # grants no Kubernetes privilege of its own (OpenShift's `cluster-admins`
+  # ClusterRoleBinding binds the virtual `system:cluster-admins`, not this group).
+  # Set to "" to skip the group entirely; change it if your instance's RBAC policy
+  # names a different group.
+  argocdRbacGroup: cluster-admins
 
 # Standalone MongoDB backing segments-manager, deployed as its own Helmfile release so
 # it's ready before the Argo-managed segments-manager app starts. The segments-manager

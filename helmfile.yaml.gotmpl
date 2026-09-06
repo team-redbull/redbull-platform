@@ -46,6 +46,7 @@ releases:
             {{- range .Values.htpasswdIdp.users }}
             {{ htpasswd .username .password }}
             {{- end }}
+          - {{ .Values.htpasswdIdp.argocdRbacGroup | quote }}
           {{- range .Values.htpasswdIdp.clusterAdmins }}
           - {{ . | quote }}
           {{- end }}

@@ -382,6 +382,12 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   its own, and the ApplicationSet does **not** use `CreateNamespace=true` — a
   namespaced GitOps instance can't create/patch cluster-scoped Namespaces, so the
   `namespaces` release is the sole mechanism (it runs in every env). See `CLAUDE.md`.
+- **Empty Argo CD UI despite cluster-admin**: OpenShift GitOps grants `role:admin` only
+  to the *groups* `system:cluster-admins` / `cluster-admins` and leaves `policy.default`
+  empty, so an account made cluster-admin through a direct User binding sees an empty
+  application list with no error. `htpasswd-idp` therefore also adds each
+  `htpasswdIdp.clusterAdmins` account to `htpasswdIdp.argocdRbacGroup` (default
+  `cluster-admins`). See `CLAUDE.md`.
 - **OpenShift SCC**: Crossplane and provider-http pods run as nonroot and generally
   work under `restricted-v2`; if a provider pod is denied, grant its service account
   the appropriate SCC.

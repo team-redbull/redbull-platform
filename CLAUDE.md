@@ -327,6 +327,42 @@ claimed by identity "Y" because it is already mapped to [Z]`), not a clean
 delete identity <old-provider>:<user>` + `oc delete user <user>` before
 retrying under the new provider.
 
+## Cluster-admin does not get you into the Argo CD UI
+
+An account can hold `cluster-admin` and still see an **empty** application list in the
+Argo CD web UI, with no error anywhere. OpenShift GitOps ships `argocd-rbac-cm` with an
+empty `policy.default` and exactly two grants:
+
+```
+g, system:cluster-admins, role:admin
+g, cluster-admins,        role:admin
+```
+
+Both name **groups**, resolved from the OpenShift groups claim (`scopes: [groups]`).
+`oc adm policy add-cluster-role-to-user cluster-admin <user>` creates a direct **User**
+ClusterRoleBinding, which matches neither. With an empty default policy the user
+authenticates fine and is authorised for nothing — so the UI renders an empty list that
+reads like "the apps failed to deploy" rather than "you cannot see them". `oc get
+applications -n openshift-gitops` showing seven apps while the UI shows none is the tell.
+
+So `charts/htpasswd-idp/scripts/apply-oauth.sh` also adds every
+`htpasswdIdp.clusterAdmins` account to the OpenShift group named by
+`htpasswdIdp.argocdRbacGroup` (default `cluster-admins`), right after granting
+cluster-admin. Two things about that group:
+
+- **It grants no Kubernetes privilege by itself.** OpenShift's `cluster-admins`
+  ClusterRoleBinding binds the *virtual* group `system:cluster-admins`, not a real group
+  of that name — verified live, nothing references the real one. Membership is purely an
+  Argo RBAC mapping, and these accounts are cluster-admin already.
+- **The hook is additive and must stay that way.** `oc adm groups new` fails if the group
+  exists, so an existing group is kept and only missing members are added. Recreating it
+  would silently revoke access for anyone a human added by hand.
+
+Set `argocdRbacGroup: ""` to skip it, or change it if your instance's RBAC policy names a
+different group. If you instead want *every* authenticated user to read, set
+`policy.default: role:readonly` on the ArgoCD CR — a much broader grant, so do it
+deliberately.
+
 ## Naming collision gotcha
 
 Bitnami subchart resources (Secrets, etc.) are commonly named after

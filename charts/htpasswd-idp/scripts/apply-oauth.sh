@@ -16,7 +16,8 @@ set -euo pipefail
 bootstrap_provider_name="$1"
 bootstrap_secret_name="$2"
 htpasswd_lines="$3"
-shift 3
+argocd_rbac_group="$4"
+shift 4
 cluster_admins=("$@")
 
 # First HTPasswd-type provider's backing Secret name, if any already exists.
@@ -57,3 +58,42 @@ for user in "${cluster_admins[@]}"; do
   echo "htpasswd-idp: granting cluster-admin to '$user'"
   oc adm policy add-cluster-role-to-user cluster-admin "$user"
 done
+
+# --- Argo CD UI visibility -------------------------------------------------
+# Cluster-admin does NOT get you into the Argo CD UI. OpenShift GitOps ships
+# argocd-rbac-cm with an EMPTY `policy.default` and exactly two grants:
+#
+#     g, system:cluster-admins, role:admin
+#     g, cluster-admins,        role:admin
+#
+# Both name GROUPS, and Argo resolves them from the OpenShift groups claim
+# (`scopes: [groups]`). A user holding cluster-admin through a direct User
+# ClusterRoleBinding — which is precisely what the loop above creates — matches
+# neither. With an empty default policy that is not an error: the user logs in
+# fine and sees an EMPTY application list, which reads like "the apps failed to
+# deploy" rather than "you cannot see them".
+#
+# So the same list of accounts also goes into the group Argo already trusts.
+# Note this grants no Kubernetes privilege by itself: OpenShift's `cluster-admins`
+# ClusterRoleBinding binds the VIRTUAL group `system:cluster-admins`, not a real
+# group of this name, so membership here is only an Argo RBAC mapping — and these
+# accounts are cluster-admin already, one line above.
+#
+# Additive on purpose: `oc adm groups new` fails if the group exists, so an
+# existing group is kept and only the missing members are added. Never recreate
+# it — on a cluster where somebody added a colleague by hand, replacing it would
+# silently revoke their access.
+if [[ -n "$argocd_rbac_group" ]]; then
+  if ! oc get group "$argocd_rbac_group" >/dev/null 2>&1; then
+    echo "htpasswd-idp: creating group '$argocd_rbac_group' (Argo CD UI RBAC)"
+    oc adm groups new "$argocd_rbac_group"
+  fi
+  for user in "${cluster_admins[@]}"; do
+    if oc get group "$argocd_rbac_group" -o jsonpath='{.users}' | grep -q "\"${user}\""; then
+      echo "htpasswd-idp: '$user' already in group '$argocd_rbac_group', skipping"
+    else
+      echo "htpasswd-idp: adding '$user' to group '$argocd_rbac_group' (Argo CD UI access)"
+      oc adm groups add-users "$argocd_rbac_group" "$user"
+    fi
+  done
+fi
