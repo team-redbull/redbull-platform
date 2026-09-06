@@ -26,6 +26,15 @@ spec:
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
+      # Explicitly `default`, NOT omitted. A pod spec carries two mirrored fields,
+      # `serviceAccountName` and the deprecated alias `serviceAccount`; on write the
+      # alias wins whenever the name is empty. So simply DROPPING the field from this
+      # template does not unset a ServiceAccount that is already live — the API server
+      # re-populates it from the alias, Argo diffs against a desired state that has no
+      # such field, sees no difference, and reports Synced while the Deployment is stuck
+      # (ReplicaFailure: serviceaccount "segments-manager" not found) because the SA
+      # template was removed in 700736e. Only an explicit value clears it.
+      serviceAccountName: default
       {{- with .Values.image.pullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
