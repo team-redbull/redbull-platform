@@ -3,5 +3,5 @@ name: segment-lifecycle-worker
 description: >-
   The segment-lifecycle domain's activity worker — opens firewall rules via the next service and unlocks segments in the Segments Manager. Named for the process, not the domain: it polls the domain-scoped segment-lifecycle-activity queue on behalf of every workflow in the domain. Deploys alongside the shared workflows-orchestrator chart, which runs the workflow brain.
 type: application
-version: 0.1.17
-appVersion: "v0.1.17"
+version: 0.1.18
+appVersion: "v0.1.18"
