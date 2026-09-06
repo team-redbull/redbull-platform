@@ -2,12 +2,12 @@ apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
   name: redbull-platform
-  namespace: user1-argocd
+  namespace: openshift-gitops
 spec:
   sourceRepos:
     - "*"
   sourceNamespace:
-    - user1-argocd
+    - openshift-gitops
   destinations:
     - name: "*"
       namespace: "*"

@@ -65,10 +65,10 @@ providerHttp:
   # belongs here — a second one listed out of caution just holds standing write access
   # to every DHCP scope. Air-gapped substitutes its own instance's SAs.
   argocdServiceAccounts:
-    - name: user1-argo-argocd-application-controller
-      namespace: user1-argocd
-    - name: user1-argo-argocd-server
-      namespace: user1-argocd
+    - name: openshift-gitops-argocd-application-controller
+      namespace: openshift-gitops
+    - name: openshift-gitops-argocd-server
+      namespace: openshift-gitops
 
 # dhcp_scope_manager <-> provider-http. apiUrl is the backend DHCP API the Crossplane
 # Request talks to. No scope Requests are created unless you set dhcp_values below (the

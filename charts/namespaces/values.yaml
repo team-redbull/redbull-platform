@@ -9,16 +9,19 @@ namespaces:
   - rhokp                 # Argo-managed: the `rhokp` app deploys here
   - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
 
-# OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. Its controller
-# is namespace-scoped (installed in `user1-argocd`), so it only gets RBAC in namespaces
-# labeled `argocd.argoproj.io/managed-by: <instance>`. We stamp that label here on the
-# namespaces the Argo apps deploy into, so the apps can sync into pre-created namespaces.
-# (Namespaces Argo creates itself — e.g. where the DBs are external — get the label from
-# each app's managedNamespaceMetadata instead; see gitops/appset.yaml.) Leave managedBy
-# empty to disable, or if the instance is cluster-scoped (then the label is a harmless
-# no-op anyway).
+# OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. A
+# namespace-scoped instance only gets RBAC in namespaces labeled
+# `argocd.argoproj.io/managed-by: <instance>`, so we stamp that label here on the
+# namespaces the Argo apps deploy into, letting them sync into pre-created namespaces.
+#
+# The current target is `openshift-gitops`, the operator's DEFAULT instance, which is
+# CLUSTER-scoped — so for it the label is a harmless no-op rather than a requirement.
+# It is kept set anyway: it costs nothing, it documents which instance owns these
+# namespaces, and it is exactly what an environment running a namespaced instance
+# (as this repo previously did, with `user1-argocd`) needs in order to work at all.
+# Leave managedBy empty to stop stamping it.
 argocd:
-  managedBy: user1-argocd
+  managedBy: openshift-gitops
   managedNamespaces:
     - temporal
     - segments-manager

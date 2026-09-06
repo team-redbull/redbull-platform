@@ -21,7 +21,7 @@ layer: `namespaces`, `htpasswd-idp` (local-shell postsync hook, see below),
 CRD-before-CR ordering), plus the still-Helmfile-managed `segments-manager-mongodb`
 and `mock-segment-connectivity`, and the not-yet-migrated `bmh-generator-operator`,
 `server-scanner-dashboard`, `hosted-cluster-integration`. Argo CD is **already
-installed** (OpenShift GitOps, namespace `user1-argocd`) — this platform does not
+installed** (OpenShift GitOps, namespace `openshift-gitops`) — this platform does not
 deploy it.
 
 **Argo CD** owns the stateless service layer via **one generic ApplicationSet**
@@ -370,23 +370,34 @@ per-domain chart), and do not remove `redbull-workflows` from
 every workflow-domain chart shares this one namespace, so its ownership
 belongs solely to the `namespaces` release.
 
-Now that the workflow charts are **Argo-managed**, the `namespaces`
-release is the **sole** namespace mechanism: it pre-creates `redbull-workflows` and
-stamps the `argocd.argoproj.io/managed-by` label that grants this namespaced GitOps
-instance its in-namespace RBAC. The ApplicationSet deliberately does **NOT** use
-`CreateNamespace=true`/`managedNamespaceMetadata` — verified live: the namespaced
-`user1-argo` application-controller has no cluster RBAC for the cluster-scoped
-Namespace object and gets `forbidden` trying to create or patch one. This is fine
-because the `namespaces` release runs in the bootstrap of *every* environment (it
-builds namespaces from a static list, independent of whether the DBs/mock are
-deployed there — so even the air-gapped "external DBs" case has its namespaces
-pre-created). The charts themselves still template **no** Namespace.
+Now that the workflow charts are **Argo-managed**, the `namespaces` release is the
+**sole** namespace mechanism: it pre-creates `redbull-workflows` and stamps the
+`argocd.argoproj.io/managed-by` label. The ApplicationSet deliberately does **NOT** use
+`CreateNamespace=true`/`managedNamespaceMetadata`.
 
-**If you ever want Argo to create namespaces itself** (a cluster-scoped instance, or
-an env without the namespaces release), grant the application-controller SA a
-ClusterRole for `namespaces` create/patch and re-add `CreateNamespace=true` — but
-that weakens the namespaced instance's isolation; keeping the namespaces release is
-preferred.
+Be careful with the reason, because it changed with the target instance:
+
+- The original reason was a hard constraint. This repo used to target `user1-argo`, a
+  **namespaced** instance in `user1-argocd`, whose application-controller has no cluster
+  RBAC for the cluster-scoped Namespace object — verified live, it gets `forbidden`
+  trying to create OR patch one. There, the label was not documentation, it was what
+  granted the instance its in-namespace RBAC at all.
+- The current target, `openshift-gitops`, is the operator's **default, CLUSTER-scoped**
+  instance (its application-controller holds a ClusterRoleBinding). It *could* create
+  namespaces, and the `managed-by` label is a no-op for it.
+
+The setting stays off anyway, for reasons that outlive the instance choice: the
+`namespaces` release runs in the bootstrap of *every* environment (it builds namespaces
+from a static list, independent of whether the DBs/mock are deployed there — so even the
+air-gapped "external DBs" case has its namespaces pre-created), and one owner per
+namespace means it is never a race between two tools. The label is likewise kept, so the
+repo still works unchanged in an environment running a namespaced instance. The charts
+themselves template **no** Namespace.
+
+**If you do want Argo to create namespaces itself** (an env without the namespaces
+release), re-add `CreateNamespace=true` — and if that env runs a *namespaced* instance,
+grant its application-controller SA a ClusterRole for `namespaces` create/patch first, at
+the cost of that instance's isolation.
 
 ## No GHCR pull secret (images are public)
 

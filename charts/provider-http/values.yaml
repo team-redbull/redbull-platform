@@ -47,7 +47,7 @@ argocdRbac:
   enabled: false
   name: argocd-crossplane-http-requests
   serviceAccounts:
-    - name: user1-argo-argocd-application-controller
-      namespace: user1-argocd
-    - name: user1-argo-argocd-server
-      namespace: user1-argocd
+    - name: openshift-gitops-argocd-application-controller
+      namespace: openshift-gitops
+    - name: openshift-gitops-argocd-server
+      namespace: openshift-gitops

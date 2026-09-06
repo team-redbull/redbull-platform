@@ -2,7 +2,8 @@
 # one Argo CD Application per service. Adding a service = one chart folder under
 # gitops/charts/ + one app.yaml here. No new ApplicationSet, ever.
 #
-# Lives in the OpenShift GitOps instance namespace (user1-argocd).
+# Lives in the OpenShift GitOps instance namespace (openshift-gitops) — the operator's
+# DEFAULT, cluster-scoped instance.
 #
 # SINGLE SOURCE, SINGLE REPO. Every service's chart lives in THIS repo at
 # gitops/charts/<service>/, and that chart's own values.yaml is the whole configuration —
@@ -20,7 +21,7 @@ apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
   name: redbull-services
-  namespace: user1-argocd
+  namespace: openshift-gitops
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
@@ -76,17 +77,21 @@ spec:
         namespace: '{{ .namespace }}'
       syncPolicy:
         automated: { prune: true, selfHeal: true }
-        # CreateNamespace is commented out, not enabled: this is a *namespaced* OpenShift
-        # GitOps instance, whose application-controller has no RBAC on cluster-scoped
-        # Namespace objects today (verified live — it gets `forbidden` trying to create OR
-        # patch one). Uncommenting the line below will make every sync fail until that SA
-        # is granted a ClusterRole for namespaces create/patch — which also weakens this
-        # instance's namespace isolation, so do that deliberately, not as a side effect of
-        # copy-pasting this line. Until then, the `namespaces` Helmfile release pre-creates
-        # every target namespace AND stamps the argocd.argoproj.io/managed-by label that
-        # grants this instance its in-namespace RBAC — so Argo never needs to touch the
-        # Namespace itself. (The namespaces release runs in every environment, including
-        # air-gapped ones where the DBs are external — it doesn't depend on the DBs.)
+        # CreateNamespace stays OFF, deliberately, even though this instance COULD do it:
+        # the `openshift-gitops` default instance is cluster-scoped (its
+        # application-controller holds a ClusterRoleBinding), so unlike the namespaced
+        # `user1-argo` instance this repo used to target, it is not forbidden from creating
+        # a Namespace. The `namespaces` Helmfile release remains the single owner of every
+        # target namespace instead, for two reasons that outlive the instance choice: it
+        # runs in the bootstrap of EVERY environment (including air-gapped ones where the
+        # DBs are external, so it does not depend on them), and keeping one owner means a
+        # namespace is never a race between two tools. It also stamps the
+        # argocd.argoproj.io/managed-by label, which a NAMESPACED instance needs for
+        # in-namespace RBAC — harmless here, and what makes this repo portable to an env
+        # that runs one.
+        #
+        # If you do enable it, note a namespaced instance needs a ClusterRole for
+        # namespaces create/patch first, or every sync fails with `forbidden`.
         # syncOptions:
         #   - CreateNamespace=true
         retry:

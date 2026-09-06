@@ -13,7 +13,7 @@ CD is **split in two**:
 There is **one environment**. The air-gapped deployment runs its own Argo architecture on
 its own mirror of this repo; it is not modelled here as a second env.
 
-Argo CD is assumed **already installed** (OpenShift GitOps, namespace `user1-argocd`).
+Argo CD is assumed **already installed** (OpenShift GitOps, namespace `openshift-gitops`).
 See [gitops/README](gitops/) and `CLAUDE.md §"The CD split"` for the why.
 
 ## What Helmfile deploys (bootstrap)
@@ -109,15 +109,15 @@ Everything under [gitops/](gitops/):
 There is no per-environment values layer and no second `$values` source: an Application
 renders from exactly one source, this repo, at `gitops/charts/<service>`.
 
-**Bring-up** (Argo CD already installed in `user1-argocd`):
+**Bring-up** (Argo CD already installed in `openshift-gitops`):
 
 ```sh
 # one-time: register a repo credential for this repo
 #   (a Secret labeled argocd.argoproj.io/secret-type: repo-creds, URL prefix
-#    https://github.com/team-redbull/, in namespace user1-argocd)
+#    https://github.com/team-redbull/, in namespace openshift-gitops)
 oc apply -f gitops/project.yaml
 oc apply -f gitops/appset.yaml
-oc get applications -n user1-argocd
+oc get applications -n openshift-gitops
 ```
 
 **Add a service:** add `gitops/charts/<name>/` (the chart) and
@@ -257,7 +257,7 @@ Helmfile release names (bootstrap layer): `namespaces`, `htpasswd-idp`, `crosspl
 `mock-segment-connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`. (`temporal`, `segments-manager`, `workflows-orchestrator`,
 `segment-lifecycle-worker`, `workflows-docs`, `dhcp-scope-manager` and `rhokp` are Argo CD
-apps now — select them with `argocd app`/`kubectl get applications -n user1-argocd`, not
+apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
 `helmfile -l`.)
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts
@@ -378,7 +378,7 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   `CLAUDE.md` for the full story on both.
 - **`workflows-orchestrator`, `segment-lifecycle-worker` and `workflows-docs` (Argo apps) all deploy into
   `redbull-workflows`**, pre-created and labeled `argocd.argoproj.io/managed-by:
-  user1-argocd` by the `namespaces` release. Neither chart has a Namespace template of
+  openshift-gitops` by the `namespaces` release. Neither chart has a Namespace template of
   its own, and the ApplicationSet does **not** use `CreateNamespace=true` — a
   namespaced GitOps instance can't create/patch cluster-scoped Namespaces, so the
   `namespaces` release is the sole mechanism (it runs in every env). See `CLAUDE.md`.
