@@ -36,18 +36,26 @@ data:
   PORTS_MCE_TO_INVENTORY: '{"tcp": ["6443", "30000-32767"]}'
   PORTS_PXE_TO_MCE: '{"tcp": ["30000-32767"], "udp": ["9000"]}'
   PORTS_MCE_TO_PXE: '{"tcp": ["6443", "30000-32767"]}'
-  # -- Site topology: site name -> {pool, bmc} ------------------------------
+  # -- Site topology: site -> {pool, dell-bmc, cisco-bmc} -------------------
   # Defined ONCE in redbull-platform (gitops/values/<env>.yaml, key
   # `siteNetworks`) and rendered from that same value into BOTH this ConfigMap
   # and the Segments Manager's. The two services being keyed by the identical
   # site list is now structural — it used to be enforced only by this comment,
   # which is why a "site-a" placeholder once matched no real site.
   #
-  # This worker reads only `bmc`: every MCE segment opens a one-directional rule
-  # to its site's static BMC network, which the Segments Manager does not track.
-  # `pool` is the Segments Manager's (the range its segments must fall inside)
-  # and is ignored here — SiteNetworks sets extra="ignore" so neither service
-  # breaks when the other's sub-keys change.
+  # This worker reads only the BMC keys: every MCE segment opens rules in BOTH
+  # DIRECTIONS against BOTH of its site's static BMC networks — four requests —
+  # which the Segments Manager does not track. There are two because out-of-band
+  # management sits on a different /16 per hardware VENDOR (`dell-bmc`,
+  # `cisco-bmc`), and nothing at segment level says which vendor sits under a
+  # given MCE. `pool` is the Segments Manager's (the range its segments must
+  # fall inside) and is ignored here — SiteNetworks sets extra="ignore" so
+  # neither service breaks when the other's sub-keys change.
+  #
+  # BOTH BMC keys are REQUIRED on every site. A missing or misspelt one
+  # crash-loops this worker at startup, which is the point: the alternative is
+  # an MCE that reaches Dell BMCs and not Cisco ones, looking healthy. Ship a
+  # ConfigMap carrying both keys BEFORE (or with) the image that requires them.
   #
   # A site missing from this map fails every MCE segment in it with
   # BmcSegmentNotConfiguredError, non-retryable by design: a config gap, not an
@@ -60,6 +68,10 @@ data:
 {{- fail "siteNetworks is empty. Define it once in redbull-platform (gitops/values/<env>.yaml, key `siteNetworks`); the ApplicationSet merges that file in ahead of this chart's values." }}
 {{- end }}
   SITE_NETWORKS: {{ .Values.siteNetworks | toJson | quote }}
+  # ONE profile for all four MCE<->BMC requests: both vendors and both
+  # directions run over the same IPMI ports, and knobs that must be kept equal
+  # are a drift source, not a feature. It keeps the MCE_TO_BMC name because
+  # renaming it would mean shipping a new ConfigMap key ahead of the image.
   PORTS_MCE_TO_BMC: '{"tcp": ["623"], "udp": ["623"]}'
   # -- allocate-segment: the day1 values repo -------------------------------
   # Where cluster values files live; the workflow appends the vlanId +
