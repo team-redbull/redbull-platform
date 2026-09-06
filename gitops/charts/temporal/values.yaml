@@ -1,0 +1,415 @@
+# ---------------------------------------------------------------------------
+# temporal-stack values
+# ---------------------------------------------------------------------------
+# Values for the `temporal` service, deployed by the redbull-services ApplicationSet
+# (gitops/services/temporal/app.yaml). THIS FILE IS THE SINGLE SOURCE OF TRUTH for how
+# Temporal is configured — there is no second values file layered on top of it.
+# gitops/overrides/ exists for a site- or cluster-specific override, and nothing uses it
+# today.
+#
+# Hardened for OpenShift's restricted-v2 SCC: no container pins runAsUser/fsGroup,
+# so the namespace's UID range is injected automatically.
+#
+# PostgreSQL is bundled as a subchart (postgresql.enabled below) and its packaged
+# dependency is committed at charts/postgresql-*.tgz — Argo CD renders straight from git
+# and cannot pull an OCI dependency at render time. Ordering is expressed with Argo sync
+# waves, NOT Helm hooks: postgres wave 0, the schema Job as an Argo `Sync` hook at wave
+# 1, server/UI wave 2. The schema Job must never carry Helm pre-install/pre-upgrade
+# annotations — Argo maps those to PreSync, which runs before the postgres subchart and
+# reintroduces the original deadlock. See CLAUDE.md.
+# ---------------------------------------------------------------------------
+
+nameOverride: ""
+# Keep resource names clean (temporal-frontend, temporal-ui, ...) regardless of
+# the release name, instead of <release>-temporal-stack-*.
+fullnameOverride: "temporal"
+
+# ---------------------------------------------------------------------------
+# Private registry (air-gapped installs)
+# ---------------------------------------------------------------------------
+# global.imageRegistry is the registry URL prefixed to EVERY image this release
+# renders — the chart's own images AND the bundled PostgreSQL's (it is the key
+# the Bitnami subchart reads natively). Leave empty to pull the images from
+# their public registries (Docker Hub / quay.io) as listed below — that is the
+# connected-environment default.
+#
+# When set (e.g. "artifactory.example.com/temporal-docker"), each image below
+# is rewritten to <registry>/<repository>:<tag>, taking the repository VERBATIM
+# — nothing is stripped, so a repository that names its source registry keeps
+# that segment in the mirrored path. So with the value above:
+#
+#     temporalio/ui:2.51.0                 -> artifactory.example.com/temporal-docker/temporalio/ui:2.51.0
+#     quay.io/openshift/origin-cli:4.18    -> artifactory.example.com/temporal-docker/quay.io/openshift/origin-cli:4.18
+#     busybox:1.36                         -> artifactory.example.com/temporal-docker/busybox:1.36
+#
+# The Docker Hub repositories are written without a docker.io/ segment, so they
+# land host-less; only the two quay.io/openshift/* sidecars carry a host. Push
+# each image to the path it is written with here.
+#
+# This is exactly the layout produced by the retag loop in the README's
+# air-gapped section, so mirroring with that script and setting this one field
+# is enough — no per-image repository overrides needed. A trailing slash is
+# fine. Set imagePullSecrets below too if the registry needs credentials.
+global:
+  imageRegistry: ""
+  security:
+    # The Bitnami subchart refuses to render once its image no longer points at
+    # the stock docker.io path, so mirroring it trips that guard. Set this to
+    # true whenever imageRegistry above is set.
+    allowInsecureImages: false
+
+# imagePullPolicy applied to every container this chart renders (Temporal, UI,
+# the auth sidecars and the wait init containers). The bundled PostgreSQL keeps
+# the subchart's own setting. All images are pinned to explicit tags, so
+# IfNotPresent is the right default; use Always only if you republish mutable
+# tags into your mirror.
+imagePullPolicy: IfNotPresent
+
+# Image pull secrets applied to every workload (Temporal + schema job + UI).
+# In an air-gapped install, create a pull secret for your internal registry and
+# list it here, e.g. [{ name: internal-registry }].
+imagePullSecrets: []
+
+# Small utility image used by the hook Jobs' wait-for init containers.
+# Mirror this too for air-gapped installs (covered by global.imageRegistry above).
+waitImage:
+  repository: busybox
+  tag: "1.36"
+
+# ---------------------------------------------------------------------------
+# Temporal server (split services) + schema management
+# ---------------------------------------------------------------------------
+temporal:
+  image:
+    # The auto-setup image renders config from env vars and runs the service(s)
+    # named in SERVICES. Schema creation is delegated to the schema Job below
+    # (SKIP_SCHEMA_SETUP/SKIP_DB_CREATE are set on the server pods).
+    repository: temporalio/auto-setup
+    tag: "1.29.7"
+
+  # Number of history shards. Must be fixed for the life of the cluster.
+  numHistoryShards: 512
+
+  # Per-role deployments. grpcPort/membershipPort match Temporal defaults.
+  # services.frontend.grpcPort is THE frontend port: the UI, the setup Job,
+  # PUBLIC_FRONTEND_ADDRESS and the NetworkPolicy all derive from it.
+  services:
+    frontend:
+      replicaCount: 2
+      grpcPort: 7233
+      membershipPort: 6933
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits:   { cpu: "1",  memory: 512Mi }
+    history:
+      replicaCount: 2
+      grpcPort: 7234
+      membershipPort: 6934
+      resources:
+        requests: { cpu: 200m, memory: 512Mi }
+        limits:   { cpu: "2",  memory: 1Gi }
+    matching:
+      replicaCount: 2
+      grpcPort: 7235
+      membershipPort: 6935
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits:   { cpu: "1",  memory: 512Mi }
+    worker:
+      replicaCount: 2
+      grpcPort: 7239
+      membershipPort: 6939
+      resources:
+        requests: { cpu: 100m, memory: 256Mi }
+        limits:   { cpu: "1",  memory: 512Mi }
+
+  # Soft anti-affinity spreads replicas of the same role across nodes.
+  podAntiAffinity: soft
+
+  # One-time provisioning of the default namespace + search attributes,
+  # run by a hook Job against the frontend (not per-pod).
+  setup:
+    enabled: true
+    defaultNamespace: default
+    # How long CLOSED workflows (any final state) are kept before Temporal
+    # purges them from history/visibility. Applied by the setup Job ONLY when
+    # it first CREATES the namespace — on a cluster where the namespace
+    # already exists, changing this and re-syncing does nothing (the Job takes
+    # its "already exists" branch). To change retention on an existing
+    # namespace, run `temporal operator namespace update --retention <dur>`
+    # against the live cluster — see README ("Workflow retention").
+    retention: 168h   # 1 week
+    searchAttributes: true
+
+  # Extra Temporal dynamic config (rendered into a ConfigMap).
+  dynamicConfig: {}
+    # frontend.enableUpdateWorkflowExecution:
+    #   - value: true
+
+  # Schema setup/upgrade Job (Argo CD Sync hook, wave 1). Uses admin-tools
+  # (temporal-sql-tool); the plugin is database.driver.
+  schema:
+    image:
+      repository: temporalio/admin-tools
+      tag: "1.29.7-tctl-1.18.4-cli-1.7.2"
+    resources:
+      requests: { cpu: 50m, memory: 128Mi }
+      limits:   { cpu: 500m, memory: 256Mi }
+
+# ---------------------------------------------------------------------------
+# Temporal Web UI
+# ---------------------------------------------------------------------------
+ui:
+  enabled: true
+  image:
+    repository: temporalio/ui
+    tag: "2.51.0"
+  replicaCount: 1
+  port: 8080
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+  # Browser origin(s) the UI server accepts (TEMPORAL_CORS_ORIGINS). Empty =>
+  # "https://<ui.route.host>" when a Route host is pinned, else "*" (the
+  # auto-assigned host is unknown at render time and the UI must still load).
+  # Pin route.host in production so this is not a wildcard.
+  corsOrigins: ""
+
+  # OpenShift OAuth login in front of the UI ("log in with OpenShift", like
+  # the ArgoCD experience). Adds an oauth-proxy sidecar that authenticates
+  # browsers against the cluster's OAuth server before proxying to the UI.
+  # Requires ui.route.enabled (the OAuth redirect URI is derived from the
+  # Route via a ServiceAccount annotation — no OAuthClient object needed) and
+  # forces the Route to reencrypt termination (TLS to the sidecar is minted by
+  # the service-ca operator). OpenShift-only; leave disabled elsewhere.
+  #
+  # NOTE: this guards the Route only. Other pods can still reach the UI
+  # pod's HTTP port directly (the Service stops exposing it, but the pod
+  # listens on all interfaces) unless networkPolicy.enabled is on, and the
+  # Temporal gRPC frontend (7233) remains unauthenticated either way.
+  auth:
+    # ON here: "Log in with OpenShift" oauth-proxy in front of the Temporal UI Route,
+    # then an nginx sidecar 403s anyone whose username is not in allowedUsers below.
+    enabled: true
+    image:
+      repository: quay.io/openshift/origin-oauth-proxy
+      tag: "4.20"
+    # HTTPS port the sidecar listens on; the Service/Route target this
+    # instead of the UI's plain HTTP port when auth is enabled.
+    port: 8443
+    # Session lifetime. oauth-proxy re-validates the user's OpenShift token
+    # (and the sar below, if set) ONLY when it refreshes the cookie, and
+    # upstream's default is to never refresh — a revoked token or a lost
+    # permission would then keep working for the cookie's full lifetime
+    # (upstream default 168h). cookieRefresh bounds that window; cookieExpire
+    # is the hard cap after which the user must log in again. Go durations;
+    # cookieExpire must be longer than cookieRefresh. (The allowedUsers /
+    # allowedGroups check is independent of this — it runs on every request.)
+    cookieRefresh: 1h
+    cookieExpire: 24h
+    # Optional PERMISSION gate: a SubjectAccessReview (JSON object) every user
+    # must pass (checked with the user's own token — no extra RBAC needed).
+    # Empty => no permission gate (see allowedUsers below for an identity
+    # gate). Example, only users who can read services in this namespace:
+    #     sar: { namespace: temporal, resource: services, verb: get }
+    #
+    # IMPORTANT: SAR cannot be used to admit one cluster-admin while excluding
+    # another — cluster-admin is unconditional verb=*/resource=* and therefore
+    # satisfies every possible SAR by definition. There is no SAR that carves
+    # one admin out of a set of admins; sar: {resource:"*",verb:"*"} restricts
+    # to "any cluster-admin" as a group, not to a specific person. Use
+    # allowedUsers/allowedGroups below to restrict by identity instead.
+    sar: {}
+    # Optional IDENTITY gate: an explicit allowlist of OpenShift usernames
+    # (e.g. an htpasswd break-glass account). Non-empty => oauth-proxy is
+    # handed an --authenticated-emails-file holding this list and rejects
+    # anyone not on it — including cluster-admins, since this check is
+    # identity-based and doesn't go through RBAC/SAR at all. (For the
+    # openshift provider, oauth-proxy's notion of "email" IS the OpenShift
+    # username, so this file is an exact username allowlist.)
+    #
+    # Unions with allowedGroups below: a user needs to match EITHER. Combines
+    # with sar above as an AND if both are set.
+    #
+    # KEEP IN SYNC with htpasswdIdp.clusterAdmins in environments/default.yaml — that
+    # list is the source of truth for this platform's privileged accounts, and the
+    # bootstrap htpasswd-idp release is what creates the account named here. Two files
+    # by hand until secrets/identity move to a single source (gitops/SECRETS.md).
+    allowedUsers:
+      - ocpadmin
+    # Optional IDENTITY gate by group membership: OpenShift Group names whose
+    # members may log in. The groupSync sidecar resolves each Group to its
+    # member list every refreshInterval and merges it with allowedUsers into
+    # that same allowlist, so membership changes apply without a restart —
+    # and because oauth-proxy re-validates on every request, a user removed
+    # from the Group loses an already-open session too. Unlike sar, a
+    # cluster-admin who is NOT a member is rejected. Empty => no group gate.
+    #
+    # Requires the OpenShift Group objects to exist. On LDAP-backed clusters
+    # they come from `oc adm groups sync`, NOT from the LDAP login itself.
+    # The chart creates a ClusterRole/ClusterRoleBinding scoped by
+    # resourceNames to exactly these Groups, so installing with this set
+    # requires permission to create ClusterRoles.
+    allowedGroups: []
+    # The openshift provider does NOT hand oauth-proxy a bare username: it
+    # rewrites every login to "<username>@<usernameDomain>" and validates THAT
+    # string. Confirm the suffix your cluster uses — it is printed on every
+    # login:
+    #
+    #   oc logs deploy/<release>-ui -c oauth-proxy | grep 'authentication complete'
+    #   => ... authentication complete Session{alice@cluster.local token:true}
+    #
+    # The chart appends this to every allowlist entry so the file matches what
+    # oauth-proxy compares against. Bare usernames match NOTHING, and an
+    # allowlist that matches nothing does not deny everyone — oauth-proxy's
+    # own domain rule then admits every authenticated user, so the gate is
+    # silently inert. That is why --email-domain is pinned to an unmatchable
+    # value whenever an allowlist is in use (see ui.yaml).
+    usernameDomain: cluster.local
+    # Bring-your-own session-cookie Secret (key `session_secret`, 32 random
+    # bytes). Empty => the chart renders the Secret itself, from cookieSecret
+    # below if set, else a generated value preserved across upgrades via
+    # `lookup` (client-side renders like `helm template` / `helm diff` show a
+    # fresh random value instead — cosmetic only).
+    existingCookieSecret: ""
+    # Literal session-cookie key, rendered into the chart's own Secret. Empty
+    # here on purpose: this file is public, and anyone with the string can
+    # forge a UI session — so never commit a value. Supply it out of band
+    # (`--set ui.auth.cookieSecret=...`, an Argo CD Application parameter, a
+    # values file kept out of git) when you need the render to be
+    # deterministic, which is what lets Argo CD settle without the `lookup`.
+    # existingCookieSecret above is the better answer for production and
+    # takes precedence over this.
+    # Must be exactly 16, 24 or 32 bytes: oauth-proxy uses it as an AES key.
+    cookieSecret: ""
+    resources:
+      requests: { cpu: 25m, memory: 64Mi }
+      limits:   { cpu: 200m, memory: 128Mi }
+    # Sidecar backing allowedGroups. Only deployed when allowedGroups is
+    # non-empty; it just runs `oc get group` on a loop and rewrites the
+    # allowlist file oauth-proxy watches.
+    groupSync:
+      # Provides `oc`. Track your CLUSTER's minor version: the oc/kubectl
+      # skew policy is +/-1 minor, so a 4.18 client against a 4.20 API
+      # server is outside the supported window. With Red Hat entitlements,
+      # registry.redhat.io/openshift4/ose-cli:v<minor> is the supported
+      # equivalent of this community build.
+      image:
+        repository: quay.io/openshift/origin-cli
+        tag: "4.18"
+      # Seconds between refreshes of the member list.
+      refreshInterval: 60
+      resources:
+        requests: { cpu: 10m, memory: 32Mi }
+        limits:   { cpu: 100m, memory: 64Mi }
+
+  route:
+    enabled: true
+    # Leave host empty to let OpenShift assign <name>-<namespace>.apps.<cluster>.
+    host: ""
+    # Ignored when ui.auth.enabled — the Route is forced to reencrypt then.
+    tls:
+      termination: edge
+      insecureEdgeTerminationPolicy: Redirect
+
+# ---------------------------------------------------------------------------
+# Availability
+# ---------------------------------------------------------------------------
+podDisruptionBudget:
+  # One PDB per Temporal role that runs >1 replica (a PDB on a single replica
+  # would block every node drain). The bundled PostgreSQL ships its own.
+  enabled: true
+  minAvailable: 1
+
+# ---------------------------------------------------------------------------
+# NetworkPolicy (off by default — turn on once the peers below are right)
+# ---------------------------------------------------------------------------
+# Three policies: server roles accept only this release's pods; the frontend
+# gRPC port additionally accepts `frontendFrom`; the UI pod accepts only the
+# router, on the one port its Service exposes (with ui.auth that shuts the
+# plain-HTTP bypass around oauth-proxy). Egress is not restricted.
+#
+# The bundled PostgreSQL has its own policy (Bitnami), allow-all on 5432 by
+# default. To lock it to Temporal's pods flip
+#   postgresql.primary.networkPolicy.allowExternal: false
+# — every server pod and Job already carries the
+# `<postgresql.fullnameOverride>-client: "true"` label that policy selects.
+networkPolicy:
+  enabled: false
+  # Peers allowed to dial the frontend gRPC port (workers, SDK clients).
+  # Standard NetworkPolicy `from` entries. Default: any pod in this namespace.
+  # Example — one other namespace by label:
+  #   - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: my-workers } }
+  frontendFrom:
+    - podSelector: {}
+  # Where Route traffic enters from. On OpenShift the router namespace carries
+  # the `ingress` policy-group label; on clusters whose router runs with
+  # hostNetwork (bare-metal default) the traffic arrives from the
+  # `host-network` group instead, so both are allowed.
+  uiFrom:
+    - namespaceSelector:
+        matchLabels:
+          policy-group.network.openshift.io/ingress: ""
+    - namespaceSelector:
+        matchLabels:
+          policy-group.network.openshift.io/host-network: ""
+
+# ---------------------------------------------------------------------------
+# Database connection (consumed by server pods + schema job)
+# ---------------------------------------------------------------------------
+# When postgresql.enabled=true these default to the bundled subchart.
+database:
+  driver: postgres12          # Temporal SQL plugin (works with PG 12..17)
+  host: ""                    # defaults to the bundled postgres service if empty
+  port: 5432
+  user: postgres
+  # Password is read from a Secret. Empty => whatever the bundled subchart
+  # uses: postgresql.auth.existingSecret if you set that, else the Secret the
+  # subchart generates. Set this (and secretKey) to bring your own for an
+  # external DB.
+  existingSecret: ""
+  secretKey: postgres-password
+  temporalDb: temporal
+  visibilityDb: temporal_visibility
+
+# ---------------------------------------------------------------------------
+# Bundled PostgreSQL (Bitnami subchart)
+# ---------------------------------------------------------------------------
+postgresql:
+  enabled: true
+  # Deterministic name so the server pods/job can reference the service & secret.
+  fullnameOverride: temporal-postgresql
+
+  # Auto-strip runAsUser/fsGroup so it runs under OpenShift's assigned UID range.
+  global:
+    compatibility:
+      openshift:
+        adaptSecurityContext: auto
+
+  # NOTE: docker.io/bitnami only publishes :latest now; concrete tags live in
+  # bitnamilegacy. Pinned to a known-good legacy tag for reproducible pulls.
+  # `registry` here is overridden by global.imageRegistry at the top of this
+  # file when that is set (air-gapped installs).
+  image:
+    registry: docker.io
+    repository: bitnamilegacy/postgresql
+    tag: 17.6.0-debian-12-r4
+
+  auth:
+    enablePostgresUser: true
+    # Test default. Override with --set or an existingSecret for real use.
+    # TODO(secrets): this is the password the cluster actually runs with. Migrate to
+    # ESO+Vault, consumed via auth.existingSecret — see gitops/SECRETS.md.
+    postgresPassword: "temporal-postgres-pw"
+    database: temporal
+
+  architecture: standalone
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi
+      # Empty => cluster default StorageClass (ocs-external-storagecluster-ceph-rbd).
+      storageClass: ""
+    resources:
+      requests: { cpu: 250m, memory: 512Mi }
+      limits:   { cpu: "2",  memory: 1Gi }

@@ -1,0 +1,42 @@
+1. Get the application URL by running these commands:
+{{- if .Values.route.enabled }}
+  export ROUTE_HOST=$(oc get route {{ include "segments-manager.fullname" . }} -o jsonpath='{.spec.host}')
+  echo "http://$ROUTE_HOST"
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "segments-manager.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "segments-manager.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "segments-manager.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "segments-manager.fullname" . }} 8080:{{ .Values.service.port }}
+{{- end }}
+
+2. Configuration Summary:
+   - Sites: {{ keys .Values.siteNetworks | sortAlpha | join ", " }}
+   {{- range $site, $net := .Values.siteNetworks }}
+   - {{ $site }}: pool {{ $net.pool }}{{ with $net.bmc }}, bmc {{ . }}{{ end }}
+   {{- end }}
+   - MongoDB Database: {{ .Values.mongodb.dbName }}
+   {{- if .Values.mongodb.existingSecret }}
+   - MongoDB URL: (from existing secret "{{ .Values.mongodb.existingSecret }}")
+   {{- else }}
+   - MongoDB URL: (from generated secret "{{ include "segments-manager.fullname" . }}-mongodb")
+   {{- end }}
+
+3. Features Available:
+   ✓ Site-specific IP prefix validation
+   ✓ Advanced filtering by site and allocation status  
+   ✓ CSV/Excel export capabilities
+   ✓ Real-time statistics and monitoring
+   ✓ Multi-site VLAN management
+
+4. API Documentation:
+   Access interactive API docs at: http://your-app-url/docs
+
+5. Health Check:
+   Monitor application health at: http://your-app-url/api/health

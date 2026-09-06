@@ -1,0 +1,35 @@
+{{- if .Values.route.enabled }}
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ include "segments-manager.fullname" . }}
+  labels:
+    {{- include "segments-manager.labels" . | nindent 4 }}
+  {{- with .Values.route.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.route.host }}
+  host: {{ .Values.route.host }}
+  {{- end }}
+  {{- if .Values.route.path }}
+  path: {{ .Values.route.path }}
+  {{- end }}
+  {{- if .Values.route.wildcardPolicy }}
+  wildcardPolicy: {{ .Values.route.wildcardPolicy }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ include "segments-manager.fullname" . }}
+    weight: 100
+  port:
+    targetPort: http
+  {{- if .Values.route.tls.enabled }}
+  tls:
+    termination: {{ .Values.route.tls.termination }}
+    {{- if .Values.route.tls.insecureEdgeTerminationPolicy }}
+    insecureEdgeTerminationPolicy: {{ .Values.route.tls.insecureEdgeTerminationPolicy }}
+    {{- end }}
+  {{- end }}
+{{- end }}

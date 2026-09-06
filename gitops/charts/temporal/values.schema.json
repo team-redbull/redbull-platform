@@ -1,0 +1,157 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "title": "temporal-stack values",
+  "type": "object",
+  "definitions": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "repository": { "type": "string", "minLength": 1 },
+        "tag": { "type": ["string", "number"] }
+      },
+      "required": ["repository", "tag"]
+    },
+    "port": { "type": "integer", "minimum": 1, "maximum": 65535 },
+    "resources": { "type": "object" },
+    "role": {
+      "type": "object",
+      "properties": {
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "grpcPort": { "$ref": "#/definitions/port" },
+        "membershipPort": { "$ref": "#/definitions/port" },
+        "resources": { "$ref": "#/definitions/resources" }
+      },
+      "required": ["replicaCount", "grpcPort", "membershipPort"]
+    },
+    "duration": { "type": "string", "pattern": "^[0-9]+(ns|us|µs|ms|s|m|h)([0-9]+(ns|us|µs|ms|s|m|h))*$" }
+  },
+  "properties": {
+    "nameOverride": { "type": "string" },
+    "fullnameOverride": { "type": "string" },
+    "global": {
+      "type": "object",
+      "properties": {
+        "imageRegistry": { "type": "string" },
+        "security": {
+          "type": "object",
+          "properties": { "allowInsecureImages": { "type": "boolean" } }
+        }
+      }
+    },
+    "imagePullPolicy": { "type": "string", "enum": ["Always", "IfNotPresent", "Never"] },
+    "imagePullSecrets": {
+      "type": "array",
+      "items": { "type": "object", "properties": { "name": { "type": "string" } }, "required": ["name"] }
+    },
+    "waitImage": { "$ref": "#/definitions/image" },
+    "temporal": {
+      "type": "object",
+      "properties": {
+        "image": { "$ref": "#/definitions/image" },
+        "numHistoryShards": { "type": "integer", "minimum": 1 },
+        "services": {
+          "type": "object",
+          "properties": {
+            "frontend": { "$ref": "#/definitions/role" },
+            "history": { "$ref": "#/definitions/role" },
+            "matching": { "$ref": "#/definitions/role" },
+            "worker": { "$ref": "#/definitions/role" }
+          },
+          "required": ["frontend", "history", "matching", "worker"]
+        },
+        "podAntiAffinity": { "type": "string", "enum": ["soft", "none"] },
+        "setup": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "defaultNamespace": { "type": "string", "minLength": 1 },
+            "retention": { "$ref": "#/definitions/duration" },
+            "searchAttributes": { "type": "boolean" }
+          }
+        },
+        "dynamicConfig": { "type": "object" },
+        "schema": {
+          "type": "object",
+          "properties": {
+            "image": { "$ref": "#/definitions/image" },
+            "resources": { "$ref": "#/definitions/resources" }
+          }
+        }
+      },
+      "required": ["image", "services"]
+    },
+    "ui": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "image": { "$ref": "#/definitions/image" },
+        "replicaCount": { "type": "integer", "minimum": 0 },
+        "port": { "$ref": "#/definitions/port" },
+        "corsOrigins": { "type": "string" },
+        "resources": { "$ref": "#/definitions/resources" },
+        "auth": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "image": { "$ref": "#/definitions/image" },
+            "port": { "$ref": "#/definitions/port" },
+            "cookieRefresh": { "$ref": "#/definitions/duration" },
+            "cookieExpire": { "$ref": "#/definitions/duration" },
+            "sar": { "type": "object" },
+            "allowedUsers": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "allowedGroups": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "usernameDomain": { "type": "string", "minLength": 1 },
+            "existingCookieSecret": { "type": "string" },
+            "cookieSecret": { "type": "string" },
+            "resources": { "$ref": "#/definitions/resources" },
+            "groupSync": {
+              "type": "object",
+              "properties": {
+                "image": { "$ref": "#/definitions/image" },
+                "refreshInterval": { "type": "integer", "minimum": 5 },
+                "resources": { "$ref": "#/definitions/resources" }
+              }
+            }
+          }
+        },
+        "route": {
+          "type": "object",
+          "properties": {
+            "enabled": { "type": "boolean" },
+            "host": { "type": "string" },
+            "tls": { "type": "object" }
+          }
+        }
+      }
+    },
+    "podDisruptionBudget": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "minAvailable": { "type": ["integer", "string"] }
+      }
+    },
+    "networkPolicy": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "frontendFrom": { "type": "array", "items": { "type": "object" } },
+        "uiFrom": { "type": "array", "items": { "type": "object" } }
+      }
+    },
+    "database": {
+      "type": "object",
+      "properties": {
+        "driver": { "type": "string", "enum": ["postgres12", "postgres12_pgx"] },
+        "host": { "type": "string" },
+        "port": { "$ref": "#/definitions/port" },
+        "user": { "type": "string", "minLength": 1 },
+        "existingSecret": { "type": "string" },
+        "secretKey": { "type": "string", "minLength": 1 },
+        "temporalDb": { "type": "string", "minLength": 1 },
+        "visibilityDb": { "type": "string", "minLength": 1 }
+      }
+    },
+    "postgresql": { "type": "object" }
+  }
+}

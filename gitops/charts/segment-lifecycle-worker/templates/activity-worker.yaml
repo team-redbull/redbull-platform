@@ -1,0 +1,59 @@
+# The segment-lifecycle domain's activity worker "limb": its own deployment,
+# ServiceAccount and Segments Manager token. Heavy/domain deps and secrets live
+# here, not in the brain.
+#
+# The -worker suffix names the PROCESS. Everything domain-scoped below keeps the
+# bare name (segment-lifecycle-config, the segment-lifecycle-activity queue this
+# polls) because a second workflow in the domain shares them with this same pod.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: segment-lifecycle-worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: segment-lifecycle-worker
+  labels:
+    app: segment-lifecycle-worker
+spec:
+  replicas: {{ .Values.activityWorker.replicas }}
+  selector:
+    matchLabels:
+      app: segment-lifecycle-worker
+  template:
+    metadata:
+      labels:
+        app: segment-lifecycle-worker
+      annotations:
+        # Roll the workers whenever this chart's ConfigMap content changes.
+        # Its values (PORTS_*, SITE_NETWORKS, the NEXT_* endpoints) are
+        # read ONCE at startup into SegmentLifecycleActivitySettings — and
+        # envFrom values are injected at pod creation — so without this a
+        # config change syncs in Argo, reports Healthy, and changes NOTHING
+        # until someone happens to restart the pods. That silently cost a run:
+        # a corrected BMC site mapping was live in the ConfigMap while the
+        # workers kept failing on the old value.
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: segment-lifecycle-worker
+      containers:
+        - name: segment-lifecycle-worker
+          image: "{{ .Values.activityWorker.image.repository }}:{{ .Values.activityWorker.image.tag }}"
+          imagePullPolicy: {{ .Values.activityWorker.image.pullPolicy }}
+          envFrom:
+            # Global config (Temporal + DOMAIN + SEGMENTS_MANAGER_URL), owned by
+            # the workflows-orchestrator chart — install that release first, or this
+            # pod stalls in CreateContainerConfigError on the missing ConfigMap.
+            - configMapRef:
+                name: workflows-orchestrator-config
+            # Segment-lifecycle-specific endpoints + port policy, owned by this chart.
+            - configMapRef:
+                name: segment-lifecycle-config
+            - secretRef:
+                name: {{ .Values.secrets.existingSecret | default "segments-manager-token" }}
+            # allocate-segment's one credential: the values-repo push token (see
+            # templates/config.yaml). The DHCP scope API needs none — its scope
+            # GETs are anonymous, and the convergence poll only reads.
+            - secretRef:
+                name: {{ .Values.secrets.existingDay1Secret | default "day1-git-token" }}

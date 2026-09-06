@@ -1,0 +1,30 @@
+{{- if eq (include "temporal-stack.uiAllowlistEnabled" .) "true" }}
+{{- $full := include "temporal-stack.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-ui-allowed-users
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+data:
+  # Identity allowlist for the Temporal UI, one entry per line. oauth-proxy
+  # reads it via --authenticated-emails-file and rejects every authenticated
+  # user not listed — cluster-admins included, because this is an identity
+  # check that never goes through RBAC/SAR.
+  #
+  # Entries are <username>@<ui.auth.usernameDomain>, not bare usernames: the
+  # openshift provider rewrites each login to that form and validates the
+  # rewritten string, so "alice" alone would match nothing. Paired with the
+  # pinned --email-domain in ui.yaml — without it a file that matches nobody
+  # admits everybody.
+  #
+  # With ui.auth.allowedGroups set this is only the STATIC half: the group-sync
+  # sidecar merges it with each Group's members and writes the union to the
+  # file oauth-proxy actually watches.
+  users: |
+    {{- $domain := .Values.ui.auth.usernameDomain }}
+    {{- range .Values.ui.auth.allowedUsers }}
+    {{ . }}@{{ $domain }}
+    {{- end }}
+{{- end }}

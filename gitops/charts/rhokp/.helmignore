@@ -1,0 +1,6 @@
+.git/
+.gitignore
+.claude/
+.claude-flow/
+argocd/
+*.md

@@ -1,0 +1,36 @@
+{{- if and .Values.ui.enabled .Values.ui.auth.enabled }}
+{{- if not .Values.ui.route.enabled }}
+{{- fail "ui.auth.enabled requires ui.route.enabled — the OAuth redirect URI is derived from the Route" }}
+{{- end }}
+{{- $full := include "temporal-stack.fullname" . -}}
+{{- /* The UI ServiceAccount (the OAuth client) lives in serviceaccount.yaml. */ -}}
+{{- if not .Values.ui.auth.existingCookieSecret }}
+{{- $secretName := printf "%s-ui-proxy-cookie" $full }}
+{{- $literal := .Values.ui.auth.cookieSecret }}
+{{- if and $literal (not (has (len $literal) (list 16 24 32))) }}
+{{- fail (printf "ui.auth.cookieSecret must be exactly 16, 24 or 32 bytes (got %d) — oauth-proxy uses it as an AES key and rejects any other length" (len $literal)) }}
+{{- end }}
+{{- $cookie := $literal }}
+{{- if not $cookie }}
+{{- $cookie = randAlphaNum 32 }}
+{{- with (lookup "v1" "Secret" .Release.Namespace $secretName) }}
+{{- $cookie = index .data "session_secret" | b64dec }}
+{{- end }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ $secretName }}
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+type: Opaque
+stringData:
+  # Signs/encrypts the oauth-proxy session cookie. A literal
+  # ui.auth.cookieSecret is used verbatim (deterministic — safe under Argo CD
+  # / `helm template`); otherwise one is generated and the lookup above keeps
+  # the in-cluster value stable across upgrades, since regenerating it would
+  # only force users to log in again.
+  session_secret: {{ $cookie | quote }}
+{{- end }}
+{{- end }}

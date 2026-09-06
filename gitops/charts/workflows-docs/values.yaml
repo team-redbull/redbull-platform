@@ -1,0 +1,46 @@
+# The documentation site. Nothing here is environment-specific except the Route
+# host, so the defaults are the deployed configuration — unlike the orchestrator
+# and limb charts, this one has no endpoints, no ConfigMap to mount and no
+# Secret. It is static HTML.
+#
+# This chart never creates or names a Namespace: it deploys into whichever
+# namespace the release targets. On redbull-platform that is redbull-workflows,
+# pre-created by the `namespaces` release; standalone, pass --create-namespace.
+#
+# It also does NOT mount workflows-orchestrator-config. That is deliberate: the
+# docs have no reason to know where Temporal is, and not mounting it means this
+# release has no ordering dependency on the brain release (the limb charts do).
+
+image:
+  # Bumped by CI in the `workflows` repo on every push (docs/Dockerfile).
+  repository: ghcr.io/team-redbull/workflows-docs
+  tag: v1.0.12
+  pullPolicy: IfNotPresent
+# Two replicas so a rollout or a node drain never takes the docs offline —
+# they are most wanted exactly when something else is being changed.
+replicas: 2
+port: 8080
+# OpenShift Route. The whole point of this service is that a human can read it
+# from a browser, so unlike the trigger API there is no case for disabling it —
+# but it is a switch rather than a hardcode for plain kubernetes/kind, which has
+# no Route CRD.
+#
+# The site is UNAUTHENTICATED, like workflows-orchestrator-api. Unlike that one,
+# that is harmless: it is public-read documentation of an internal system, with
+# no forms, no API and no credentials. It does describe internal service names
+# and paths, so if the cluster's Routes are reachable from somewhere untrusted,
+# disable this and port-forward instead.
+route:
+  enabled: true
+  # Empty host = OpenShift generates one from route/namespace/cluster domain.
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi

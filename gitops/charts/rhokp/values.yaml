@@ -1,0 +1,70 @@
+replicaCount: 3
+
+image:
+  registry: registry.redhat.io
+  repository: offline-knowledge-portal/rhokp-rhel9
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# registry.redhat.io requires authentication. The chart creates this
+# dockerconfigjson secret for you from these values.
+imagePullSecret:
+  name: redhat-registry-secret
+  dockerServer: registry.redhat.io
+  dockerUsername: "tomer123"
+  dockerPassword: "tomer123"
+
+# RHOKP authenticates via an access key generated from the Red Hat Offline
+# Knowledge Portal Access Key Generator. The chart creates this secret for
+# you from these values.
+accessKey:
+  secretName: rhokp-access-key
+  secretKey: access-key
+  secretValue: "tomer123"
+
+service:
+  type: ClusterIP
+  port: 8080
+
+# OpenShift Route.
+route:
+  enabled: true
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+# Not published by Red Hat; sized for a ~12GB image workload — tune to your environment.
+resources:
+  requests:
+    cpu: 500m
+    memory: 1Gi
+  limits:
+    cpu: "8"
+    memory: 10Gi
+
+probes:
+  path: /
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 6
+
+podSecurityContext:
+  runAsNonRoot: true
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

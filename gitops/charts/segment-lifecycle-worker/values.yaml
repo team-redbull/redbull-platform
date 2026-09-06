@@ -1,0 +1,136 @@
+# Values for `segment-lifecycle-worker`, deployed by the redbull-services ApplicationSet
+# (gitops/services/segment-lifecycle-worker/app.yaml). THIS FILE IS THE SINGLE SOURCE OF
+# TRUTH for how the worker is configured — there is no second values file layered on top
+# of it. gitops/overrides/ exists for a site- or cluster-specific override, and nothing
+# uses it today.
+#
+# config.* below therefore holds the IN-CLUSTER endpoints, not the local-kind
+# host.docker.internal defaults this chart shipped with while it lived in its own repo.
+#
+# activityWorker.image.repository/tag are CI-owned: the workflows repo's build workflow
+# commits the bump here on every push to its main. Do not hand-edit them.
+#
+# NOTE: the per-direction port policy (PORTS_*) deliberately does NOT live here.
+# It is defined directly in templates/config.yaml — the ConfigMap is the
+# operator's edit surface for ports (edit + restart the activity workers, no
+# rebuild, no chart re-render).
+#
+# The GLOBAL values (Temporal connection, DOMAIN, segmentsManagerUrl) are NOT
+# here either — they live in the workflows-orchestrator chart's `workflows-orchestrator-config`,
+# which this chart's activity worker also mounts. That dependency is SOFT under Argo CD:
+# this worker crash-loops until workflows-orchestrator has published the ConfigMap, then
+# connects; retry/selfHeal handles it, which is why neither app carries a sync wave.
+#
+# This chart never creates or names a Namespace: it deploys into whichever
+# namespace the release targets (`helm install -n <ns>`, or the release's
+# `namespace:` field in redbull-platform's helmfile). On redbull-platform that
+# namespace (redbull-workflows) is pre-created by its own `namespaces` release;
+# standalone, pass `--create-namespace` to `helm install`.
+
+# ---------------------------------------------------------------------------------
+# Site network topology — site name -> {pool, bmc}. The one exception to the
+# PORTS_* rule above, and for a specific reason: unlike ports, this is SHARED
+# with another chart. gitops/charts/segments-manager renders the same value into
+# its own ConfigMap. Ports are this chart's alone; site topology is not.
+#
+# This worker reads the per-vendor BMC networks: each MCE segment gets rules in BOTH
+# directions to every vendor the site actually has — four requests at a two-vendor site,
+# two at a single-vendor one. A site may carry `dell-bmc`, `cisco-bmc`, both or neither.
+# What is REJECTED at startup is a misspelt key (`dell-bcm`) or the pre-split `bmc`:
+# those are indistinguishable at runtime from a genuinely single-vendor site, and would
+# silently open connectivity for fewer vendors than the site has. `pool` is the Segments
+# Manager's, carried here only so the two copies stay literally identical and diffable.
+#
+# KEEP IN STEP with gitops/charts/segments-manager/values.yaml, which carries the
+# identical block, and which enforces the constraints on it at startup (strict IPv4
+# CIDRs, no overlap between pools, no pool overlapping any vendor's management network,
+# no site names differing only by case). The two services run in different namespaces and so cannot
+# share one ConfigMap; they live in one repo precisely so a change to one is reviewed
+# alongside the other — change both in the same commit. (This used to live once in
+# gitops/values/prod.yaml, back when a per-env values layer existed to hold it.)
+#
+# Changing a site rolls BOTH services' pods on the next Argo sync — each chart's
+# Deployment carries a checksum/config annotation over its ConfigMap. Before changing a
+# `pool`, run segments-manager's scripts/audit_site_pools.py against prod Mongo first.
+siteNetworks:
+  site1:
+    pool: "192.10.0.0/16"
+    dell-bmc: "10.50.0.0/16"
+    cisco-bmc: "10.60.0.0/16"
+  site2:
+    pool: "193.51.0.0/16"
+    dell-bmc: "10.51.0.0/16"
+    cisco-bmc: "10.61.0.0/16"
+  site3:
+    pool: "194.52.0.0/16"
+    dell-bmc: "10.52.0.0/16"
+    cisco-bmc: "10.62.0.0/16"
+config:
+  # The next (connectivity/firewall) service. This points at the Helmfile-managed
+  # mock-segment-connectivity release (a test-only stand-in), so e2e tests can run the
+  # full submit -> poll -> complete cycle without the real air-gapped firewall service.
+  # TODO(prod): repoint at the real next endpoint and re-verify the URI paths below
+  # against its real API.
+  nextUrl: "http://mock-segment-connectivity.redbull-workflows.svc.cluster.local:9000"
+  # next URI paths are configurable because prod paths may differ from the
+  # placeholders the local mock serves.
+  nextTokenRenewalUri: "/token-renewal-uri"
+  nextOpenRulesUri: "/open-rules-uri"
+  nextCheckStatusUri: "/check-request-status"
+  # The AD group next attributes every open-rules request to. A group in next's
+  # own directory — this placeholder suits the mock (which accepts any string).
+  # TODO(prod): set the real group here, together with nextUrl above.
+  nextGroup: "dev-group"
+  # Seconds between polls of a submitted next request's status. 15s gives immediate
+  # feedback against the mock. TODO(prod): 600 (10 min) once nextUrl points at the real
+  # service, whose approval step is human-driven.
+  nextCheckingRequestIntervalSeconds: 15
+  # --- allocate-segment: the day1 values repo -------------------------------
+  # Where cluster values files live. The workflow appends the vlanId +
+  # dhcp_values block and pushes directly to this branch, so the bot credential
+  # (day1GitToken / existingDay1Secret below) needs push rights — and a place
+  # on the branch-protection bypass list where that applies.
+  day1RepoUrl: "https://github.com/team-redbull/gitops-day1-platform-config.git"
+  day1Branch: "main"
+  day1ClustersRoot: "sites"
+  # The committer identity on allocation commits.
+  day1GitUserName: "segment-allocation-workflow"
+  day1GitUserEmail: "segment-allocation-workflow@redbull.local"
+  # The DHCP scope API that allocate-segment polls (read-only) for scope convergence:
+  # dhcp-scope-manager's in-cluster Service, NOT its -tests sibling.
+  dhcpApiUrl: "http://dhcp-scope-manager.dhcp-scope-manager.svc.cluster.local:8080"
+  # NOTE: DHCP_EXCLUSION_OCTET_RANGES deliberately does NOT live here — like
+  # PORTS_*, it is defined directly in templates/config.yaml (the operator's
+  # edit surface: edit + restart, no chart re-render).
+# Bearer token for mutating Segments Manager calls (must match its API_TOKEN).
+secrets:
+  # An out-of-band Secret holding the token (key SEGMENTS_MANAGER_API_TOKEN) — the same
+  # pattern as the Segments Manager chart's `auth.existingSecret`. Created once
+  # in-cluster, holding the SAME value as segments-manager's own
+  # segments-manager-api-token Secret, so the token never passes through git:
+  #   oc create secret generic segments-manager-token -n redbull-workflows \
+  #     --from-literal=SEGMENTS_MANAGER_API_TOKEN="<the segments-manager token>"
+  # See gitops/SECRETS.md. Setting this also STOPS the chart rendering its own
+  # dev-token Secret of the same name — which Argo would then own and stomp the real
+  # value with on every sync. Do not blank it.
+  existingSecret: "segments-manager-token"
+  # Chart-managed fallback (local/dev only): the chart creates a
+  # `segments-manager-token` Secret from this value. Only consulted when
+  # existingSecret is empty. Override via --set, never commit a real token.
+  segmentsManagerApiToken: "dev-token"
+  # Push token for the day1 values repo (key DAY1_GIT_TOKEN) — same
+  # existing-vs-chart-managed split as the Segments Manager token above, and the same
+  # out-of-band creation:
+  #   oc create secret generic day1-git-token -n redbull-workflows \
+  #     --from-literal=DAY1_GIT_TOKEN="<a PAT with push rights on the day1 repo>"
+  existingDay1Secret: "day1-git-token"
+  day1GitToken: "dev-token"
+  # No DHCP scope API token. That API leaves its scope GETs unauthenticated so
+  # allocate-segment's convergence poll needs no credential — see
+  # templates/config.yaml for what this replaced and why.
+activityWorker:
+  image:
+    repository: ghcr.io/team-redbull/segment-lifecycle-worker
+    tag: v0.1.17
+    pullPolicy: IfNotPresent
+  replicas: 2

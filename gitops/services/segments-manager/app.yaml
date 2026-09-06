@@ -1,0 +1,6 @@
+# Argo config for `segments-manager`. Chart: gitops/charts/segments-manager.
+#
+# Its MongoDB is NOT bundled: it is the Helmfile-managed `segments-manager-mongodb`
+# release (charts/segments-manager-mongodb, service `segments-mongodb`), which must exist
+# before these pods start. The connection URL lives in the chart's values.yaml.
+namespace: segments-manager

@@ -4,3 +4,11 @@ helmfile-*.yaml
 *.tgz
 charts/**/charts/
 charts/**/Chart.lock
+
+# ...but the Argo service charts under gitops/charts/ are rendered by Argo CD
+# straight from git, so a chart with a subchart dependency MUST carry the packaged
+# dependency in the repo — Argo cannot pull an OCI dependency at render time, and in
+# the air-gapped env it has no route to registry-1.docker.io at all. Re-include them
+# (the rules above are root-anchored at the Helmfile `charts/` tree and never reach
+# gitops/charts/; only the global *.tgz did).
+!gitops/charts/**/*.tgz

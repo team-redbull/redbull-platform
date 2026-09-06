@@ -1,0 +1,18 @@
+# Argo config for `dhcp-scope-manager`. Chart: gitops/charts/dhcp-scope-manager.
+#
+# The API runs here on Linux and drives a *Windows* DHCP server remotely over PSRP/WinRM —
+# that Windows host is not managed by this platform. Crossplane provider-http consumes the
+# API in-cluster via its Service.
+#
+# API auth is ON for writes: the chart wires DHCP_API_TOKEN unconditionally from the Secret
+# its charts/dhcp-api-token subchart renders, out of one token committed in that subchart's
+# values.yaml. Nothing generates it (a generated one was re-minted on every Argo sync,
+# because `helm template` has no `lookup`) and nothing creates it by hand.
+# helm-charts-hostedclusters-setup points dhcp_api.tokenSecretRef at that same Secret name,
+# key and namespace, so both halves have to move together or every Request takes a 401 on
+# every reconcile.
+#
+# DHCP_API_TOKEN is env, materialised at pod start, so any change to the token needs
+# `oc rollout restart deploy/dhcp-scope-manager -n dhcp-scope-manager`. Argo updating the
+# Secret does NOT restart this Deployment.
+namespace: dhcp-scope-manager

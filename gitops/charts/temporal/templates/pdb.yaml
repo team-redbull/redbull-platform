@@ -1,0 +1,24 @@
+{{- if .Values.podDisruptionBudget.enabled }}
+{{- $root := . -}}
+{{- $full := include "temporal-stack.fullname" . -}}
+{{- range $role, $svc := .Values.temporal.services }}
+{{- /* A PDB on a single replica would block every node drain, so only
+       roles that actually run more than one pod get one. */ -}}
+{{- if gt (int $svc.replicaCount) 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $full }}-{{ $role }}
+  labels:
+    {{- include "temporal-stack.labels" $root | nindent 4 }}
+    app.kubernetes.io/component: {{ $role }}
+spec:
+  minAvailable: {{ $root.Values.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "temporal-stack.selectorLabels" $root | nindent 6 }}
+      app.kubernetes.io/component: {{ $role }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: workflows-docs
+description: The Redbull Workflows documentation site — the workflows-orchestrator guide plus one page per workflow, served as static HTML. Carries no code and talks to nothing, so it stays readable while the orchestrator itself is down or being redeployed.
+type: application
+version: 1.0.12
+appVersion: "v1.0.12"

@@ -1,0 +1,30 @@
+apiVersion: v2
+name: dhcp-scope-manager
+description: >-
+  DHCP scope lifecycle API for OpenShift hosted clusters. Runs on Linux and drives a Windows DHCP server remotely over PSRP/WinRM; consumed by Crossplane provider-http.
+type: application
+# NOT hand-bumped for this change, even though it vendors a subchart and renames a
+# values key. CI (ghcr-build-push.yml) rewrites BOTH version and appVersion to the
+# image tag on every push to the code repo's main — so a hand-set 1.1.0 would be
+# rewritten to 1.0.11 on the next build, i.e. backwards. The line below is stale on
+# this point: CI does bump version here, not only image.tag in values.yaml.
+version: 1.0.12
+# appVersion tracks the API image.
+appVersion: "v1.0.12"
+keywords:
+  - dhcp
+  - crossplane
+  - openshift
+  - psrp
+# The token subchart is VENDORED — its source sits in charts/dhcp-api-token, so
+# there is nothing to fetch and no Chart.lock is committed. `helm template` loads a
+# chart in charts/ with or without this block, but `helm lint` refuses it as
+# undeclared, so it is declared.
+#
+# An empty repository is what marks it as already-present: any real URL (or a
+# file:// path) would make `helm dependency build` try to resolve it, which is
+# exactly what must not happen in an air-gapped build with no chart repo.
+dependencies:
+  - name: dhcp-api-token
+    version: 0.1.0
+    repository: ""

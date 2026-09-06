@@ -1,0 +1,94 @@
+# The documentation site: ServiceAccount + Deployment + Service + Route.
+#
+# Its own ServiceAccount for the same reason every other service here has one —
+# so it is a distinct identity in RBAC and audit — but it needs no permissions
+# at all, mounts no Secret and no ConfigMap. Nothing about this pod is worth
+# stealing.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workflows-docs
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: workflows-docs
+  labels:
+    app: workflows-docs
+spec:
+  replicas: {{ .Values.replicas }}
+  selector:
+    matchLabels:
+      app: workflows-docs
+  template:
+    metadata:
+      labels:
+        app: workflows-docs
+    spec:
+      serviceAccountName: workflows-docs
+      containers:
+        - name: workflows-docs
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            # The version shown in the site header. Set from the image tag CI
+            # just bumped, so the number a reader sees IS the image being
+            # served — it cannot drift, and nobody has to remember to bump a
+            # constant in the HTML. The container stamps it into the pages at
+            # start-up (docs/docker-entrypoint.d/20-doc-version.sh).
+            - name: DOC_VERSION
+              value: {{ .Values.image.tag | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.port }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.port }}
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ .Values.port }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: workflows-docs
+  labels:
+    app: workflows-docs
+spec:
+  selector:
+    app: workflows-docs
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: http
+{{- if .Values.route.enabled }}
+---
+# The human front door. A docs site nobody can open is not a docs site.
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: workflows-docs
+  labels:
+    app: workflows-docs
+spec:
+  {{- with .Values.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: workflows-docs
+  port:
+    targetPort: http
+  {{- with .Values.route.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}

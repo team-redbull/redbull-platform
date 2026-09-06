@@ -2,18 +2,19 @@
 # Default environment values for the redbull-platform BOOTSTRAP helmfile.
 #
 # Only the bootstrap + still-Helmfile-managed services live here now. The
-# stateless service layer (temporal, segments-manager, workflows,
-# segment-lifecycle-worker) moved to Argo CD — its values live under gitops/ (shared
-# globals in gitops/values/<env>.yaml, per-service in
-# gitops/services/<env>/<service>/values.yaml).
+# stateless service layer (temporal, segments-manager, workflows-orchestrator,
+# segment-lifecycle-worker, workflows-docs, dhcp-scope-manager, rhokp) moved to Argo CD —
+# each of those is configured entirely by its own chart's values.yaml under
+# gitops/charts/<service>/. There is no per-environment values layer over there.
 #
 # Override per environment (e.g. environments/prod.yaml) or with
 # `helmfile --state-values-set`.
 # ---------------------------------------------------------------------------
 
 # Git refs the CHARTS STILL PULLED BY HELMFILE come from. Pin to tags for prod.
-# (temporalStack/segmentManager refs are gone — those charts are Argo-managed now,
-# pinned per-app in gitops/services/<env>/<svc>/app.yaml `revision:`.)
+# (temporalStack/segmentManager refs are gone — those charts live in this repo now, under
+# gitops/charts/, and are rendered by Argo from whatever revision of this repo is
+# deployed. No per-app ref to pin.)
 refs:
   workflows: main        # only mock-segment-connectivity is still Helmfile-pulled from this repo
   dhcp: main
@@ -30,8 +31,8 @@ crossplane:
 # before pointing this at anything long-lived.
 #
 # NOTE: `clusterAdmins` is also the source of truth for the Temporal UI's allowedUsers,
-# now set in gitops/services/<env>/temporal/values.yaml (ui.auth.allowedUsers). Keep the
-# two in sync until secrets/identity move to a single source (see gitops/SECRETS.md).
+# set in gitops/charts/temporal/values.yaml (ui.auth.allowedUsers). Keep the two in sync
+# until secrets/identity move to a single source (see gitops/SECRETS.md).
 htpasswdIdp:
   bootstrapProviderName: redbull-platform
   bootstrapSecretName: redbull-platform-htpasswd
@@ -44,7 +45,7 @@ htpasswdIdp:
 # Standalone MongoDB backing segments-manager, deployed as its own Helmfile release so
 # it's ready before the Argo-managed segments-manager app starts. The segments-manager
 # app reads this same password in its Mongo connection URL
-# (gitops/services/<env>/segments-manager/values.yaml) — kept in sync by hand until ESO
+# (gitops/charts/segments-manager/values.yaml) — kept in sync by hand until ESO
 # composes the URL from Vault (see gitops/SECRETS.md).
 segmentsManagerMongodb:
   rootPassword: "segments-manager-mongo-root-pw"

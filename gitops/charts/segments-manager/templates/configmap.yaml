@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "segments-manager.fullname" . }}
+  labels:
+    {{- include "segments-manager.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- if not .Values.siteNetworks }}
+{{- fail "siteNetworks is empty. Set it in this environment's Argo CD Application values (or --set-json for a standalone install); it is merged in ahead of this chart's values.yaml, which is empty on purpose. Define it once per environment and render it into segment-connectivity too, so the two services agree on the site list." }}
+{{- end }}
+data:
+  # Site configuration. The SAME structure is rendered into
+  # helm-charts-segment-connectivity's ConfigMap from the SAME shared value, so
+  # the two services cannot disagree about which sites exist. This service reads
+  # each site's `pool`; segment-connectivity reads `bmc`. `fail` above rather
+  # than sprig `required`, which only rejects nil/"" and would let an empty map
+  # through as the string "{}" — a pod-startup failure instead of a render one.
+  SITE_NETWORKS: {{ .Values.siteNetworks | toJson | quote }}
+
+  # Server configuration. Only the port: the app binds 0.0.0.0 unconditionally,
+  # and its log level and log file path are constants in the code. Those three
+  # were keys here that no deployment ever usefully varied — and logFile was
+  # actively harmful, since pointing it anywhere unwritable silently disabled
+  # file logging and /api/logs.
+  SERVER_PORT: {{ .Values.config.serverPort | quote }}
+
+  # MongoDB configuration (URL itself comes from the Secret)
+  MONGODB_DB_NAME: {{ .Values.mongodb.dbName | quote }}
+  MONGODB_COLLECTION: {{ .Values.mongodb.collection | quote }}
+  MONGODB_TLS_INSECURE: {{ .Values.mongodb.tlsInsecure | quote }}
+
+  # No WORKFLOWS_API_URL: segments-manager makes no outbound calls. It used to
+  # POST to the workflows API on every segment creation to start the
+  # segment-connectivity workflow; that workflow is now triggered directly by
+  # its caller and calls POST /api/segments here as its own first step.

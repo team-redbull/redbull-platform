@@ -1,0 +1,118 @@
+# segment-lifecycle-config: the per-DOMAIN ConfigMap for the segment-lifecycle domain.
+# Per-domain, not per-workflow: one activity-worker deployment serves every workflow
+# in the domain and consumes this via envFrom, so there is nothing a per-workflow
+# ConfigMap could attach to (see the code repo's CLAUDE.md section 2).
+# Holds ONLY segment-lifecycle-specific endpoints + policy. Values shared across all
+# domains (Temporal, DOMAIN, SEGMENTS_MANAGER_URL) live in the global
+# `workflows-orchestrator-config` owned by the workflows-orchestrator chart, which the activity
+# worker also mounts. Every key equals a SegmentLifecycleActivitySettings field
+# (uppercased) — keep shared/settings.py and this file aligned.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: segment-lifecycle-config
+data:
+  NEXT_URL: {{ .Values.config.nextUrl | quote }}
+  NEXT_TOKEN_RENEWAL_URI: {{ .Values.config.nextTokenRenewalUri | quote }}
+  NEXT_OPEN_RULES_URI: {{ .Values.config.nextOpenRulesUri | quote }}
+  NEXT_CHECK_STATUS_URI: {{ .Values.config.nextCheckStatusUri | quote }}
+  # The AD group next attributes every open-rules request to (payload
+  # `ad_groups`). A group in next's own directory, so it differs per
+  # environment — override via redbull-platform's per-environment values.
+  NEXT_GROUP: {{ .Values.config.nextGroup | quote }}
+  # Seconds between polls of a submitted next request's status. Fast locally
+  # (immediate feedback against the mock), slow in prod (human-driven
+  # approval) — override via redbull-platform's per-environment values.
+  NEXT_CHECKING_REQUEST_INTERVAL_SECONDS: {{ .Values.config.nextCheckingRequestIntervalSeconds | quote }}
+  # -- Port policy per rule direction (the operator's edit surface) ----------
+  # Compact JSON per protocol: {"tcp": ["PORT", "START-END", ...], "udp": [...]}.
+  # The activity layer expands this into the next API's ports structure, and
+  # validates the syntax at worker startup (a bad edit crash-loops the activity
+  # worker instead of failing a workflow hours in). Changing ports requires
+  # only a restart of the activity workers — no image rebuild.
+  PORTS_HC_TO_MCE: '{"tcp": ["30000-32767"], "udp": ["9000"]}'
+  PORTS_MCE_TO_HC: '{"tcp": ["6443", "30000-32767"]}'
+  PORTS_INVENTORY_TO_MCE: '{"tcp": ["30000-32767"], "udp": ["9000"]}'
+  PORTS_MCE_TO_INVENTORY: '{"tcp": ["6443", "30000-32767"]}'
+  PORTS_PXE_TO_MCE: '{"tcp": ["30000-32767"], "udp": ["9000"]}'
+  PORTS_MCE_TO_PXE: '{"tcp": ["6443", "30000-32767"]}'
+  # -- Site topology: site name -> {pool, bmc} ------------------------------
+  # Defined ONCE in redbull-platform (gitops/values/<env>.yaml, key
+  # `siteNetworks`) and rendered from that same value into BOTH this ConfigMap
+  # and the Segments Manager's. The two services being keyed by the identical
+  # site list is now structural — it used to be enforced only by this comment,
+  # which is why a "site-a" placeholder once matched no real site.
+  #
+  # This worker reads only `bmc`: every MCE segment opens a one-directional rule
+  # to its site's static BMC network, which the Segments Manager does not track.
+  # `pool` is the Segments Manager's (the range its segments must fall inside)
+  # and is ignored here — SiteNetworks sets extra="ignore" so neither service
+  # breaks when the other's sub-keys change.
+  #
+  # A site missing from this map fails every MCE segment in it with
+  # BmcSegmentNotConfiguredError, non-retryable by design: a config gap, not an
+  # outage. BMC networks sit deliberately outside every site's `pool` — BMC is a
+  # separate network, not something the Segments Manager allocates from.
+  #
+  # `fail` rather than sprig `required`: required only rejects nil/"", so an
+  # empty map would render as the string "{}" and only fail at pod startup.
+{{- if not .Values.siteNetworks }}
+{{- fail "siteNetworks is empty. Define it once in redbull-platform (gitops/values/<env>.yaml, key `siteNetworks`); the ApplicationSet merges that file in ahead of this chart's values." }}
+{{- end }}
+  SITE_NETWORKS: {{ .Values.siteNetworks | toJson | quote }}
+  PORTS_MCE_TO_BMC: '{"tcp": ["623"], "udp": ["623"]}'
+  # -- allocate-segment: the day1 values repo -------------------------------
+  # Where cluster values files live; the workflow appends the vlanId +
+  # dhcp_values block to sites/<site>/mces/<mce>/hostedClusters/<cluster>.yaml
+  # and pushes. The push token lives in the day1-git-token Secret, never here.
+  DAY1_REPO_URL: {{ .Values.config.day1RepoUrl | quote }}
+  DAY1_BRANCH: {{ .Values.config.day1Branch | quote }}
+  DAY1_CLUSTERS_ROOT: {{ .Values.config.day1ClustersRoot | quote }}
+  DAY1_GIT_USER_NAME: {{ .Values.config.day1GitUserName | quote }}
+  DAY1_GIT_USER_EMAIL: {{ .Values.config.day1GitUserEmail | quote }}
+  # -- allocate-segment: DHCP scope policy + API ----------------------------
+  # The ONE DHCP policy knob (the operator's edit surface, like PORTS_* — edit
+  # + restart, no rebuild): last-octet ranges excluded from distribution.
+  # startRange/endRange are DERIVED (first/last non-excluded host octet), so
+  # the range and the exclusions can never contradict. Validated fail-fast at
+  # worker startup; /24 segments only — anything else fails the run loudly
+  # with UnsupportedSegmentPrefix.
+  DHCP_EXCLUSION_OCTET_RANGES: '[[1, 10], [241, 254]]'
+  # The DHCP scope API — read-only for this worker: the workflow polls
+  # GET /api/v1/scopes/{network} until Crossplane has created the scope; it
+  # never writes one. No token: that API leaves its scope GETs unauthenticated
+  # so this poll needs no credential (see the note below the Secrets).
+  DHCP_API_URL: {{ .Values.config.dhcpApiUrl | quote }}
+{{- if not .Values.secrets.existingSecret }}
+---
+# Bearer token for mutating Segments Manager calls. Replace for non-local envs.
+# Skipped when secrets.existingSecret is set (the token then lives in an
+# out-of-band Secret this chart neither creates nor owns).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: segments-manager-token
+type: Opaque
+stringData:
+  SEGMENTS_MANAGER_API_TOKEN: {{ .Values.secrets.segmentsManagerApiToken | quote }}
+{{- end }}
+{{- if not .Values.secrets.existingDay1Secret }}
+---
+# Push token for the day1 values repo (allocate-segment's git writes). Same
+# pattern as segments-manager-token: real environments create an out-of-band
+# Secret (key DAY1_GIT_TOKEN) and set secrets.existingDay1Secret instead.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: day1-git-token
+type: Opaque
+stringData:
+  DAY1_GIT_TOKEN: {{ .Values.secrets.day1GitToken | quote }}
+{{- end }}
+{{- /* No DHCP API token Secret, deliberately. allocate-segment's convergence poll
+       is a GET, and that API leaves its scope GETs unauthenticated precisely so
+       this worker needs no credential for it. Before that, the token had to be
+       COPIED into this namespace — Secrets are namespace-scoped and envFrom
+       resolves per-pod — which meant a second credential that had to rotate in
+       step with the original. Writes to that API are still authenticated; this
+       worker never makes one. */}}

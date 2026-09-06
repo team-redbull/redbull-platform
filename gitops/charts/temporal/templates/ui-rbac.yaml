@@ -1,0 +1,39 @@
+{{- if eq (include "temporal-stack.uiGroupSyncEnabled" .) "true" }}
+{{- $full := include "temporal-stack.fullname" . -}}
+{{- $roleName := printf "%s-%s-ui-groups" $full .Release.Namespace -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  # Groups are cluster-scoped, so this cannot be a namespaced Role. The name
+  # carries the namespace to stay unique across releases on one cluster.
+  name: {{ $roleName }}
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+rules:
+  # resourceNames pins this to exactly the Groups listed in values: the
+  # sidecar can read those and nothing else, and cannot list Groups at all.
+  - apiGroups: ["user.openshift.io"]
+    resources: ["groups"]
+    resourceNames:
+      {{- range .Values.ui.auth.allowedGroups }}
+      - {{ . | quote }}
+      {{- end }}
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $roleName }}
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ $roleName }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "temporal-stack.uiServiceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

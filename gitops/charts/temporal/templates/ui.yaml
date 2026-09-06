@@ -1,0 +1,346 @@
+{{- if .Values.ui.enabled }}
+{{- $full := include "temporal-stack.fullname" . -}}
+{{- $allowlist := eq (include "temporal-stack.uiAllowlistEnabled" .) "true" -}}
+{{- $groupSync := eq (include "temporal-stack.uiGroupSyncEnabled" .) "true" -}}
+{{- $frontendPort := include "temporal-stack.frontendPort" . -}}
+{{- /* Browser origin the UI answers CORS for. Explicit value wins; else the
+       pinned Route host; else "*" (the Route host is only known after
+       OpenShift assigns it, and the UI must still load on first sync). */ -}}
+{{- $cors := .Values.ui.corsOrigins | default (ternary (printf "https://%s" .Values.ui.route.host) "*" (and .Values.ui.route.enabled (ne .Values.ui.route.host ""))) -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $full }}-ui
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+  annotations:
+    # Same wave as the server (2): the UI needs the frontend, which is wave 2.
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  replicas: {{ .Values.ui.replicaCount }}
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      {{- include "temporal-stack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ui
+  template:
+    metadata:
+      labels:
+        {{- include "temporal-stack.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: ui
+      {{- if $groupSync }}
+      annotations:
+        # A change to the sync script must roll the pod; the allowlist
+        # ConfigMap deliberately has no checksum — it is live-reloaded.
+        checksum/groupsync: {{ include (print .Template.BasePath "/ui-groupsync.yaml") . | sha256sum }}
+      {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      # With ui.auth the SA carries the OAuth redirect annotation (see
+      # serviceaccount.yaml) and is the identity oauth-proxy + group-sync use
+      # against the API; without it the SA exists only so the pod does not
+      # run as `default`, and mounts no token.
+      serviceAccountName: {{ include "temporal-stack.uiServiceAccountName" . }}
+      automountServiceAccountToken: {{ .Values.ui.auth.enabled }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      {{- if $groupSync }}
+      initContainers:
+        # Seed the allowlist before oauth-proxy starts — it exits fatally when
+        # the --authenticated-emails-file is missing. Exits 0 even if the API
+        # is unreachable, so a blip cannot wedge the pod in init; the list is
+        # simply empty (denying everyone) until the first successful sync.
+        - name: group-sync-init
+          image: "{{ include "temporal-stack.image" (dict "root" $ "image" .Values.ui.auth.groupSync.image) }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "/etc/groupsync/sync.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          env:
+            # OpenShift runs this under an arbitrary UID with no passwd entry,
+            # so HOME would resolve to "/" and `oc` could not create its
+            # discovery cache. /tmp is an emptyDir (root fs is read-only).
+            - name: HOME
+              value: /tmp
+            - name: ONESHOT
+              value: "1"
+            - name: ALLOWED_GROUPS
+              value: {{ join " " .Values.ui.auth.allowedGroups | quote }}
+            - name: USERNAME_DOMAIN
+              value: {{ .Values.ui.auth.usernameDomain | quote }}
+          resources:
+            {{- toYaml .Values.ui.auth.groupSync.resources | nindent 12 }}
+          volumeMounts:
+            - name: allowed-users
+              mountPath: /etc/proxy/allowed
+            - name: allowlist-static
+              mountPath: /etc/proxy/static
+              readOnly: true
+            - name: groupsync-script
+              mountPath: /etc/groupsync
+              readOnly: true
+            - name: groupsync-tmp
+              mountPath: /tmp
+      {{- end }}
+      containers:
+        - name: ui
+          image: "{{ include "temporal-stack.image" (dict "root" $ "image" .Values.ui.image) }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          env:
+            - name: TEMPORAL_ADDRESS
+              value: "{{ include "temporal-stack.frontendService" . }}:{{ $frontendPort }}"
+            - name: TEMPORAL_UI_PORT
+              value: {{ .Values.ui.port | quote }}
+            # Browser origin(s) allowed by the UI server — see ui.corsOrigins.
+            - name: TEMPORAL_CORS_ORIGINS
+              value: {{ $cors | quote }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.ui.port }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 20
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.ui.resources | nindent 12 }}
+        {{- if .Values.ui.auth.enabled }}
+        # Authenticating reverse proxy: browsers hit this over the Route, log
+        # in via the cluster OAuth server, then get proxied to the UI on
+        # localhost. TLS cert/key are minted by the service-ca operator (see
+        # the Service annotation below).
+        - name: oauth-proxy
+          image: "{{ include "temporal-stack.image" (dict "root" $ "image" .Values.ui.auth.image) }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          args:
+            - --provider=openshift
+            - --openshift-service-account={{ include "temporal-stack.uiServiceAccountName" . }}
+            - --https-address=:{{ .Values.ui.auth.port }}
+            - --http-address=
+            - --upstream=http://localhost:{{ .Values.ui.port }}
+            - --tls-cert=/etc/tls/private/tls.crt
+            - --tls-key=/etc/tls/private/tls.key
+            - --cookie-secret-file=/etc/proxy/secrets/session_secret
+            - --cookie-secure=true
+            # Session lifetime. oauth-proxy re-validates the OpenShift token
+            # (and the SAR, if set) only when it refreshes the cookie, and its
+            # default is to never refresh — so without these two flags a
+            # revoked token or lost permission would keep working for the
+            # cookie's full 168h default. The username allowlist below is the
+            # one check that already runs on every request regardless.
+            - --cookie-refresh={{ .Values.ui.auth.cookieRefresh }}
+            - --cookie-expire={{ .Values.ui.auth.cookieExpire }}
+            - --skip-provider-button
+            {{- with .Values.ui.auth.sar }}
+            - --openshift-sar={{ toJson . }}
+            {{- end }}
+            {{- if $allowlist }}
+            # Identity allowlist. oauth-proxy re-checks the file on every
+            # proxied request rather than only at login, so a removal drops an
+            # already-open session too.
+            #
+            # The two flags are a PAIR — the file alone is not deny-by-default.
+            # oauth-proxy admits an identity that matches the emails file OR
+            # ends in an accepted email domain, and under --provider=openshift
+            # every login is rewritten to <user>@{{ .Values.ui.auth.usernameDomain }}
+            # which the default domain rule accepts. Left alone that OR admits
+            # every authenticated cluster user whatever the file says, so the
+            # gate looks configured and enforces nothing. Pinning the domain to
+            # an unmatchable one (.invalid is reserved by RFC 2606) forces the
+            # decision onto the file.
+            - --email-domain=disabled.invalid
+            - --authenticated-emails-file=/etc/proxy/allowed/users
+            {{- end }}
+          ports:
+            - name: proxy
+              containerPort: {{ .Values.ui.auth.port }}
+          readinessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: proxy
+              scheme: HTTPS
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /oauth/healthz
+              port: proxy
+              scheme: HTTPS
+            initialDelaySeconds: 15
+            periodSeconds: 15
+          resources:
+            {{- toYaml .Values.ui.auth.resources | nindent 12 }}
+          volumeMounts:
+            - name: proxy-tls
+              mountPath: /etc/tls/private
+            - name: proxy-cookie
+              mountPath: /etc/proxy/secrets
+            {{- if $allowlist }}
+            - name: allowed-users
+              mountPath: /etc/proxy/allowed
+              readOnly: true
+            {{- end }}
+        {{- end }}
+        {{- if $groupSync }}
+        # Keeps the allowlist current: re-reads each Group's members every
+        # refreshInterval and rewrites the file oauth-proxy watches. A failed
+        # read leaves the previous list in place rather than locking everyone
+        # out. Reaches the API as the UI ServiceAccount, whose ClusterRole is
+        # scoped by resourceNames to just these Groups (see ui-rbac.yaml).
+        - name: group-sync
+          image: "{{ include "temporal-stack.image" (dict "root" $ "image" .Values.ui.auth.groupSync.image) }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          command: ["/bin/sh", "/etc/groupsync/sync.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          env:
+            # See group-sync-init above: arbitrary UID needs a writable HOME.
+            - name: HOME
+              value: /tmp
+            - name: ALLOWED_GROUPS
+              value: {{ join " " .Values.ui.auth.allowedGroups | quote }}
+            - name: USERNAME_DOMAIN
+              value: {{ .Values.ui.auth.usernameDomain | quote }}
+            - name: REFRESH_INTERVAL
+              value: {{ .Values.ui.auth.groupSync.refreshInterval | quote }}
+          resources:
+            {{- toYaml .Values.ui.auth.groupSync.resources | nindent 12 }}
+          volumeMounts:
+            - name: allowed-users
+              mountPath: /etc/proxy/allowed
+            - name: allowlist-static
+              mountPath: /etc/proxy/static
+              readOnly: true
+            - name: groupsync-script
+              mountPath: /etc/groupsync
+              readOnly: true
+            - name: groupsync-tmp
+              mountPath: /tmp
+        {{- end }}
+      {{- if .Values.ui.auth.enabled }}
+      volumes:
+        - name: proxy-tls
+          secret:
+            secretName: {{ $full }}-ui-proxy-tls
+        - name: proxy-cookie
+          secret:
+            secretName: {{ .Values.ui.auth.existingCookieSecret | default (printf "%s-ui-proxy-cookie" $full) }}
+        {{- if $allowlist }}
+        {{- if $groupSync }}
+        # Written by group-sync, read by oauth-proxy. An emptyDir rather than
+        # the ConfigMap because the union of Group members and allowedUsers is
+        # computed at runtime and has to stay writable.
+        - name: allowed-users
+          emptyDir: {}
+        - name: allowlist-static
+          configMap:
+            name: {{ $full }}-ui-allowed-users
+        - name: groupsync-script
+          configMap:
+            name: {{ $full }}-ui-groupsync
+        # Scratch space for `oc` (discovery cache under HOME) and the script's
+        # temp files — the sidecars' root filesystems are read-only.
+        - name: groupsync-tmp
+          emptyDir: {}
+        {{- else }}
+        # Users only: oauth-proxy reads the ConfigMap directly. Its watcher
+        # handles the kubelet's symlink swap, so a `helm upgrade` that changes
+        # allowedUsers applies live without a rollout restart.
+        - name: allowed-users
+          configMap:
+            name: {{ $full }}-ui-allowed-users
+        {{- end }}
+        {{- end }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $full }}-ui
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+  {{- if .Values.ui.auth.enabled }}
+  annotations:
+    # service-ca operator mints a TLS cert for the oauth-proxy sidecar and
+    # keeps it rotated in this Secret.
+    service.beta.openshift.io/serving-cert-secret-name: {{ $full }}-ui-proxy-tls
+  {{- end }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "temporal-stack.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+  ports:
+    {{- if .Values.ui.auth.enabled }}
+    # Only the authenticated proxy port is exposed — the UI's plain HTTP port
+    # must not be reachable through the Service, or auth could be bypassed.
+    - name: proxy
+      port: {{ .Values.ui.auth.port }}
+      targetPort: proxy
+    {{- else }}
+    - name: http
+      port: {{ .Values.ui.port }}
+      targetPort: http
+    {{- end }}
+{{- if .Values.ui.route.enabled }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ $full }}-ui
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  {{- with .Values.ui.route.host }}
+  host: {{ . | quote }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ $full }}-ui
+    weight: 100
+  {{- if .Values.ui.auth.enabled }}
+  port:
+    targetPort: proxy
+  # Reencrypt is forced with auth: the router must terminate edge TLS AND
+  # re-encrypt to the oauth-proxy sidecar's service-ca cert (which the router
+  # trusts implicitly — no destinationCACertificate needed).
+  tls:
+    termination: reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+  {{- else }}
+  port:
+    targetPort: http
+  {{- with .Values.ui.route.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}
+{{- end }}

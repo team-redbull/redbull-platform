@@ -1,0 +1,11 @@
+# Argo config for `segment-lifecycle-worker` — the first per-domain activity-worker limb.
+# Chart: gitops/charts/segment-lifecycle-worker. The folder name drives the app name, the
+# chart path and the release name, so the -worker suffix here is what makes the workload
+# read as a process rather than a peer service; the domain-scoped names it consumes
+# (segment-lifecycle-config, the segment-lifecycle-activity queue) deliberately stay bare.
+#
+# Same redbull-workflows namespace as the orchestrator, and it gets the Temporal
+# connection, DOMAIN and SEGMENTS_MANAGER_URL from the shared workflows-orchestrator-config
+# ConfigMap at runtime rather than from its own Helm values. That ordering is soft: it
+# crash-loops until the orchestrator publishes the ConfigMap, then connects.
+namespace: redbull-workflows

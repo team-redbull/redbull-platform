@@ -1,0 +1,10 @@
+# Argo config for `workflows-docs` — the documentation site for the workflow layer: the
+# workflows-orchestrator guide as its homepage plus one page per workflow. Chart:
+# gitops/charts/workflows-docs.
+#
+# Deploys into redbull-workflows alongside the brain and the limbs, but depends on none of
+# them: it is static HTML that mounts no ConfigMap and no Secret. It is deliberately its
+# own service rather than a page served by workflows-orchestrator-api — the docs should
+# stay readable while the orchestrator is down or mid-rollout, which is exactly when
+# somebody is looking something up.
+namespace: redbull-workflows

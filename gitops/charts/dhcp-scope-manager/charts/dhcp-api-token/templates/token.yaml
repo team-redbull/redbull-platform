@@ -1,0 +1,35 @@
+{{- /* The Secret name, key and namespace are CONSTANTS, not values. One other place
+       already spells all three out — dhcp_api.tokenSecretRef in the
+       hostedclusters-setup chart, which bakes them into a provider-http
+       placeholder that fails silently when it is wrong. A configurable copy here
+       would only be another thing to keep in step.
+
+       The namespace is STAMPED, not inherited from the release. Both placements
+       already target dhcp-scope-manager — standalone on an MCE (its Application's
+       projectNamespace) and nested under dhcp-scope-manager on the mgmt cluster
+       (its release namespace) — so it renders identically either way today. What
+       the stamp buys is that neither can quietly move the Secret out from under
+       the placeholder, which resolves against this literal namespace. A mismatch
+       there is not an error: provider-http's regex demands three literal segments,
+       and a placeholder that fails it is sent as literal header text, i.e. a 401
+       naming nothing.
+
+       The cost, stated: the API pod's secretKeyRef resolves in the pod's OWN
+       namespace, so this pins the dhcp-scope-manager release to the namespace of
+       the same name. That is already the platform constant — one namespace name on
+       every cluster — but it is enforced here now rather than assumed.
+
+       Still nothing cluster-scoped, and no extra RBAC anywhere: provider-http's
+       ClusterRole already reads Secrets cluster-wide, which is what lets one Secret
+       per cluster serve every hosted cluster's Request. */}}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dhcp-scope-manager-token
+  namespace: dhcp-scope-manager
+  labels:
+    app.kubernetes.io/name: dhcp-api-token
+    app.kubernetes.io/managed-by: {{ .Release.Service }}
+type: Opaque
+stringData:
+  api-token: {{ required "dhcp-api-token: values.yaml has no token. There is no generated fallback and no out-of-band path, on purpose: a generated token is re-minted on every Argo sync (helm template has no `lookup`), and an out-of-band one is invisible to git. Set .Values.token." .Values.token | quote }}

@@ -1,0 +1,10 @@
+# Argo config for `workflows-orchestrator` — the Temporal workflow "brain", ONE shared
+# release for every workflow domain AND every workflow within it. Chart:
+# gitops/charts/workflows-orchestrator. Deploys into redbull-workflows and owns the
+# `workflows-orchestrator-config` ConfigMap every limb mounts.
+#
+# Named `workflows-orchestrator` and not `workflows`, which collided with the code repo
+# name and with the /workflows API prefix. The API PATHS are unaffected by that rename —
+# they are per workflow under a domain prefix
+# (/workflows/segment-lifecycle/open-segment-rules), status on /workflows/runs/{id}.
+namespace: redbull-workflows

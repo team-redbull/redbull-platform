@@ -1,0 +1,79 @@
+{{- if .Values.networkPolicy.enabled }}
+{{- $full := include "temporal-stack.fullname" . -}}
+{{- $np := .Values.networkPolicy -}}
+---
+# Temporal server roles: reachable only from pods of this release (inter-role
+# gRPC + ringpop membership, the UI, the setup Job). The frontend's client port
+# is opened separately below. Egress is left open — the server needs the DB
+# and, with an external DB, an address we do not know here.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-server
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "temporal-stack.selectorLabels" . | nindent 6 }}
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [frontend, history, matching, worker]
+  policyTypes: [Ingress]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "temporal-stack.selectorLabels" . | nindent 14 }}
+---
+# Frontend gRPC (the port workers / SDK clients dial). Peers come from
+# networkPolicy.frontendFrom — by default every pod in this namespace.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-frontend-clients
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "temporal-stack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: frontend
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: {{ include "temporal-stack.frontendPort" . }}
+          protocol: TCP
+      {{- with $np.frontendFrom }}
+      from:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if .Values.ui.enabled }}
+---
+# UI pod: only the router may reach it, and only on the port the Service
+# exposes. With ui.auth that is the oauth-proxy port alone — the UI's plain
+# HTTP port is then unreachable from other pods, closing the auth bypass
+# (proxy -> UI goes over localhost, which NetworkPolicy never sees). Kubelet
+# probes are exempt from NetworkPolicy, so they keep working.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ $full }}-ui
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "temporal-stack.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: ui
+  policyTypes: [Ingress]
+  ingress:
+    - ports:
+        - port: {{ ternary .Values.ui.auth.port .Values.ui.port .Values.ui.auth.enabled }}
+          protocol: TCP
+      from:
+        {{- toYaml $np.uiFrom | nindent 8 }}
+{{- end }}
+{{- end }}

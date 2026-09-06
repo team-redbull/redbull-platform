@@ -1,0 +1,84 @@
+{{- if eq (include "temporal-stack.uiGroupSyncEnabled" .) "true" }}
+{{- $full := include "temporal-stack.fullname" . -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $full }}-ui-groupsync
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: ui
+data:
+  sync.sh: |
+    #!/bin/sh
+    # Resolve every OpenShift Group in ALLOWED_GROUPS to its member list, merge
+    # that with the static ui.auth.allowedUsers list, and write the union to the
+    # file oauth-proxy watches (--authenticated-emails-file). oauth-proxy
+    # re-reads the file on change and re-validates on every proxied request, so
+    # both additions and removals take effect without restarting anything.
+    #
+    # ALLOWED_GROUPS, not GROUPS: /bin/sh on this image is bash, where GROUPS is
+    # a special variable bash refuses to import — $GROUPS would silently be the
+    # process's gid list instead of anything we set.
+    set -u
+
+    STATIC=/etc/proxy/static/users
+    OUT=/etc/proxy/allowed/users
+    TMP=/tmp/allowed.new
+
+    sync_once() {
+        : > "$TMP"
+        ok=1
+        for g in $ALLOWED_GROUPS; do
+            # Probe readability separately from reading the members. Only an
+            # unreadable Group may fall back to the previous allowlist; a
+            # readable but EMPTY Group has to revoke everyone, which is the
+            # whole point of the gate. Collapsing the two would let a group
+            # that was emptied keep granting access indefinitely.
+            if oc get group "$g" -o name >/dev/null 2>/tmp/err; then
+                # Each member is written as <username>@$USERNAME_DOMAIN:
+                # that, not the bare name, is the identity oauth-proxy
+                # validates for the openshift provider. The static list from
+                # the ConfigMap is already suffixed by the template.
+                oc get group "$g" \
+                    -o jsonpath='{range .users[*]}{@}{"\n"}{end}' 2>/dev/null \
+                    | sed -e '/^[[:space:]]*$/d' -e "s/\$/@$USERNAME_DOMAIN/" \
+                    >> "$TMP" || true
+            else
+                echo "group-sync: cannot read group $g: $(cat /tmp/err)" >&2
+                ok=0
+            fi
+        done
+        [ -f "$STATIC" ] && cat "$STATIC" >> "$TMP"
+
+        # Fail closed on the WRITE, not on the CONTENT: a transient API error
+        # must leave the last known-good allowlist in place rather than
+        # truncating it and locking every user out.
+        if [ "$ok" != 1 ]; then
+            echo "group-sync: API read failed, keeping previous allowlist" >&2
+            return 1
+        fi
+
+        grep -v '^[[:space:]]*$' "$TMP" | sort -u > "$TMP.sorted"
+        if ! cmp -s "$TMP.sorted" "$OUT"; then
+            # Truncate-and-write, never rename: keeping the same inode keeps
+            # oauth-proxy's fsnotify watch attached and fires a plain Write.
+            cat "$TMP.sorted" > "$OUT"
+            echo "group-sync: allowlist updated ($(wc -l < "$OUT" | tr -d ' ') entries)"
+        fi
+        return 0
+    }
+
+    if [ "${ONESHOT:-0}" = 1 ]; then
+        # Seed the file before oauth-proxy starts — it log.Fatalf's when the
+        # emails file is missing. Always exit 0: an API blip must not wedge the
+        # pod in init, and an empty list just denies everyone until first sync.
+        touch "$OUT"
+        sync_once || true
+        exit 0
+    fi
+
+    while :; do
+        sync_once || true
+        sleep "$REFRESH_INTERVAL"
+    done
+{{- end }}

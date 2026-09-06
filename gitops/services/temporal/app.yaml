@@ -1,0 +1,9 @@
+# Argo config for the `temporal` service. The folder name drives all three identities:
+# Argo app name, chart path (gitops/charts/temporal) and Helm release name.
+#
+# The chart bundles PostgreSQL as a subchart — safe here because Argo sync waves express
+# Postgres -> schema -> server ordering natively (postgres wave 0, the schema Job as an
+# Argo Sync hook at wave 1, server/UI wave 2). That is the Argo-only exception to the
+# "DBs are separate releases" rule the Helmfile layer follows; see CLAUDE.md before
+# copying the pattern to segments-manager, which is still split.
+namespace: temporal

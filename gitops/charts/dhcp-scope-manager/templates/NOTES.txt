@@ -1,0 +1,17 @@
+{{ include "dhcp-scope-manager.fullname" . }} deployed to namespace {{ .Release.Namespace }}.
+
+  transport : {{ .Values.dhcp.transport }}
+{{- if eq .Values.dhcp.transport "psrp" }}
+  DHCP host : {{ .Values.dhcp.serverHost }} (WinRM {{ .Values.winrm.port }}, auth {{ .Values.winrm.auth }})
+  password  : from Secret {{ .Values.winrm.existingSecret }}/{{ .Values.winrm.passwordKey }}
+{{- end }}
+
+Check it can reach the DHCP server:
+
+  oc exec deploy/{{ include "dhcp-scope-manager.fullname" . }} -n {{ .Release.Namespace }} -- \
+    python -c "import urllib.request;print(urllib.request.urlopen('http://127.0.0.1:8080/healthz').read())"
+
+A pod that is Running but never Ready means /healthz cannot reach the DHCP
+server. Most likely causes, in order: the WinRM port is not open to this
+cluster's egress address, the Secret holds a stale password, or serverHost
+changed (a stop/start reassigns the public IP on a cloud test box).

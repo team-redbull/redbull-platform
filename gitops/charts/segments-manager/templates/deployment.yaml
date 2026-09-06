@@ -1,0 +1,134 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "segments-manager.fullname" . }}
+  labels:
+    {{- include "segments-manager.labels" . | nindent 4 }}
+  {{- with .Values.commonAnnotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if not .Values.autoscaling.enabled }}
+  replicas: {{ .Values.replicaCount }}
+  {{- end }}
+  selector:
+    matchLabels:
+      {{- include "segments-manager.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        {{- with .Values.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      labels:
+        {{- include "segments-manager.selectorLabels" . | nindent 8 }}
+        {{- with .Values.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.image.pullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      serviceAccountName: {{ include "segments-manager.serviceAccountName" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: {{ .Chart.Name }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.service.targetPort }}
+              protocol: TCP
+          env:
+            # Site configuration from ConfigMap. Wired by explicit
+            # configMapKeyRef, not envFrom — so this key and the ConfigMap's must
+            # be renamed in the SAME commit, or new pods land in
+            # CreateContainerConfigError on a key that no longer exists.
+            - name: SITE_NETWORKS
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "segments-manager.fullname" . }}
+                  key: SITE_NETWORKS
+            # Server configuration from ConfigMap. No SERVER_HOST/LOG_LEVEL/
+            # LOG_FILE: those are constants in the application.
+            - name: SERVER_PORT
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "segments-manager.fullname" . }}
+                  key: SERVER_PORT
+            # MongoDB config from ConfigMap
+            - name: MONGODB_DB_NAME
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "segments-manager.fullname" . }}
+                  key: MONGODB_DB_NAME
+            - name: MONGODB_COLLECTION
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "segments-manager.fullname" . }}
+                  key: MONGODB_COLLECTION
+            - name: MONGODB_TLS_INSECURE
+              valueFrom:
+                configMapKeyRef:
+                  name: {{ include "segments-manager.fullname" . }}
+                  key: MONGODB_TLS_INSECURE
+            # (No workflow-API env var. The app no longer calls the workflows
+            # API at all — see the ConfigMap. This used to be the one place the
+            # two services' env-var names had to be kept in sync by hand, and
+            # they had already drifted: the chart mapped the ConfigMap key onto
+            # CONNECTIVITY_WORKFLOW_API_URL while the app read WORKFLOWS_API_URL.)
+            # MongoDB URL from Secret
+            - name: MONGODB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: {{ if .Values.mongodb.existingSecret }}{{ .Values.mongodb.existingSecret }}{{ else }}{{ include "segments-manager.fullname" . }}-mongodb{{ end }}
+                  key: {{ if .Values.mongodb.existingSecret }}{{ .Values.mongodb.existingSecretKey | default "mongodb-url" }}{{ else }}mongodb-url{{ end }}
+            # API token from a Secret created out-of-band (required for write requests)
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "auth.existingSecret is required: create the API-token Secret out-of-band and name it here" .Values.auth.existingSecret }}
+                  key: {{ .Values.auth.existingSecretKey | default "api-token" }}
+          {{- with .Values.startupProbe }}
+          startupProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          livenessProbe:
+            {{- toYaml .Values.livenessProbe | nindent 12 }}
+          readinessProbe:
+            {{- toYaml .Values.readinessProbe | nindent 12 }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          {{- if .Values.persistence.enabled }}
+          volumeMounts:
+            - name: data
+              mountPath: {{ .Values.persistence.mountPath }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.persistence.enabled }}
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "segments-manager.fullname" . }}-data
+      {{- end }}

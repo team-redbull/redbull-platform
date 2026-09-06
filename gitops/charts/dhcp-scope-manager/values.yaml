@@ -1,0 +1,141 @@
+# Values for `dhcp-scope-manager`, deployed by the redbull-services ApplicationSet
+# (gitops/services/dhcp-scope-manager/app.yaml). THIS FILE IS THE SINGLE SOURCE OF TRUTH
+# for how the service is configured — there is no second values file layered on top of
+# it. gitops/overrides/ exists for a site- or cluster-specific override, and nothing
+# uses it today.
+#
+# The API runs here on Linux and drives a *Windows* DHCP server remotely over PSRP/WinRM;
+# that Windows host is not managed by this platform. Crossplane provider-http consumes
+# the API in-cluster via its Service.
+
+# CI (team-redbull/.github ghcr-build-push.yml) rewrites image.repository and
+# image.tag here on every push to the code repo's main. Keep this block at the
+# top level and named `image` — the workflow's default helm-image-path targets it.
+image:
+  repository: ghcr.io/team-redbull/dhcp-scope-manager
+  # CI-managed from here on — do not edit by hand. refactor/linux-api has merged,
+  # so pushes to the code repo's main rewrite this line and cut the matching
+  # vX.Y.Z tag in lockstep with appVersion.
+  tag: v1.0.12
+  pullPolicy: IfNotPresent
+replicaCount: 1
+# The API is stateless, but every mutating request also takes an in-process
+# per-scope lock (CLAUDE.md section "Concurrency"). That lock is per-pod, so two
+# replicas can serialise writes to the same scope only by luck. Windows DHCP is
+# the real serialisation point and tolerates this, but scaling up trades an
+# in-process guarantee for none — do it deliberately, not for availability alone.
+service:
+  type: ClusterIP
+  port: 8080
+# Crossplane provider-http reaches the API in-cluster, so a Route is not required.
+# Enabled by default here only because this environment is also driven by hand.
+route:
+  enabled: true
+  # Empty host = OpenShift generates one from the route/namespace/cluster domain.
+  host: ""
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+dhcp:
+  # local = spawn powershell.exe in this pod (impossible on Linux; here for parity
+  # with the co-located Windows deployment only).
+  # psrp  = drive a remote Windows DHCP server over WinRM. The only sane value here.
+  transport: psrp
+  # The Windows DHCP server this API manages. Deliberately ONE explicit host, not a
+  # DNS alias or load balancer: under failover either peer can answer a read, and
+  # replication lag or drift on the partner would make GET differ from the desired
+  # PUT body, sending Crossplane into a corrective-PUT loop.
+  #
+  # This is the disposable AWS test box (test-env/ in the dhcp_scope_manager repo). It
+  # carries an Elastic IP, so the address survives stop/start and even a full terraform
+  # replace of the instance — it only changes if the EIP itself is released.
+  serverHost: "107.20.133.130"
+  logLevel: INFO
+  commandTimeoutSeconds: 60
+  envCheckTimeoutSeconds: 15
+  maxConcurrency: 10
+winrm:
+  port: 5986
+  useSsl: true
+  # kerberos authenticates from a keytab/ccache with no stored password and is
+  # correct for a domain-joined server. ntlm is the fallback for a standalone
+  # workgroup host and requires username + password.
+  #
+  # credssp here, and not either of those. Like ntlm it is username+password, but only
+  # credssp DELEGATES the credential onward to the DHCP server, and without delegation
+  # every failover cmdlet fails against the partner — measured on this very box, where
+  # Add-DhcpServerv4FailoverScope fails under ntlm and succeeds under credssp. Not
+  # kerberos, because this test box is a standalone workgroup server with no Active
+  # Directory; a domain-joined production server could use kerberos, but only with
+  # resource-based constrained delegation configured in AD — plain kerberos hits the
+  # same double hop as ntlm. Requires `Enable-WSManCredSSP -Role Server` on serverHost
+  # (the test-env bootstrap does this); only that host needs it, not the partner.
+  auth: credssp
+  username: Administrator
+  # Verify the WinRM TLS certificate. Must be false against a self-signed
+  # listener (the disposable test box); should be true in production, where the
+  # DHCP server presents a certificate from the internal CA.
+  certValidation: false
+  connectionTimeoutSeconds: 30
+  # Credentials come from a pre-existing Secret — never from values.yaml, which
+  # lives in git. Create it out of band (see gitops/SECRETS.md in redbull-platform;
+  # Vault/ESO will populate it later without changing this chart):
+  #
+  #   oc create secret generic dhcp-scope-manager-winrm \
+  #     --from-literal=winrm-password='...' -n dhcp-scope-manager
+  existingSecret: dhcp-scope-manager-winrm
+  passwordKey: winrm-password
+# Bearer token for the API itself.
+#
+# Auth is NOT optional here, even though the app itself treats an empty token as
+# "auth disabled": route.enabled puts the API outside the cluster, and every
+# mutating route writes to a real DHCP server. (Scope GETs are anonymous by design
+# — see CLAUDE.md section 10 in the code repo — so this protects writes.)
+#
+# The Secret named below is rendered by the vendored charts/dhcp-api-token
+# subchart, from the one token committed in its values.yaml. It is neither
+# generated nor created out of band, and both of those paths were removed rather
+# than left as fallbacks:
+#
+#   generated — lookup-then-randAlphaNum kept the token stable under `helm
+#     upgrade`, but Argo CD renders with `helm template`, where `lookup` returns
+#     nothing. Every re-render ROTATED it while the running pod kept its startup
+#     value (observed live: pod env and Secret disagreed).
+#   out of band — `oc create secret` ended the rotation but left the live token
+#     invisible to git, and needed repeating on every cluster by hand.
+#
+# Named secretName, NOT existingSecret, precisely because this chart creates it —
+# unlike winrm.existingSecret above, which genuinely is created out of band. The
+# two names now mean different things; keep it that way.
+#
+# The same subchart is deployed standalone to every MCE, so the Crossplane Requests
+# there resolve their Authorization header against one Secret per cluster. Changing
+# this name means changing dhcp_api.tokenSecretRef in the hostedclusters-setup
+# chart too — a mismatch there is not an error, it is a 401 that names nothing.
+apiAuth:
+  secretName: dhcp-scope-manager-token
+  tokenKey: api-token
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    # 768Mi was sized for the in-image pytest runs (POST /api/v1/test-runs), which
+    # peaked 150-250Mi above the idle uvicorn process. That endpoint is gone, so the
+    # headroom is no longer needed for it — left as is rather than trimmed blind,
+    # since an OOM here kills the pod Crossplane reconciles every scope through.
+    # Measure the idle+PSRP working set before lowering it.
+    memory: 768Mi
+# No runAsUser/fsGroup: OpenShift's restricted-v2 SCC allocates a UID from the
+# namespace's own range and rejects anything hardcoded outside it. Leaving these
+# unset lets admission assign an in-range UID and inject the capability drops and
+# seccomp profile it requires.
+podSecurityContext: {}
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+nodeSelector: {}
+tolerations: []
+affinity: {}

@@ -1,12 +1,21 @@
-# THE one generic ApplicationSet. Sweeps gitops/services/<env>/<service>/app.yaml and
-# generates one Argo CD Application per (env, service). Adding a service = a new folder;
-# adding an env = a new services/<env>/ folder + values/<env>.yaml. No new ApplicationSet.
+# THE one generic ApplicationSet. Sweeps gitops/services/<service>/app.yaml and generates
+# one Argo CD Application per service. Adding a service = one chart folder under
+# gitops/charts/ + one app.yaml here. No new ApplicationSet, ever.
 #
 # Lives in the OpenShift GitOps instance namespace (user1-argocd).
 #
-# Git host is the ONLY thing that changes moving to the air-gapped GitLab — the three
-# repoURLs marked below and the project sourceRepos. GitHub is flat (helm-charts-<name>);
-# GitLab uses a real subgroup (helm-charts/<name>). See README "Air-gapped GitLab".
+# SINGLE SOURCE, SINGLE REPO. Every service's chart lives in THIS repo at
+# gitops/charts/<service>/, and that chart's own values.yaml is the whole configuration —
+# no per-environment values layer, no $values second source, no valueFiles by default.
+# The folder name is the only identifier: it is the Argo app name, the chart path AND the
+# Helm release name, so resources are named after the service in every cluster.
+#
+# There is exactly ONE environment here. The air-gapped side runs its own Argo
+# architecture (and its own copy of this repo); it does not share this file's shape, so
+# do not reintroduce an <env> path segment to serve it. See README.
+#
+# Git host is the only thing that changes when this repo is mirrored to the air-gapped
+# GitLab: the two repoURLs below and the project's sourceRepos.
 apiVersion: argoproj.io/v1alpha1
 kind: ApplicationSet
 metadata:
@@ -15,25 +24,24 @@ metadata:
 spec:
   goTemplate: true
   goTemplateOptions: ["missingkey=error"]
+
   generators:
     - git:
         # ← host: GitLab in the air-gapped env
         repoURL: https://github.com/team-redbull/redbull-platform.git
         revision: main
         files:
-          - path: gitops/services/*/*/app.yaml
+          - path: gitops/services/*/app.yaml
   template:
     metadata:
-      # env = 3rd path segment (gitops/services/<env>/<service>), service = folder name.
-      # prod is canonical → unprefixed (temporal); every other env gets an <env>- prefix
-      # (dev-temporal). One conditional, easy to extend.
-      name: '{{ if eq (index .path.segments 2) "prod" }}{{ .path.basename }}{{ else }}{{ index .path.segments 2 }}-{{ .path.basename }}{{ end }}'
+      # service = the folder name. One environment, so no prefix and no conditional.
+      name: '{{ .path.basename }}'
       # Cascade-delete guard — deleting a service must delete its workloads.
       # Without this finalizer, deleting an Application is a NON-CASCADING delete: the
       # Application object vanishes and every resource it managed is ORPHANED in the
       # cluster. That is exactly the path taken when a service's folder is removed from
-      # gitops/services/<env>/ — the generator stops emitting it, the ApplicationSet
-      # deletes the Application, and the workloads silently stay behind forever.
+      # gitops/services/ — the generator stops emitting it, the ApplicationSet deletes
+      # the Application, and the workloads silently stay behind forever.
       # Argo CD 3.x adds this finalizer to generated Applications on its own, so on a
       # current cluster it looks unnecessary; older controllers do NOT. Declaring it
       # explicitly makes deletion version-independent. This is defence in depth — it is
@@ -45,39 +53,22 @@ spec:
         - resources-finalizer.argocd.argoproj.io
     spec:
       project: redbull-platform
-      sources:
-        # 1) the service's chart — its own repo in the helm-charts group, chart at root.
-        #    ← host+layout: GitLab subgroup 'helm-charts/{{ .path.basename }}' in air-gapped
-        #    Optional escape hatch: this service's app.yaml may set `repoUrl` to point
-        #    the chart source at any repo directly (any host/layout — a mono-repo, a
-        #    per-team mirror, a repo outside the helm-charts group entirely), bypassing
-        #    the helm-charts-<service>/helm-charts/<service> naming convention below.
-        #    Absent (the common case) falls back to that convention unchanged.
-        - repoURL: '{{ dig "repoUrl" (printf "https://github.com/team-redbull/helm-charts-%s.git" .path.basename) . }}'
-          targetRevision: '{{ .revision }}'
-          path: .
-          helm:
-            # Release name = the SERVICE (env-independent), not the Argo app name.
-            # So resources are named the same in every env (temporal-*, segments-manager,
-            # …) — env separation is by NAMESPACE, not by resource name. This is why no
-            # chart needs a per-env fullnameOverride (the charts' fullname helpers collapse
-            # to the release name / hardcode their names).
-            releaseName: '{{ .path.basename }}'
-            # shared env globals first, then this service's own values (override). This
-            # is the common-case default; when a service's app.yaml sets `extraValueFiles`
-            # (or `overrides`), templatePatch below REPLACES this whole `sources` list
-            # wholesale with the fully-resolved version (extras prepended) — see there for
-            # why (Sources is a real typed []string field: a variable-length list can't be
-            # built with a bare {{ range }}/{{ if }} here, that's not valid YAML/JSON at
-            # rest, only inside a string field like templatePatch).
-            valueFiles:
-              - '$values/gitops/values/{{ index .path.segments 2 }}.yaml'
-              - '$values/{{ .path.path }}/values.yaml'
-        # 2) this repo, only as the $values source for the valueFiles above.
-        #    ← host: GitLab in the air-gapped env
-        - repoURL: https://github.com/team-redbull/redbull-platform.git
-          targetRevision: main
-          ref: values
+      # ONE source: this repo, at this service's chart folder. The chart and the
+      # ApplicationSet that deploys it now move in the same commit and are rendered from
+      # the same revision, which is what removes the whole class of multi-source
+      # rendering failures the previous $values layout had.
+      source:
+        # ← host: GitLab in the air-gapped env
+        repoURL: https://github.com/team-redbull/redbull-platform.git
+        targetRevision: main
+        path: 'gitops/charts/{{ .path.basename }}'
+        helm:
+          # Release name = the SERVICE, so resources are named the same everywhere
+          # (temporal-*, segments-manager, …) and cross-service FQDNs stay stable.
+          releaseName: '{{ .path.basename }}'
+          # No valueFiles: the chart's own values.yaml IS the configuration. A service
+          # that genuinely needs an override declares `valueFiles:` in its app.yaml —
+          # see templatePatch below.
       destination:
         # optional per-service override (other cluster, e.g. a future Vault limb);
         # defaults to the cluster this ApplicationSet runs on.
@@ -101,32 +92,36 @@ spec:
         retry:
           limit: 10
           backoff: { duration: 15s, factor: 2, maxDuration: 5m }
-  # templatePatch is a plain STRING field — unlike `template.spec` above (a typed
-  # object, so any {{ }} there has to sit entirely inside one already-declared
-  # scalar/field), this whole block is Go-templated as TEXT first and only re-parsed
-  # as YAML afterwards, then JSON-merge-patched onto the generated Application. That's
-  # the one place variable-length lists (e.g. extraValueFiles) can actually be built.
+
+  # templatePatch is a plain STRING field — unlike `template.spec` above (a typed object,
+  # where any {{ }} has to sit inside an already-declared scalar), this whole block is
+  # Go-templated as TEXT first and only re-parsed as YAML afterwards, then JSON-merge
+  # -patched onto the generated Application. That is the one place a variable-length list
+  # (valueFiles) can actually be built.
   #
-  # Always (re)builds `spec.sources` — identical to the static block above when this
-  # service's app.yaml sets neither `extraValueFiles` nor `repoUrl`, but with any
-  # `extraValueFiles` entries prepended to source #1's valueFiles otherwise (see the
-  # "Layering extra chart-local value files" section in README.md). Since JSON merge
-  # patch replaces whole arrays rather than merging them element-wise, both sources
-  # (the chart AND the $values repo) are always spelled out here in full.
+  # It emits `{}` for the common case — every service today — and JSON merge patch merges
+  # nested objects, so it only ever needs to name the keys it actually changes.
   #
-  # Then deep-merges in this service's `overrides:` key on top, if set — the original,
-  # still-supported escape hatch for anything else (e.g. `destination`), unrelated to
-  # sources.
+  # 1) `valueFiles:` in app.yaml — the override hook. Paths are written repo-root
+  #    relative (e.g. gitops/overrides/segments-manager.yaml) and prefixed here with
+  #    ../../../ because Helm resolves valueFiles relative to the chart dir, which is
+  #    always exactly 3 levels down (gitops/charts/<service>). Argo permits a value file
+  #    outside the app path as long as it resolves inside the repo. Override files live
+  #    under gitops/overrides/ and NOT inside gitops/services/<service>/ on purpose: a
+  #    referenced file inside the watched folder is what made deleting a service deadlock
+  #    its own deletion (CLAUDE.md).
+  # 2) `overrides:` in app.yaml — the general escape hatch, deep-merged last. It can set
+  #    anything on the Application, including replacing `source` outright for the rare
+  #    service whose chart cannot live in this repo.
   templatePatch: |
-    {{- $valueFiles := concat (dig "extraValueFiles" (list) .) (list (printf "$values/gitops/values/%s.yaml" (index .path.segments 2)) (printf "$values/%s/values.yaml" .path.path)) }}
-    {{- $source1 := dict
-          "repoURL" (dig "repoUrl" (printf "https://github.com/team-redbull/helm-charts-%s.git" .path.basename) .)
-          "targetRevision" .revision
-          "path" "."
-          "helm" (dict "releaseName" .path.basename "valueFiles" $valueFiles)
-    }}
-    {{- $source2 := dict "repoURL" "https://github.com/team-redbull/redbull-platform.git" "targetRevision" "main" "ref" "values" }}
-    {{- $patch := dict "spec" (dict "sources" (list $source1 $source2)) }}
+    {{- $patch := dict }}
+    {{- if hasKey . "valueFiles" }}
+    {{- $files := list }}
+    {{- range .valueFiles }}
+    {{- $files = append $files (printf "../../../%s" .) }}
+    {{- end }}
+    {{- $patch = dict "spec" (dict "source" (dict "helm" (dict "valueFiles" $files))) }}
+    {{- end }}
     {{- if hasKey . "overrides" }}
     {{- $patch = mergeOverwrite $patch .overrides }}
     {{- end }}

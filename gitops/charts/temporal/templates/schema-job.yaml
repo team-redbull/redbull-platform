@@ -1,0 +1,93 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "temporal-stack.fullname" . }}-schema
+  labels:
+    {{- include "temporal-stack.labels" . | nindent 4 }}
+    app.kubernetes.io/component: schema
+  annotations:
+    # Argo CD Sync hook at wave 1. The bundled postgres subchart syncs at wave 0
+    # (Argo waits for it Healthy first); the server Deployments are wave 2, so the
+    # schema exists when they boot. Under Helm this was a `pre-install` hook, but
+    # Argo maps that to PreSync — which runs BEFORE the postgres subchart and
+    # deadlocks (see redbull-platform CLAUDE.md "Combined temporal chart"). A
+    # Sync-phase hook + sync-wave is the Argo-native expression of the ordering.
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "1"
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 10
+  activeDeadlineSeconds: 600
+  template:
+    metadata:
+      labels:
+        {{- include "temporal-stack.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: schema
+        {{- include "temporal-stack.dbClientLabel" . | nindent 8 }}
+    spec:
+      restartPolicy: Never
+      serviceAccountName: {{ include "temporal-stack.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        - name: wait-for-db
+          image: "{{ include "temporal-stack.image" (dict "root" $ "image" .Values.waitImage) }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          command:
+            - sh
+            - -c
+            - |
+              echo "Waiting for {{ include "temporal-stack.dbHost" . }}:{{ .Values.database.port }} ..."
+              until nc -z {{ include "temporal-stack.dbHost" . }} {{ .Values.database.port }}; do
+                sleep 2
+              done
+              echo "Database reachable."
+      containers:
+        - name: schema
+          image: "{{ include "temporal-stack.image" (dict "root" $ "image" .Values.temporal.schema.image) }}"
+          imagePullPolicy: {{ .Values.imagePullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          env:
+            {{- include "temporal-stack.dbEnv" . | nindent 12 }}
+            # temporal-sql-tool reads its password from SQL_PASSWORD, so it
+            # never appears on the command line (ps / hook-pod logs).
+            - name: SQL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "temporal-stack.dbSecret" . }}
+                  key: {{ .Values.database.secretKey }}
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              # $DB is database.driver (postgres12 for PG 12..17) — the same
+              # plugin the server pods use.
+              BASE="temporal-sql-tool --plugin $DB --ep $POSTGRES_SEEDS -p $DB_PORT -u $POSTGRES_USER"
+              SCHEMA_DIR=/etc/temporal/schema/postgresql/v12
+
+              echo "== main DB ($DBNAME) =="
+              $BASE --db "$DBNAME" create-database || echo "  (database exists)"
+              $BASE --db "$DBNAME" setup-schema -v 0.0 || echo "  (schema initialised)"
+              $BASE --db "$DBNAME" update-schema -d "$SCHEMA_DIR/temporal/versioned"
+
+              echo "== visibility DB ($VISIBILITY_DBNAME) =="
+              $BASE --db "$VISIBILITY_DBNAME" create-database || echo "  (database exists)"
+              $BASE --db "$VISIBILITY_DBNAME" setup-schema -v 0.0 || echo "  (schema initialised)"
+              $BASE --db "$VISIBILITY_DBNAME" update-schema -d "$SCHEMA_DIR/visibility/versioned"
+
+              echo "Schema setup complete."
+          resources:
+            {{- toYaml .Values.temporal.schema.resources | nindent 12 }}

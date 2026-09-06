@@ -1,0 +1,148 @@
+{{- include "dhcp-scope-manager.validate" . -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "dhcp-scope-manager.fullname" . }}
+  labels:
+    {{- include "dhcp-scope-manager.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "dhcp-scope-manager.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "dhcp-scope-manager.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "dhcp-scope-manager.fullname" . }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: api
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: HOST
+              value: "0.0.0.0"
+            - name: PORT
+              value: "8080"
+            - name: LOG_LEVEL
+              value: {{ .Values.dhcp.logLevel | quote }}
+            - name: DHCP_TRANSPORT
+              value: {{ .Values.dhcp.transport | quote }}
+            - name: POWERSHELL_COMMAND_TIMEOUT_SECONDS
+              value: {{ .Values.dhcp.commandTimeoutSeconds | quote }}
+            - name: POWERSHELL_ENV_CHECK_TIMEOUT_SECONDS
+              value: {{ .Values.dhcp.envCheckTimeoutSeconds | quote }}
+            - name: POWERSHELL_MAX_CONCURRENCY
+              value: {{ .Values.dhcp.maxConcurrency | quote }}
+            {{- if eq .Values.dhcp.transport "psrp" }}
+            - name: DHCP_SERVER_HOST
+              value: {{ .Values.dhcp.serverHost | quote }}
+            - name: WINRM_PORT
+              value: {{ .Values.winrm.port | quote }}
+            - name: WINRM_USE_SSL
+              value: {{ .Values.winrm.useSsl | quote }}
+            - name: WINRM_AUTH
+              value: {{ .Values.winrm.auth | quote }}
+            - name: WINRM_CERT_VALIDATION
+              value: {{ .Values.winrm.certValidation | quote }}
+            - name: WINRM_CONNECTION_TIMEOUT_SECONDS
+              value: {{ .Values.winrm.connectionTimeoutSeconds | quote }}
+            {{- if .Values.winrm.username }}
+            - name: WINRM_USERNAME
+              value: {{ .Values.winrm.username | quote }}
+            {{- end }}
+            {{- if .Values.winrm.existingSecret }}
+            # Never templated inline: values.yaml lives in git.
+            - name: WINRM_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.winrm.existingSecret }}
+                  key: {{ .Values.winrm.passwordKey }}
+            {{- end }}
+            {{- end }}
+            # Always wired, never conditional. POST /api/v1/test-runs executes the
+            # test suite, and the app treats an empty token as "auth disabled" —
+            # so a release without one would serve that route to anyone who can
+            # reach the Route.
+            #
+            # The Secret is rendered by the charts/dhcp-api-token subchart, which
+            # fails the render when it carries no token. There is no
+            # generate-if-absent branch any more: it used lookup-then-randAlphaNum,
+            # and `helm template` — what Argo CD runs — has no `lookup`, so every
+            # sync minted a new token while this pod kept its startup value.
+            #
+            # This is env, materialised once at pod start, so a rotated Secret needs
+            # a rollout to take effect.
+            - name: DHCP_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.apiAuth.secretName }}
+                  key: {{ .Values.apiAuth.tokenKey }}
+          # Liveness is a TCP check, NOT /healthz, and that distinction matters.
+          # /healthz performs a real PSRP round trip to the Windows DHCP server, so
+          # it fails whenever that host is unreachable. Wiring it to liveness would
+          # restart the pod for an outage it cannot fix, turning a remote blip into
+          # a crash-loop. Liveness therefore only asks "is this process alive".
+          livenessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 20
+            failureThreshold: 3
+          {{- if eq .Values.dhcp.transport "psrp" }}
+          # Readiness DOES use /healthz: a pod that cannot reach the DHCP server
+          # has nothing useful to serve and should leave the Service endpoints.
+          # The app caches a failed check for 30s before re-validating, so recovery
+          # is automatic once the server returns.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            # The first check opens a WinRM session (TLS + auth + runspace),
+            # measured at ~6s against a live server. A short timeout here would
+            # never let a healthy pod become ready.
+            timeoutSeconds: 20
+            failureThreshold: 3
+          {{- else }}
+          # A release with no DHCP target of its own — the test runner — cannot use
+          # /healthz: that endpoint validates the DHCP environment and would fail
+          # permanently on Linux, leaving the pod out of Service endpoints and
+          # unreachable. TCP is the only meaningful readiness signal here.
+          readinessProbe:
+            tcpSocket:
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            failureThreshold: 3
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

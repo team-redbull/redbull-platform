@@ -1,0 +1,147 @@
+# Values for `segments-manager`, deployed by the redbull-services ApplicationSet
+# (gitops/services/segments-manager/app.yaml). THIS FILE IS THE SINGLE SOURCE OF TRUTH
+# for how the service is configured — there is no second values file layered on top of
+# it. gitops/overrides/ exists for a site- or cluster-specific override, and nothing
+# uses it today.
+#
+# image.repository/tag are CI-owned: the segments-manager repo's build workflow commits
+# the bump here on every push to its main. Do not hand-edit them — the next build
+# overwrites the edit, and in between the cluster runs whatever you typed.
+
+image:
+  repository: ghcr.io/team-redbull/segments-manager
+  tag: v0.1.4
+  pullPolicy: IfNotPresent
+replicaCount: 1
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+route:
+  enabled: true
+  wildcardPolicy: None
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+# ---------------------------------------------------------------------------------
+# Site network topology — THE definition, rendered verbatim into this service's
+# ConfigMap as SITE_NETWORKS. templates/configmap.yaml fails the render if it is empty.
+#
+#   pool  the CIDR every segment at that site must fall INSIDE. segments-manager
+#         enforces this on every create (subnet_of), and derives its SITES list
+#         from these keys.
+#   dell-bmc   the site's static out-of-band management networks, one per server
+#   cisco-bmc  hardware vendor (Dell and Cisco BMCs sit on separate /16s, and nothing
+#              at segment level says which vendor sits under a given MCE).
+#              segment-lifecycle-worker opens rules from each MCE segment to the
+#              vendors the site actually has. segments-manager never reads them
+#              per-request — only at startup, to verify no pool collides with ANY of
+#              them. Both are optional here; a site may host one vendor or both.
+#
+# Constraints, all enforced at startup by segments-manager (it refuses to boot
+# otherwise): pools must be strict IPv4 CIDRs, must not overlap each other, and must
+# not overlap any vendor's management network. Site names must not differ only by case.
+# BMC-vs-BMC overlap is deliberately NOT checked: this service never reads those keys,
+# and inventing invariants over them is how the two services' validation drifts apart.
+#
+# KEEP IN STEP with gitops/charts/segment-lifecycle-worker/values.yaml, which carries
+# the identical block: the two services run in different namespaces, so they cannot
+# share one ConfigMap, and each renders its own copy of this list. They are in one repo
+# precisely so a change to one is reviewed alongside the other — change both in the
+# same commit. (This used to live once in gitops/values/prod.yaml, back when a per-env
+# values layer existed to hold it.)
+#
+# Changing a site rolls BOTH services' pods on the next Argo sync — each chart's
+# Deployment carries a checksum/config annotation over its ConfigMap.
+#
+# BEFORE changing a `pool`: run segments-manager's
+# `scripts/audit_site_pools.py --site-networks '<candidate>'` against prod Mongo.
+# The pool rule is enforced only on create and `segment` is immutable, so existing
+# out-of-pool segments keep working but become un-recreatable — a CSV re-import or a
+# DR restore would be rejected by the rules that let them exist.
+siteNetworks:
+  site1:
+    pool: "192.10.0.0/16"
+    dell-bmc: "10.50.0.0/16"
+    cisco-bmc: "10.60.0.0/16"
+  site2:
+    pool: "193.51.0.0/16"
+    dell-bmc: "10.51.0.0/16"
+    cisco-bmc: "10.61.0.0/16"
+  site3:
+    pool: "194.52.0.0/16"
+    dell-bmc: "10.52.0.0/16"
+    cisco-bmc: "10.62.0.0/16"
+config:
+  # Must match service.targetPort.
+  serverPort: "8000"
+mongodb:
+  # REQUIRED. Stored in a chart-managed Secret unless mongodb.existingSecret is set.
+  #
+  # The in-cluster MongoDB deployed by the Helmfile bootstrap layer as the
+  # `segments-manager-mongodb` release (service `segments-mongodb`, see
+  # charts/segments-manager-mongodb) — NOT a subchart of this chart, because the DB has
+  # to exist before these pods start.
+  #
+  # TODO(secrets): the password is interpolated inline here, and must stay in step with
+  # segmentsManagerMongodb.password in environments/default.yaml by hand. The whole URL
+  # is meant to move to an ESO-composed Secret, consumed via mongodb.existingSecret —
+  # see gitops/SECRETS.md, where this is called out as the non-obvious migration item.
+  url: "mongodb://segments_manager:segments-manager-mongo-pw@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
+  dbName: "segments_manager"
+  # Collection holding the segment documents. Only change it to run a second,
+  # independent set of segments against the same database.
+  collection: "segments"
+  # Keep the connection encrypted but skip server-certificate validation.
+  tlsInsecure: false
+auth:
+  # Bearer credential for every write request. The Secret is created out-of-band
+  # and is required — the chart never holds the token itself:
+  #   oc create secret generic segments-manager-api-token \
+  #     --from-literal=api-token="$(openssl rand -hex 32)"
+  existingSecret: "segments-manager-api-token"
+  existingSecretKey: "api-token"
+persistence:
+  enabled: false
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  mountPath: /app/data
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 250m
+    memory: 256Mi
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: 8000
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+startupProbe:
+  httpGet:
+    path: /api/health
+    port: 8000
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  failureThreshold: 12
+serviceAccount:
+  create: true
+  automount: true

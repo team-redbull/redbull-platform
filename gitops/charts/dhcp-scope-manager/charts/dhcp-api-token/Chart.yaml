@@ -1,0 +1,9 @@
+apiVersion: v2
+name: dhcp-api-token
+description: >-
+  The DHCP API bearer token, as a Secret. Vendored as a subchart of
+  dhcp-scope-manager so the mgmt cluster gets it alongside the API, and deployed
+  standalone (path: charts/dhcp-api-token) to every MCE so the Crossplane Requests
+  there can resolve their Authorization placeholder. One value, every placement.
+type: application
+version: 0.1.0

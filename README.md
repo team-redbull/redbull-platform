@@ -7,7 +7,11 @@ CD is **split in two**:
   [Helmfile](https://helmfile.readthedocs.io/).
 - **Argo CD service layer** ([gitops/](gitops/)) — the stateless services, deployed
   pull-based by **one generic ApplicationSet** ([gitops/appset.yaml](gitops/appset.yaml))
-  over per-service config files, each pointing at a chart in the `helm-charts` git group.
+  over per-service config files, each pointing at a chart **in this repo** under
+  [gitops/charts/](gitops/charts/).
+
+There is **one environment**. The air-gapped deployment runs its own Argo architecture on
+its own mirror of this repo; it is not modelled here as a second env.
 
 Argo CD is assumed **already installed** (OpenShift GitOps, namespace `user1-argocd`).
 See [gitops/README](gitops/) and `CLAUDE.md §"The CD split"` for the why.
@@ -34,21 +38,26 @@ two database wrappers.
 
 ## What Argo CD deploys (services)
 
-One `Application` per row, generated from `gitops/services/<env>/<service>/` by the
-`redbull-services` ApplicationSet. Charts come from the `helm-charts` group
-(`helm-charts-<service>`, chart at repo root, pinned by `revision:` in each `app.yaml`).
+One `Application` per row, generated from `gitops/services/<service>/app.yaml` by the
+`redbull-services` ApplicationSet. Each chart lives in **this** repo at
+`gitops/charts/<service>/`, and that chart's own `values.yaml` is the whole configuration
+— the ApplicationSet passes no value files.
 
-| App | Namespace | Chart repo | Notes |
+| App | Namespace | Chart | Notes |
 |---|---|---|---|
-| `temporal` | `temporal` | `helm-charts-temporal` | **combined** temporal-stack + PostgreSQL subchart (sync waves) |
-| `segments-manager` | `segments-manager` | `helm-charts-segments-manager` | uses the Helmfile-managed `segments-manager-mongodb` |
-| `workflows` | `redbull-workflows` | `helm-charts-workflows` | the shared workflow "brain"; owns `workflows-config` |
-| `segment-lifecycle-worker` | `redbull-workflows` | `helm-charts-segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; `nextUrl` → `mock-segment-connectivity` in dev |
-| `rhokp` | `rhokp` | `helm-charts-rhokp` | Red Hat Offline Knowledge Portal; ships with placeholder registry/access-key secrets — see `values.yaml` TODO |
+| `temporal` | `temporal` | `gitops/charts/temporal` | **combined** temporal-stack + PostgreSQL subchart (sync waves) |
+| `segments-manager` | `segments-manager` | `gitops/charts/segments-manager` | uses the Helmfile-managed `segments-manager-mongodb` |
+| `workflows-orchestrator` | `redbull-workflows` | `gitops/charts/workflows-orchestrator` | the shared workflow "brain"; owns `workflows-orchestrator-config` |
+| `segment-lifecycle-worker` | `redbull-workflows` | `gitops/charts/segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; `nextUrl` → `mock-segment-connectivity` |
+| `workflows-docs` | `redbull-workflows` | `gitops/charts/workflows-docs` | static docs site for the workflow layer; depends on nothing |
+| `dhcp-scope-manager` | `dhcp-scope-manager` | `gitops/charts/dhcp-scope-manager` | Linux API driving a remote Windows DHCP server over PSRP/WinRM |
+| `rhokp` | `rhokp` | `gitops/charts/rhokp` | Red Hat Offline Knowledge Portal; ships with placeholder registry/access-key secrets — see its `values.yaml` TODO |
+
+The app name, the chart path and the Helm release name are all the folder name, so a
+service's resources are named the same in every cluster.
 
 Cross-app ordering is **not** enforced (soft deps self-heal via `retry`/`selfHeal`); the
 only ordering is intra-chart in `temporal` (Postgres → schema → server, via sync waves).
-Names are `<env>-<service>` except `prod`, which is unprefixed.
 
 `htpasswd-idp` provisions a bootstrap cluster login (`ocpadmin`, cluster-admin)
 on whatever OpenShift cluster this platform deploys onto. It templates no
@@ -59,19 +68,20 @@ login screen keeps a single htpasswd option and any pre-existing users are
 preserved. It only creates a brand-new provider + Secret as a fallback, on a
 cluster with no HTPasswd provider at all. It has no `needs:` of its own but the
 Argo-managed `temporal` app's Temporal UI oauth-proxy only admits the users in
-its `ui.auth.allowedUsers` (kept in sync with `htpasswdIdp.clusterAdmins`), so the
-grant must land before that UI is reachable. See `CLAUDE.md`.
+`ui.auth.allowedUsers` (`gitops/charts/temporal/values.yaml`, kept in sync with
+`htpasswdIdp.clusterAdmins`), so the grant must land before that UI is reachable. See
+`CLAUDE.md`.
 
-`workflows` (Argo app) is the Temporal workflow-brain — ONE shared release for every
-workflow domain, not per-domain. `segment-lifecycle-worker` (Argo app) is the first
-per-domain activity-worker limb; future domains add their own
-`helm-charts-<domain>-worker` chart + a `gitops/services/<env>/<domain>-worker/` folder, all still consuming the one
-`workflows`. `mock-segment-connectivity` (**Helmfile**) is a test-only stand-in for the
-real "next" (firewall) service `segment-lifecycle-worker` talks to — it lets e2e tests run
-the full submit -> poll -> complete cycle without the real, air-gapped next service;
-never install it alongside a production `segment-lifecycle-worker` (pin that app's `revision`
-to a real tag and override `config.nextUrl` at the real next endpoint). None of the
-charts creates its own namespace — see `CLAUDE.md`.
+`workflows-orchestrator` (Argo app) is the Temporal workflow-brain — ONE shared release
+for every workflow domain, not per-domain. `segment-lifecycle-worker` (Argo app) is the
+first per-domain activity-worker limb; future domains add their own
+`gitops/charts/<domain>-worker/` chart + a `gitops/services/<domain>-worker/` folder, all
+still consuming the one orchestrator. `mock-segment-connectivity` (**Helmfile**) is a
+test-only stand-in for the real "next" (firewall) service `segment-lifecycle-worker` talks
+to — it lets e2e tests run the full submit -> poll -> complete cycle without the real,
+air-gapped next service; never install it alongside a production
+`segment-lifecycle-worker` (repoint `config.nextUrl` in that chart's values at the real
+next endpoint first). None of the charts creates its own namespace — see `CLAUDE.md`.
 
 **Ordering** — Helmfile `needs:` still sequences the bootstrap layer (Crossplane first,
 then the `provider-http` package, then a `presync` `kubectl wait` gates the
@@ -84,20 +94,25 @@ ordering (Postgres → schema → server) is intra-chart in `temporal` via sync 
 Everything under [gitops/](gitops/):
 
 - [gitops/appset.yaml](gitops/appset.yaml) — the one generic ApplicationSet (git *files*
-  generator over `gitops/services/*/*/app.yaml`).
+  generator over `gitops/services/*/app.yaml`).
 - [gitops/project.yaml](gitops/project.yaml) — the `redbull-platform` AppProject.
-- `gitops/services/<env>/<service>/app.yaml` — Argo config (`namespace`, `revision`;
-  optional `destination`, `overrides`). Service name + chart repo derive from the folder.
-- `gitops/services/<env>/<service>/values.yaml` — the service's Helm values.
-- `gitops/values/<env>.yaml` — globals merged **under** every service's values, for a
-  value genuinely needed across *multiple* charts (must still exist, even if empty —
-  see the file itself; today nothing qualifies, it's an unused placeholder).
+- `gitops/charts/<service>/` — **the service's Helm chart, and its `values.yaml` is the
+  single source of truth for how that service is configured.**
+- `gitops/services/<service>/app.yaml` — Argo config: `namespace`, plus the optional
+  `valueFiles`, `destination` and `overrides` keys. The folder name is the app name, the
+  chart path and the release name.
+- [gitops/overrides/](gitops/overrides/) — the escape hatch for a per-cluster/per-site
+  value override. **Empty today**, and nothing references it; see its README for why the
+  files live there and not next to `app.yaml`.
 - [gitops/SECRETS.md](gitops/SECRETS.md) — the (not-yet-wired) ESO + Vault plan.
+
+There is no per-environment values layer and no second `$values` source: an Application
+renders from exactly one source, this repo, at `gitops/charts/<service>`.
 
 **Bring-up** (Argo CD already installed in `user1-argocd`):
 
 ```sh
-# one-time: register a repo credential covering the whole team-redbull group
+# one-time: register a repo credential for this repo
 #   (a Secret labeled argocd.argoproj.io/secret-type: repo-creds, URL prefix
 #    https://github.com/team-redbull/, in namespace user1-argocd)
 oc apply -f gitops/project.yaml
@@ -105,107 +120,94 @@ oc apply -f gitops/appset.yaml
 oc get applications -n user1-argocd
 ```
 
-**Add a service:** create `gitops/services/<env>/<name>/{app.yaml,values.yaml}` where
-`<name>` matches a `helm-charts-<name>` repo — the ApplicationSet picks it up. No
-ApplicationSet edit. **Add an environment:** add a `gitops/services/<env>/` folder + a
-`gitops/values/<env>.yaml`.
+**Add a service:** add `gitops/charts/<name>/` (the chart) and
+`gitops/services/<name>/app.yaml` (one line: `namespace:`). The ApplicationSet picks it
+up. No ApplicationSet edit.
 
-### Air-gapped GitLab: the chart host
+**Remove a service:** delete `gitops/services/<name>/` — one commit is enough, because
+the chart it renders from still exists, so the finalizer cascade can compute the resource
+tree and delete the workloads properly. Delete `gitops/charts/<name>/` only in a **later**
+commit, once the Application is gone; removing both at once fails the render and hangs
+the deletion (see `CLAUDE.md`).
 
-The only thing that changes deploying to the air-gapped GitLab is the git **host/layout**
-— GitHub is flat (`helm-charts-<name>`), GitLab uses a real subgroup
-(`helm-charts/<name>`). Edit the three `repoURL`s in `gitops/appset.yaml` and
-`sourceRepos` in `gitops/project.yaml`:
+**Migrating an existing installation** that still runs the old env-scoped ApplicationSet
+(i.e. the air-gapped environment) is not a plain `oc apply` — the old generator matches
+nothing under the new layout, which makes the controller delete every Application it owns.
+See `CLAUDE.md` for the guarded procedure.
 
-```yaml
-# GitHub (today):        https://github.com/team-redbull/helm-charts-{{ .path.basename }}.git
-# GitLab (air-gapped):   https://gitlab.airgap.local/team-redbull/helm-charts/{{ .path.basename }}.git
-```
+### Air-gapped GitLab: the git host
 
-dev and prod share the host, so they remain the **one** ApplicationSet in both.
-
-**If your internal repo also drops the `gitops/` top-level folder** (e.g. a leaner
-mirror with `services/`, `values/`, `project.yaml`, `appset.yaml` at repo root instead
-of nested under `gitops/`) — this is a *further* deviation beyond the documented
-host-only change above, and needs more edits than just the repoURLs:
-
-- Remove the `gitops/` prefix from the git generator's `files: path:` pattern and from
-  the shared-globals `valueFiles` entry in `gitops/appset.yaml`.
-- Every hardcoded `index .path.segments 2` in `gitops/appset.yaml` (the name template's
-  two occurrences, plus the shared-globals `valueFiles` entry) must become
-  `index .path.segments 1` — dropping one leading path segment shifts the env segment
-  from index 2 to index 1. `.path.basename` is unaffected (always the last segment).
-- Symptom if you miss this: every service's Application gets double-named, e.g.
-  `rhokp-rhokp` instead of `rhokp` (env index resolves to the service's own basename,
-  so the `if eq ... "prod"` check fails and both halves of the else-branch print the
-  same string).
-
-This flattening is **not** part of the documented "only the host changes" design —
-track it as a local divergence in your internal fork so a future sync from the
-canonical repo doesn't silently reintroduce the bug.
-
-### Pointing a service at a chart repo directly (`repoUrl`)
-
-By default the chart source is derived from the service's folder name —
-`helm-charts-<service>` on GitHub, `helm-charts/<service>` on the air-gapped GitLab
-(see above). To source a chart from anywhere else instead — a mono-repo, a repo
-outside the `helm-charts` group, a different host entirely — set `repoUrl` in that
-service's `app.yaml`:
+The only thing that changes when this repo is mirrored to the air-gapped GitLab is the
+git **host**. There is no longer a per-chart repo naming convention to translate — the
+charts are folders in this repo, so they travel with it. Edit the two `repoURL`s in
+`gitops/appset.yaml` (the generator's and the source's) and `sourceRepos` in
+`gitops/project.yaml`:
 
 ```yaml
-# gitops/services/<env>/<service>/app.yaml
-namespace: temporal
-revision: main
-repoUrl: https://github.com/some-other-org/some-other-repo.git
+# GitHub (today):        https://github.com/team-redbull/redbull-platform.git
+# GitLab (air-gapped):   https://gitlab.airgap.local/redbull/redbull-platform.git
 ```
 
-`gitops/appset.yaml`'s chart-source `repoURL` falls back to the
-`helm-charts-<service>` convention only when `repoUrl` is absent (the common
-case) — no ApplicationSet edit needed to use this, and every other service keeps
-using the default convention untouched. Note this only overrides the **chart**
-source's repo — the chart is still expected at that repo's root (`path: .`) and
-`revision:` still selects the branch/tag; the rest of the Application (namespace,
-`valueFiles`, sync policy) is unaffected.
+**If your internal mirror also drops the `gitops/` top-level folder** (e.g. a leaner
+layout with `services/`, `charts/`, `project.yaml`, `appset.yaml` at repo root) — this is
+a *further* deviation beyond the host-only change, and needs three more edits in
+`gitops/appset.yaml`, which must stay consistent with each other:
 
-### Layering extra chart-local value files (`extraValueFiles`)
+- the git generator's `files: path:` pattern,
+- the source's `path:` (`gitops/charts/{{ .path.basename }}`),
+- the `../../../` prefix in `templatePatch` — it is the depth of the chart folder from
+  the repo root, so a flattened `charts/<service>` needs `../../` instead.
 
-The host change above is orthogonal to a **second, per-chart** concern: a
-`helm-charts-<service>` repo may ship extra value files at its chart root beyond
-the default `values.yaml` — an air-gapped image-registry overlay (e.g.
-`helm-charts-temporal`'s `values-airgapped.yaml`, see its README "Air-gapped
-install"), a regional variant, a feature-flag file, etc. These are **not** picked
-up automatically — list any number of them, in order, under `extraValueFiles` in
-that service's `app.yaml`:
+`.path.basename` is unaffected (always the last path segment). Track this as a local
+divergence in your fork so a future sync from the canonical repo doesn't reintroduce a
+mismatch.
 
-Example — deploying `temporal` into a (hypothetical) `airgapped` env, composing
-two independent chart-local overlays instead of one combined file:
-`helm-charts-temporal` ships the first (`values-airgapped.yaml`, the
-image-registry rewrite — see its README "Air-gapped install"); the second shows
-how you'd layer in another one, e.g. swapping the bundled PostgreSQL for a
-hosted instance (that same README's "3a."), as its own file rather than folded
-into the first:
+### Overriding a value for one cluster or site (`valueFiles`)
+
+The chart's `values.yaml` is the configuration; nothing is layered on top of it by
+default. For the case that genuinely varies **per cluster or per site** — the air-gapped
+deployments onto a specific MCE or hosted cluster — put the override in
+`gitops/overrides/` and reference it from that service's `app.yaml`, repo-root relative:
 
 ```yaml
-# gitops/services/airgapped/temporal/app.yaml
-namespace: temporal
-revision: main
-extraValueFiles:
-  - values-airgapped.yaml     # image-registry rewrite (ships in the chart repo today)
-  - values-external-db.yaml   # hosted Postgres instead of the bundled subchart (illustrative)
+# gitops/services/segments-manager/app.yaml
+namespace: segments-manager
+valueFiles:
+  - gitops/overrides/segments-manager.yaml
 ```
 
-`gitops/appset.yaml` adds each one to the Helm `valueFiles` list (no `$values/`
-prefix — each resolves inside the chart source, not this repo), in the order
-listed, positioned right after the chart's implicit `values.yaml` so both
-`gitops/values/<env>.yaml` and this folder's own `values.yaml` can still override
-anything they set (e.g. a cluster-specific pull secret or a different mirror
-host). No `gitops/services/airgapped/` folder exists in this repo yet — the
-above is illustrative until an actual air-gapped env is stood up; see "Add an
-environment" above for what that involves.
+Files are applied in the order listed, after the chart's own `values.yaml`, so the last
+one wins. The ApplicationSet rewrites each path to be chart-relative; no ApplicationSet
+edit is needed to use this. An absent `valueFiles` (every service today) adds nothing.
 
-This is a **generic, per (env, service)** mechanism — no ApplicationSet edit is
-needed to use it for another chart, another environment, or a reason other than
-air-gapping; an absent/empty `extraValueFiles` (the common case) adds nothing.
+Override files live in `gitops/overrides/` and **not** in `gitops/services/<service>/`
+on purpose: a value file inside the folder the generator watches is removed by the very
+commit that retires the service, which breaks the render the deletion cascade depends on
+and hangs the Application forever. See [gitops/overrides/README.md](gitops/overrides/).
+
+A chart may also ship extra value files of its own next to its `values.yaml` (e.g. an
+air-gapped image-registry overlay). Reference those the same way, by their path in this
+repo: `gitops/charts/temporal/values-airgapped.yaml`.
+
+### Sourcing a chart from outside this repo (`overrides`)
+
+`overrides:` in a service's `app.yaml` is deep-merged onto the generated Application
+last, so it can set anything — including replacing the source outright for the rare chart
+that cannot live here:
+
+```yaml
+# gitops/services/<service>/app.yaml
+namespace: some-namespace
+overrides:
+  spec:
+    source:
+      repoURL: https://github.com/some-other-org/some-other-repo.git
+      targetRevision: main
+      path: .
+```
+
+It is also how a service targets a different cluster (`spec.destination`), though the
+dedicated `destination:` key is the shorter route for that.
 
 ## Prerequisites
 
@@ -253,9 +255,10 @@ helmfile -l namespace=crossplane-system sync
 Helmfile release names (bootstrap layer): `namespaces`, `htpasswd-idp`, `crossplane`,
 `provider-http`, `provider-http-config`, `segments-manager-mongodb`,
 `mock-segment-connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
-`hosted-cluster-integration`. (The `temporal`, `segments-manager`, `workflows` and
-`segment-lifecycle-worker` services are Argo CD apps now — select them with
-`argocd app`/`kubectl get applications -n user1-argocd`, not `helmfile -l`.)
+`hosted-cluster-integration`. (`temporal`, `segments-manager`, `workflows-orchestrator`,
+`segment-lifecycle-worker`, `workflows-docs`, `dhcp-scope-manager` and `rhokp` are Argo CD
+apps now — select them with `argocd app`/`kubectl get applications -n user1-argocd`, not
+`helmfile -l`.)
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts
 > on *only* the matched releases and skips their `needs:`. So `helmfile -l
@@ -292,63 +295,73 @@ Tip: to make custom groupings (e.g. all apps vs. the platform layer), add a
   source of truth for the Argo `temporal` app's `ui.auth.allowedUsers` — keep in sync.
 - **`segmentsManagerMongodb.{rootPassword,password}`** — credentials for the in-cluster
   MongoDB backing segments-manager. The Argo `segments-manager` app reuses `password` in
-  its Mongo URL — see `gitops/services/<env>/segments-manager/values.yaml`.
+  its Mongo URL — see `gitops/charts/segments-manager/values.yaml`, kept in sync by hand.
 - **`dhcp.apiUrl`** — backend DHCP API the Crossplane `Request` talks to. **(TODO.)**
 - **`providerHttp.*`** — provider-http package image + the shared ProviderConfig name.
 
-**Service tunables** live under `gitops/`:
+**Service tunables** live in each chart's own values file under `gitops/charts/`:
 
-- **`gitops/services/<env>/<service>/app.yaml`** — `revision:` (the chart **branch** to
-  track — `main` = latest prod, a different version is a different branch), `namespace`,
-  optional `destination`/`overrides`. See "Chart versions are branches" below.
-- **`gitops/services/<env>/<service>/values.yaml`** — that service's Helm values, e.g.
-  segment-lifecycle-worker's `config.nextUrl`/URI paths + `secrets.existingSecret`, or
-  **`gitops/services/<env>/workflows/values.yaml`**'s `config.temporalHost` /
-  `temporalNamespace` / `domain` / `segmentsManagerUrl` — the Temporal endpoint +
-  orchestrator globals, one place to change for the whole workflow layer. These live
-  under `workflows` specifically (not the shared env-globals file below) because
-  `workflows` is the only chart that reads them as Helm values — every other workflow
-  limb gets the same facts secondhand, at runtime, from the `workflows-config` ConfigMap
-  `workflows` publishes.
-- **`gitops/values/<env>.yaml`** — globals for a value genuinely needed across
-  *multiple* charts in an env. Currently unused (kept only because every service's
-  Application unconditionally references it).
+- **`gitops/charts/<service>/values.yaml`** — everything about that service. There is no
+  second file layered on top of it, so what you read there is what the cluster runs.
+  The ones worth knowing:
+  - `gitops/charts/workflows-orchestrator/values.yaml` → `config.temporalHost` /
+    `temporalNamespace` / `domain` / `segmentsManagerUrl`. One place to change for the
+    whole workflow layer: every limb reads the same facts at runtime from the
+    `workflows-orchestrator-config` ConfigMap this chart publishes, so no other chart
+    carries a copy.
+  - `gitops/charts/segments-manager/values.yaml` → `mongodb.url` (in-cluster Mongo, with
+    the password inline — see `SECRETS.md`) and `siteNetworks`.
+  - `gitops/charts/segment-lifecycle-worker/values.yaml` → `config.nextUrl` + the URI
+    paths, `config.dhcpApiUrl`, the two `secrets.existing*` references, and its own copy
+    of `siteNetworks`.
+  - `gitops/charts/temporal/values.yaml` → `ui.auth.allowedUsers`.
+  - **`siteNetworks` is defined twice on purpose** — segments-manager and
+    segment-lifecycle-worker run in different namespaces and cannot share a ConfigMap, so
+    each chart renders its own copy. Change both in the same commit.
+- **`image.repository`/`image.tag` in those files are CI-owned.** The service's code repo
+  commits the bump here on every push to its main. Hand-editing them is transient: the
+  next build overwrites the edit.
+- **`gitops/services/<service>/app.yaml`** — `namespace`, plus the optional `valueFiles`
+  / `destination` / `overrides` keys described above.
 - Secrets are still plaintext/out-of-band for now; the ESO+Vault plan is in
   **`gitops/SECRETS.md`**.
 
-### Chart versions are branches, not tags
+### Chart versions move with this repo
 
-Each Argo app's `revision:` points at a **branch** of its `helm-charts-<name>` repo:
-`main` is the latest prod version, and a different version is simply a different branch
-(CI mirrors each code-repo branch to the same-named chart-repo branch). Argo tracks the
-branch HEAD and re-syncs on every new commit, so **merging to a chart repo's `main` rolls
-that version out to prod**. `prod`/`dev` doesn't change this — any app, in any env, can
-point at any branch.
+An Argo app has no `revision:` any more: the chart is a folder in this repo, so it is
+rendered from the same commit as the ApplicationSet that deploys it. **Merging to `main`
+here rolls the change out to the cluster.** There is no per-service chart branch to pick,
+and no chart-repo tag for Argo to pin.
 
-This is deliberately the *opposite* choice from the Helmfile-pulled charts above (whose
-`refs.*` should still **pin tags** for prod): Helmfile caches a git chart by its mutable
-branch name and won't re-fetch on a new commit (the branch-ref staleness this project
-already hit), but Argo does a real fetch each reconcile, so tracking a branch is safe and
-idiomatic. **Image** tags stay immutable either way (`vX.Y.Z` on `main`,
-`<branch>-<sha>` off it) — only the chart's git ref that Argo *follows* is a branch. CI
-still cuts a `vX.Y.Z` tag on each `main` build, but only as the image-version counter and
-a rollback marker; Argo does not pin it.
+This is deliberately the *opposite* of the Helmfile-pulled charts above, whose `refs.*`
+should still **pin tags** for prod: Helmfile caches a git chart by its mutable branch name
+and won't re-fetch on a new commit (the branch-ref staleness this project already hit).
+Argo re-renders from this repo on every reconcile, so there is nothing to go stale.
+
+**Image** tags stay immutable and are still the unit of release for the service code
+(`vX.Y.Z` on `main`, `<branch-slug>-<sha>` off it). CI commits the new tag into the
+chart's `values.yaml` here; deploying a **branch** build is a hand-edit of that value,
+because CI only bumps the chart on `main`.
 
 ## Air-gapped install
 
 Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
 **images** internally.
 
-1. **Charts** — host the chart git repos on your internal Git (or push the charts to
-   an Artifactory Helm repo) and repoint `chart:` refs in `helmfile.yaml.gotmpl`
-   (and the `crossplane-stable` repository URL) at the internal mirror.
+1. **Charts** — the Argo service charts travel with this repo (`gitops/charts/`), so
+   mirroring the repo is enough for them; only the two `repoURL`s in `gitops/appset.yaml`
+   change (see "Air-gapped GitLab" above). The **Helmfile** layer still fetches charts at
+   sync time: host those git repos on your internal Git (or push them to an Artifactory
+   Helm repo) and repoint the `chart:` refs in `helmfile.yaml.gotmpl` (and the
+   `crossplane-stable` repository URL) at the internal mirror.
 2. **Images** — each service chart has its own image values; pull/retag/push to
    Artifactory and override per release. The platform-level ones:
    - Crossplane core: set `image.repository` via a `crossplane` release `values:` block.
    - provider-http package: `providerHttp.package` → your Artifactory path, and add
      `providerHttp.packagePullSecrets: [artifactory]`.
-   - Service images (temporal, segments-manager, etc.) — see each chart's README
-     (e.g. `temporal-stack` documents its full image list and air-gap steps).
+   - Service images (temporal, segments-manager, etc.) — see each chart's README under
+     `gitops/charts/<service>/` (e.g. `gitops/charts/temporal/README.md` documents its
+     full image list and air-gap steps).
 3. **Pull secrets** — GHCR images are public, so this platform has no pull-secret
    machinery today. An internal Artifactory mirror is presumably private, so
    you'll need to add your own: create a `kubernetes.io/dockerconfigjson`
@@ -363,7 +376,7 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   contrast, **bundles** PostgreSQL as a subchart — safe under Argo because sync waves
   express Postgres → schema → server ordering (no `helmDefaults.wait` deadlock). See
   `CLAUDE.md` for the full story on both.
-- **`workflows` and `segment-lifecycle-worker` (Argo apps) both deploy into
+- **`workflows-orchestrator`, `segment-lifecycle-worker` and `workflows-docs` (Argo apps) all deploy into
   `redbull-workflows`**, pre-created and labeled `argocd.argoproj.io/managed-by:
   user1-argocd` by the `namespaces` release. Neither chart has a Namespace template of
   its own, and the ApplicationSet does **not** use `CreateNamespace=true` — a
@@ -376,19 +389,25 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
   `dhcp_values.scopeName` is set (its repo default has a sample scope).
 - **CI/CD for service repos**: `team-redbull/.github` hosts a shared reusable
   workflow (`ghcr-build-push.yml`) for building/versioning/pushing images to GHCR
-  and bumping each repo's Helm chart values. `team-redbull/segments-manager` calls
-  it; other service repos should be migrated to it too. Non-`main` branches get tagged
-  `<branch-slug>-<short-sha>` instead of bumping the shared `vX.Y.Z` sequence.
-- **Chart-repo image bumps need a cross-repo PAT (`REDBULL_WRITE_TOKEN`)**: now that
-  each Argo service's chart lives in its **own** `helm-charts-<name>` repo (not the
-  service code repo), CI must commit the `image.tag` bump into *another* repo — which
-  the default `GITHUB_TOKEN` cannot do (repo-scoped; it fails with `startup_failure`
-  before any job). Create a **fine-grained PAT** with **Contents: Read and write** on
-  the `helm-charts-*` repos, store it as an **organization** Actions secret named
-  `REDBULL_WRITE_TOKEN` (the `GITHUB_` prefix is reserved by GitHub), and pass it to
-  `ghcr-build-push.yml` (which checks out the chart repo, bumps `helm-image-path`,
-  commits to the matching branch, and — on `main` — cuts a `vX.Y.Z` tag as the
-  image-version counter/rollback marker; Argo tracks the chart **branch**, not the tag).
+  and bumping the consuming Helm chart's values. `segments-manager`, `workflows` and
+  `dhcp_scope_manager` call it; other service repos should be migrated to it too.
+  Non-`main` branches get tagged `<branch-slug>-<short-sha>` and **do not touch the
+  chart** — deploying a branch build is a hand-edit of `gitops/charts/<svc>/values.yaml`.
+- **Image bumps still need the cross-repo PAT (`REDBULL_WRITE_TOKEN`)**: a service's
+  chart lives in **this** repo, not in its code repo, so CI must commit the `image.tag`
+  bump into *another* repo — which the default `GITHUB_TOKEN` cannot do (repo-scoped; it
+  fails with `startup_failure` before any job). The fine-grained PAT with **Contents:
+  Read and write**, stored as the **organization** Actions secret `REDBULL_WRITE_TOKEN`
+  (the `GITHUB_` prefix is reserved by GitHub), is unchanged — only its target moved from
+  the `helm-charts-*` repos to `redbull-platform`. Callers set
+  `chart-repo: team-redbull/redbull-platform` and
+  `helm-values-path: gitops/charts/<service>/values.yaml`.
+- **The chart is now a subdirectory of a shared repo, and the workflow accounts for it**:
+  the `vX.Y.Z` sequence is namespaced per chart (tags are `<chart>/vX.Y.Z` in this repo,
+  so each service keeps its own counter and they don't collide), the bump commit is
+  scoped to the chart directory rather than `git add -A`, and the push retries with
+  `pull --rebase` because every service now pushes to the same repo. See
+  `team-redbull/.github`.
 - **New service repo → Actions doesn't run silently**: GitHub Actions must be
   enabled per-repo (repo Settings → Actions → General), separately from the
   org-wide "Allow all actions and reusable workflows" policy. A repo with
