@@ -3,7 +3,7 @@
 #
 # Only the bootstrap + still-Helmfile-managed services live here now. The
 # stateless service layer (temporal, segments-manager, workflows-orchestrator,
-# segment-lifecycle-worker, workflows-docs, dhcp-scope-manager, rhokp) moved to Argo CD —
+# segment-lifecycle-worker, workflows-docs, dhcp-scope-manager) moved to Argo CD —
 # each of those is configured entirely by its own chart's values.yaml under
 # gitops/charts/<service>/. There is no per-environment values layer over there.
 #

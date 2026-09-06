@@ -27,7 +27,7 @@ deploy it.
 **Argo CD** owns the stateless service layer via **one generic ApplicationSet**
 (`gitops/appset.yaml`) over `gitops/services/<service>/app.yaml`: `temporal`,
 `segments-manager`, `workflows-orchestrator`, `segment-lifecycle-worker`,
-`workflows-docs`, `dhcp-scope-manager`, `rhokp`. Each service's chart is a folder in
+`workflows-docs`, `dhcp-scope-manager`. Each service's chart is a folder in
 **this** repo at `gitops/charts/<service>/` — the sole, hand-edited copy; the code repos
 no longer carry a `helm/` chart folder (except `workflows` keeps
 `helm/mock-segment-connectivity`), and neither do the retired `helm-charts-*` repos.

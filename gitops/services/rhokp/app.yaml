@@ -1,8 +1,0 @@
-# Argo config for `rhokp` (Red Hat Offline Knowledge Portal). Chart: gitops/charts/rhokp.
-#
-# TODO(secrets): imagePullSecret.dockerUsername/dockerPassword and accessKey.secretValue in
-# that chart's values.yaml are still literal placeholders ("tomer123"), not credentials.
-# The pod WILL fail to pull its image / authenticate until they are replaced with real
-# registry.redhat.io creds and a real RHOKP access key — see gitops/SECRETS.md for the
-# plaintext-in-git precedent this repo currently follows, pending Vault/ESO.
-namespace: rhokp
