@@ -6,7 +6,6 @@ namespaces:
   - bmh-system
   - server-scanner
   - redbull-workflows     # Argo workflows + segment-lifecycle-worker apps + Helmfile mock release
-  - rhokp                 # Argo-managed: the `rhokp` app deploys here
   - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
 
 # OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. A
@@ -26,5 +25,4 @@ argocd:
     - temporal
     - segments-manager
     - redbull-workflows
-    - rhokp
     - dhcp-scope-manager
