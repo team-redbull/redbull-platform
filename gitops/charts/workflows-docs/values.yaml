@@ -14,7 +14,7 @@
 image:
   # Bumped by CI in the `workflows` repo on every push (docs/Dockerfile).
   repository: ghcr.io/team-redbull/workflows-docs
-  tag: v1.0.12
+  tag: v1.0.13
   pullPolicy: IfNotPresent
 # Two replicas so a rollout or a node drain never takes the docs offline —
 # they are most wanted exactly when something else is being changed.
