@@ -8,9 +8,9 @@ type: application
 # image tag on every push to the code repo's main — so a hand-set 1.1.0 would be
 # rewritten to 1.0.11 on the next build, i.e. backwards. The line below is stale on
 # this point: CI does bump version here, not only image.tag in values.yaml.
-version: 1.0.12
+version: 1.0.13
 # appVersion tracks the API image.
-appVersion: "v1.0.12"
+appVersion: "v1.0.13"
 keywords:
   - dhcp
   - crossplane

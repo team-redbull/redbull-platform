@@ -16,7 +16,7 @@ image:
   # CI-managed from here on — do not edit by hand. refactor/linux-api has merged,
   # so pushes to the code repo's main rewrite this line and cut the matching
   # vX.Y.Z tag in lockstep with appVersion.
-  tag: v1.0.12
+  tag: v1.0.13
   pullPolicy: IfNotPresent
 replicaCount: 1
 # The API is stateless, but every mutating request also takes an in-process
