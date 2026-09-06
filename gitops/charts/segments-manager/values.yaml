@@ -102,11 +102,6 @@ auth:
   #     --from-literal=api-token="$(openssl rand -hex 32)"
   existingSecret: "segments-manager-api-token"
   existingSecretKey: "api-token"
-persistence:
-  enabled: false
-  accessMode: ReadWriteOnce
-  size: 1Gi
-  mountPath: /app/data
 resources:
   limits:
     cpu: 500m
@@ -114,11 +109,6 @@ resources:
   requests:
     cpu: 250m
     memory: 256Mi
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
 livenessProbe:
   httpGet:
     path: /api/health
@@ -142,6 +132,3 @@ startupProbe:
   initialDelaySeconds: 10
   periodSeconds: 5
   failureThreshold: 12
-serviceAccount:
-  create: true
-  automount: true
