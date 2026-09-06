@@ -15,7 +15,8 @@ data:
   # Site configuration. The SAME structure is rendered into
   # helm-charts-segment-connectivity's ConfigMap from the SAME shared value, so
   # the two services cannot disagree about which sites exist. This service reads
-  # each site's `pool`; segment-connectivity reads `bmc`. `fail` above rather
+  # each site's `pool`; segment-connectivity reads `dell-bmc` and `cisco-bmc`
+  # (one BMC network per server hardware vendor). `fail` above rather
   # than sprig `required`, which only rejects nil/"" and would let an empty map
   # through as the string "{}" — a pod-startup failure instead of a render one.
   SITE_NETWORKS: {{ .Values.siteNetworks | toJson | quote }}

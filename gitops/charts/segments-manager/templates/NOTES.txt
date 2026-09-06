@@ -19,7 +19,7 @@
 2. Configuration Summary:
    - Sites: {{ keys .Values.siteNetworks | sortAlpha | join ", " }}
    {{- range $site, $net := .Values.siteNetworks }}
-   - {{ $site }}: pool {{ $net.pool }}{{ with $net.bmc }}, bmc {{ . }}{{ end }}
+   - {{ $site }}: pool {{ $net.pool }}{{- with index $net "dell-bmc" }}, dell-bmc {{ . }}{{ end }}{{- with index $net "cisco-bmc" }}, cisco-bmc {{ . }}{{ end }}
    {{- end }}
    - MongoDB Database: {{ .Values.mongodb.dbName }}
    {{- if .Values.mongodb.existingSecret }}
