@@ -10,10 +10,12 @@
 # activityWorker.image.repository/tag are CI-owned: the workflows repo's build workflow
 # commits the bump here on every push to its main. Do not hand-edit them.
 #
-# NOTE: the per-direction port policy (PORTS_*) deliberately does NOT live here.
-# It is defined directly in templates/config.yaml — the ConfigMap is the
-# operator's edit surface for ports (edit + restart the activity workers, no
-# rebuild, no chart re-render).
+# The per-direction port policy (config.ports.*) and the DHCP exclusion ranges
+# live HERE, with every other tunable, and templates/config.yaml only renders
+# them onto the PORTS_* / DHCP_EXCLUSION_OCTET_RANGES ConfigMap keys. They used
+# to be hardcoded in that template; a value the operator is expected to change
+# belongs in the chart's values file, reviewed as structured YAML rather than as
+# JSON embedded in a template.
 #
 # The GLOBAL values (Temporal connection, DOMAIN, segmentsManagerUrl) are NOT
 # here either — they live in the workflows-orchestrator chart's `workflows-orchestrator-config`,
@@ -28,10 +30,9 @@
 # standalone, pass `--create-namespace` to `helm install`.
 
 # ---------------------------------------------------------------------------------
-# Site network topology — site name -> {pool, bmc}. The one exception to the
-# PORTS_* rule above, and for a specific reason: unlike ports, this is SHARED
-# with another chart. gitops/charts/segments-manager renders the same value into
-# its own ConfigMap. Ports are this chart's alone; site topology is not.
+# Site network topology — site name -> {pool, bmc}. Unlike the port policy in
+# config.ports below, this is SHARED with another chart: gitops/charts/segments-manager renders the same
+# value into its own ConfigMap. Ports are this chart's alone; site topology is not.
 #
 # This worker reads the per-vendor BMC networks: each MCE segment gets rules in BOTH
 # directions to every vendor the site actually has — four requests at a two-vendor site,
@@ -85,6 +86,39 @@ config:
   # feedback against the mock. TODO(prod): 600 (10 min) once nextUrl points at the real
   # service, whose approval step is human-driven.
   nextCheckingRequestIntervalSeconds: 15
+  # --- open-segment-rules: port policy per rule direction -------------------
+  # The ports every firewall rule opens, per direction and protocol. Rendered
+  # into segment-lifecycle-config as compact JSON on the PORTS_* keys, expanded
+  # by the activity layer into the next API's ports structure, and validated
+  # fail-fast at worker startup — a bad edit crash-loops the activity worker
+  # instead of failing a workflow hours in.
+  #
+  # Every port is a STRING ("9000", "30000-32767"): one field carries both a
+  # single port and a range, and an unquoted 9000 would render as a JSON number
+  # and fail the worker's `dict[str, list[str]]` validation.
+  ports:
+    hcToMce:
+      tcp: ["30000-32767"]
+      udp: ["9000"]
+    mceToHc:
+      tcp: ["6443", "30000-32767"]
+    inventoryToMce:
+      tcp: ["30000-32767"]
+      udp: ["9000"]
+    mceToInventory:
+      tcp: ["6443", "30000-32767"]
+    pxeToMce:
+      tcp: ["30000-32767"]
+      udp: ["9000"]
+    mceToPxe:
+      tcp: ["6443", "30000-32767"]
+    # ONE profile for all four MCE<->BMC requests: both vendors and both
+    # directions run over the same IPMI ports, and knobs that must be kept equal
+    # are a drift source, not a feature. It keeps the mceToBmc name because
+    # renaming its ConfigMap key would mean shipping that key ahead of the image.
+    mceToBmc:
+      tcp: ["623"]
+      udp: ["623"]
   # --- allocate-segment: the day1 values repo -------------------------------
   # Where cluster values files live. The workflow appends the vlanId +
   # dhcp_values block and pushes directly to this branch, so the bot credential
@@ -99,9 +133,15 @@ config:
   # The DHCP scope API that allocate-segment polls (read-only) for scope convergence:
   # dhcp-scope-manager's in-cluster Service, NOT its -tests sibling.
   dhcpApiUrl: "http://dhcp-scope-manager.dhcp-scope-manager.svc.cluster.local:8080"
-  # NOTE: DHCP_EXCLUSION_OCTET_RANGES deliberately does NOT live here — like
-  # PORTS_*, it is defined directly in templates/config.yaml (the operator's
-  # edit surface: edit + restart, no chart re-render).
+  # -- allocate-segment: DHCP scope policy ----------------------------------
+  # The ONE DHCP policy knob: last-octet ranges excluded from distribution
+  # (rendered as DHCP_EXCLUSION_OCTET_RANGES). startRange/endRange are DERIVED
+  # (the first/last non-excluded host octet), so the range and the exclusions
+  # can never contradict. Bare integers, ascending, non-overlapping, within
+  # 1..254 — validated fail-fast at worker startup. /24 segments only.
+  dhcpExclusionOctetRanges:
+    - [1, 10]
+    - [241, 254]
 # Bearer token for mutating Segments Manager calls (must match its API_TOKEN).
 secrets:
   # An out-of-band Secret holding the token (key SEGMENTS_MANAGER_API_TOKEN) — the same

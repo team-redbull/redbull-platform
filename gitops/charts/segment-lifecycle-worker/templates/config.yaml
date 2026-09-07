@@ -24,18 +24,20 @@ data:
   # (immediate feedback against the mock), slow in prod (human-driven
   # approval) — override via redbull-platform's per-environment values.
   NEXT_CHECKING_REQUEST_INTERVAL_SECONDS: {{ .Values.config.nextCheckingRequestIntervalSeconds | quote }}
-  # -- Port policy per rule direction (the operator's edit surface) ----------
+  # -- Port policy per rule direction ----------------------------------------
   # Compact JSON per protocol: {"tcp": ["PORT", "START-END", ...], "udp": [...]}.
-  # The activity layer expands this into the next API's ports structure, and
-  # validates the syntax at worker startup (a bad edit crash-loops the activity
-  # worker instead of failing a workflow hours in). Changing ports requires
-  # only a restart of the activity workers — no image rebuild.
-  PORTS_HC_TO_MCE: '{"tcp": ["30000-32767"], "udp": ["9000"]}'
-  PORTS_MCE_TO_HC: '{"tcp": ["6443", "30000-32767"]}'
-  PORTS_INVENTORY_TO_MCE: '{"tcp": ["30000-32767"], "udp": ["9000"]}'
-  PORTS_MCE_TO_INVENTORY: '{"tcp": ["6443", "30000-32767"]}'
-  PORTS_PXE_TO_MCE: '{"tcp": ["30000-32767"], "udp": ["9000"]}'
-  PORTS_MCE_TO_PXE: '{"tcp": ["6443", "30000-32767"]}'
+  # The lists themselves live in values.yaml (`config.ports.*`) — this file only
+  # renders them, so ports are reviewed and diffed as structured YAML next to
+  # every other tunable rather than as JSON embedded in a template. The activity
+  # layer expands the JSON into the next API's ports structure and validates the
+  # syntax at worker startup (a bad edit crash-loops the activity worker instead
+  # of failing a workflow hours in).
+  PORTS_HC_TO_MCE: {{ .Values.config.ports.hcToMce | toJson | quote }}
+  PORTS_MCE_TO_HC: {{ .Values.config.ports.mceToHc | toJson | quote }}
+  PORTS_INVENTORY_TO_MCE: {{ .Values.config.ports.inventoryToMce | toJson | quote }}
+  PORTS_MCE_TO_INVENTORY: {{ .Values.config.ports.mceToInventory | toJson | quote }}
+  PORTS_PXE_TO_MCE: {{ .Values.config.ports.pxeToMce | toJson | quote }}
+  PORTS_MCE_TO_PXE: {{ .Values.config.ports.mceToPxe | toJson | quote }}
   # -- Site topology: site -> {pool, dell-bmc, cisco-bmc} -------------------
   # Defined ONCE in redbull-platform (gitops/values/<env>.yaml, key
   # `siteNetworks`) and rendered from that same value into BOTH this ConfigMap
@@ -72,7 +74,7 @@ data:
   # directions run over the same IPMI ports, and knobs that must be kept equal
   # are a drift source, not a feature. It keeps the MCE_TO_BMC name because
   # renaming it would mean shipping a new ConfigMap key ahead of the image.
-  PORTS_MCE_TO_BMC: '{"tcp": ["623"], "udp": ["623"]}'
+  PORTS_MCE_TO_BMC: {{ .Values.config.ports.mceToBmc | toJson | quote }}
   # -- allocate-segment: the day1 values repo -------------------------------
   # Where cluster values files live; the workflow appends the vlanId +
   # dhcp_values block to sites/<site>/mces/<mce>/hostedClusters/<cluster>.yaml
@@ -83,13 +85,13 @@ data:
   DAY1_GIT_USER_NAME: {{ .Values.config.day1GitUserName | quote }}
   DAY1_GIT_USER_EMAIL: {{ .Values.config.day1GitUserEmail | quote }}
   # -- allocate-segment: DHCP scope policy + API ----------------------------
-  # The ONE DHCP policy knob (the operator's edit surface, like PORTS_* — edit
-  # + restart, no rebuild): last-octet ranges excluded from distribution.
+  # The ONE DHCP policy knob: last-octet ranges excluded from distribution,
+  # set in values.yaml (`config.dhcpExclusionOctetRanges`) like the ports above.
   # startRange/endRange are DERIVED (first/last non-excluded host octet), so
   # the range and the exclusions can never contradict. Validated fail-fast at
   # worker startup; /24 segments only — anything else fails the run loudly
   # with UnsupportedSegmentPrefix.
-  DHCP_EXCLUSION_OCTET_RANGES: '[[1, 10], [241, 254]]'
+  DHCP_EXCLUSION_OCTET_RANGES: {{ .Values.config.dhcpExclusionOctetRanges | toJson | quote }}
   # The DHCP scope API — read-only for this worker: the workflow polls
   # GET /api/v1/scopes/{network} until Crossplane has created the scope; it
   # never writes one. No token: that API leaves its scope GETs unauthenticated
