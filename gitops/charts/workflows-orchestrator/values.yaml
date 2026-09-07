@@ -41,7 +41,7 @@ config:
   domain: "domain1"
 image:
   repository: ghcr.io/team-redbull/workflows-orchestrator
-  tag: v0.1.20
+  tag: v0.1.21
   pullPolicy: IfNotPresent
 replicas: 2
 # The SHARED workflow trigger API (workflow_domains/api.py), run from the same image
