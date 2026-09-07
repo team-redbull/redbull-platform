@@ -32,6 +32,17 @@ type: Opaque
 stringData:
   SEGMENTS_MANAGER_API_TOKEN: {{ .Values.secrets.segmentsManagerApiToken | quote }}
 {{- end }}
+{{- if not .Values.secrets.existingNextSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: next-api-credentials
+type: Opaque
+stringData:
+  NEXT_CLIENT_ID: {{ .Values.secrets.nextClientId | quote }}
+  NEXT_PASSWORD: {{ .Values.secrets.nextPassword | quote }}
+{{- end }}
 {{- if not .Values.secrets.existingDay1Secret }}
 ---
 apiVersion: v1

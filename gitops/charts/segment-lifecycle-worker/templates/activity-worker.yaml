@@ -34,4 +34,6 @@ spec:
             - secretRef:
                 name: {{ .Values.secrets.existingSecret | default "segments-manager-token" }}
             - secretRef:
+                name: {{ .Values.secrets.existingNextSecret | default "next-api-credentials" }}
+            - secretRef:
                 name: {{ .Values.secrets.existingDay1Secret | default "day1-git-token" }}

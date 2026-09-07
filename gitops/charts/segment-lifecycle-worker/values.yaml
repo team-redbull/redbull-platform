@@ -45,6 +45,14 @@ config:
 secrets:
   existingSecret: "segments-manager-token"
   segmentsManagerApiToken: "dev-token"
+  # The next API's token-renewal credentials. Empty existingNextSecret, so the
+  # chart renders `next-api-credentials` from the two values below — the
+  # plaintext-in-values shape SECRETS.md inventories for the ESO migration.
+  # Point existingNextSecret at an out-of-band Secret (keys NEXT_CLIENT_ID /
+  # NEXT_PASSWORD) to take these out of git before then.
+  existingNextSecret: ""
+  nextClientId: "dev-client"
+  nextPassword: "dev-password"
   existingDay1Secret: "day1-git-token"
   day1GitToken: "dev-token"
 activityWorker:
