@@ -89,12 +89,14 @@ mongodb:
   # is meant to move to an ESO-composed Secret, consumed via mongodb.existingSecret —
   # see gitops/SECRETS.md, where this is called out as the non-obvious migration item.
   url: "mongodb://segments_manager:segments-manager-mongo-pw@segments-mongodb.segments-manager.svc.cluster.local:27017/segments_manager?authSource=segments_manager"
+  # TLS belongs in the URL itself (…?tls=true&tlsInsecure=true). There is no
+  # separate chart knob: the driver refuses to start when a tlsInsecure URL is
+  # combined with the equivalent client option, so the URL is the single place
+  # it is expressed.
   dbName: "segments_manager"
   # Collection holding the segment documents. Only change it to run a second,
   # independent set of segments against the same database.
   collection: "segments"
-  # Keep the connection encrypted but skip server-certificate validation.
-  tlsInsecure: false
 auth:
   # Bearer credential for every write request. The Secret is created out-of-band
   # and is required — the chart never holds the token itself:

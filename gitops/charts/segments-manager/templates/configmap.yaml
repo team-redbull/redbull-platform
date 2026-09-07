@@ -31,7 +31,6 @@ data:
   # MongoDB configuration (URL itself comes from the Secret)
   MONGODB_DB_NAME: {{ .Values.mongodb.dbName | quote }}
   MONGODB_COLLECTION: {{ .Values.mongodb.collection | quote }}
-  MONGODB_TLS_INSECURE: {{ .Values.mongodb.tlsInsecure | quote }}
 
   # No WORKFLOWS_API_URL: segments-manager makes no outbound calls. It used to
   # POST to the workflows API on every segment creation to start the

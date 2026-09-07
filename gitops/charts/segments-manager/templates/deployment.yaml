@@ -83,11 +83,6 @@ spec:
                 configMapKeyRef:
                   name: {{ include "segments-manager.fullname" . }}
                   key: MONGODB_COLLECTION
-            - name: MONGODB_TLS_INSECURE
-              valueFrom:
-                configMapKeyRef:
-                  name: {{ include "segments-manager.fullname" . }}
-                  key: MONGODB_TLS_INSECURE
             # (No workflow-API env var. The app no longer calls the workflows
             # API at all — see the ConfigMap. This used to be the one place the
             # two services' env-var names had to be kept in sync by hand, and
