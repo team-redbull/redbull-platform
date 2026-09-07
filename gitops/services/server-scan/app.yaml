@@ -29,3 +29,27 @@
 # Helmfile `server-scanner-dashboard` release from team-redbull/ServerScanner,
 # a different project with a confusingly similar name.
 namespace: server-scan
+
+# The one service that creates its own namespace, rather than taking it from
+# the `namespaces` Helmfile release every other service uses. Deliberate, and
+# scoped here through `overrides:` rather than by flipping the flag in
+# appset.yaml — that would change it for every service at once, and the
+# appset's own comment explains at length why it is off by default.
+#
+# Safe for THIS instance: `openshift-gitops` is the operator's default,
+# CLUSTER-scoped instance, so its application-controller holds a
+# ClusterRoleBinding and may create a Namespace. A NAMESPACED instance
+# (this repo previously targeted `user1-argocd`) cannot, and would need a
+# ClusterRole for namespaces create/patch first — every sync fails with
+# `forbidden` otherwise. It also means the namespace carries no
+# `argocd.argoproj.io/managed-by` label, which is a no-op for a cluster-scoped
+# instance and would matter for a namespaced one.
+#
+# The cost is the one the appset warns about generally: two owners for a
+# namespace is a race, so `server-scan` is deliberately absent from
+# charts/namespaces/values.yaml. Do not add it back.
+overrides:
+  spec:
+    syncPolicy:
+      syncOptions:
+        - CreateNamespace=true
