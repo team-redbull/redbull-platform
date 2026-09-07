@@ -13,8 +13,6 @@ data:
   PORTS_MCE_TO_HC: {{ .Values.config.ports.mceToHc | toJson | quote }}
   PORTS_INVENTORY_TO_MCE: {{ .Values.config.ports.inventoryToMce | toJson | quote }}
   PORTS_MCE_TO_INVENTORY: {{ .Values.config.ports.mceToInventory | toJson | quote }}
-  PORTS_PXE_TO_MCE: {{ .Values.config.ports.pxeToMce | toJson | quote }}
-  PORTS_MCE_TO_PXE: {{ .Values.config.ports.mceToPxe | toJson | quote }}
 {{- if not .Values.siteNetworks }}
 {{- fail "siteNetworks is empty. Define it once in redbull-platform (gitops/values/<env>.yaml, key `siteNetworks`); the ApplicationSet merges that file in ahead of this chart's values." }}
 {{- end }}

@@ -29,11 +29,9 @@ config:
       udp: ["9000"]
     mceToInventory:
       tcp: ["6443", "30000-32767"]
-    pxeToMce:
-      tcp: ["30000-32767"]
-      udp: ["9000"]
-    mceToPxe:
-      tcp: ["6443", "30000-32767"]
+    # No pxeToMce/mceToPxe: no connectivity is opened for PXE segments (the
+    # workflow rejects a PXE input outright). These profiles ARE the peering
+    # topology, so a profile here would put MCE<->PXE rules back.
     mceToBmc:
       tcp: ["623"]
       udp: ["623"]
