@@ -6,5 +6,5 @@
 # Named `workflows-orchestrator` and not `workflows`, which collided with the code repo
 # name and with the /workflows API prefix. The API PATHS are unaffected by that rename —
 # they are per workflow under a domain prefix
-# (/workflows/segment-lifecycle/open-segment-rules), status on /workflows/runs/{id}.
+# (/workflows/segment-lifecycle/initialize-segment), status on /workflows/runs/{id}.
 namespace: redbull-workflows
