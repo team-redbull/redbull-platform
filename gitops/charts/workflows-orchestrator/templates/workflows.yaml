@@ -1,7 +1,3 @@
-# The lightweight "brain": runs workflows only, for every workflow domain
-# registered in workflow_domains/main_worker_init.py. Its own ServiceAccount per the
-# RBAC-isolation requirement (no Segments Manager token, no next URLs mounted —
-# it never makes those calls; activities do).
 apiVersion: v1
 kind: ServiceAccount
 metadata:

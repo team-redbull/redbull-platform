@@ -1,11 +1,3 @@
-# The SHARED workflow trigger front-door for EVERY workflow domain (not one per
-# domain): the unified FastAPI service (workflow_domains/api.py) that starts workflows
-# on POST /workflows/<domain>. Runs from the same "brain" image (it shares the
-# workflow definitions + Temporal client and holds no activity secrets), just a
-# different entrypoint. Adding a new workflow domain = add its route to
-# workflow_domains/api.py, NOT a new Deployment. This is the Service the Segments
-# Manager (and any other caller) points its *_WORKFLOW_API_URL at.
-{{- if .Values.workflowsApi.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -22,8 +14,6 @@ spec:
       labels:
         app: workflows-orchestrator-api
     spec:
-      # Reuses the brain's ServiceAccount — same trust boundary (Temporal client
-      # only, no Segments Manager token, no next URLs).
       serviceAccountName: workflows-orchestrator
       containers:
         - name: workflows-orchestrator-api
@@ -55,17 +45,7 @@ spec:
     - name: http
       port: {{ .Values.workflowsApi.port }}
       targetPort: {{ .Values.workflowsApi.port }}
-{{- if .Values.workflowsApi.route.enabled }}
 ---
-# OpenShift Route — the HUMAN front door. In-cluster callers use the Service
-# above; this exists because starting a workflow is now an operator-initiated
-# action (POST /workflows/<domain>), not a side effect of another service's
-# event, so the Swagger UI at /docs has to be reachable from outside.
-#
-# NOTE: workflow_domains/api.py has no authentication of its own. Anyone who can
-# reach this hostname can start (and read the status of) a workflow. Set
-# workflowsApi.route.enabled=false in environments where that is not
-# acceptable, and reach the API via `oc port-forward` instead.
 apiVersion: route.openshift.io/v1
 kind: Route
 metadata:
@@ -85,5 +65,3 @@ spec:
   tls:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-{{- end }}
-{{- end }}
