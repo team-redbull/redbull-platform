@@ -39,8 +39,9 @@ config:
   day1Branch: "main"
   dhcpApiUrl: "http://dhcp-scope-manager.dhcp-scope-manager.svc.cluster.local:8080"
   dhcpExclusionOctetRanges:
-    - [1, 10]
-    - [241, 254]
+    HC:
+      - [1, 10]
+      - [241, 254]
 secrets:
   existingSecret: "segments-manager-token"
   segmentsManagerApiToken: "dev-token"
