@@ -365,11 +365,9 @@ collectors:
     count: 1000
     seed: 42
 
-    # OVERRIDE, FOR TESTING: every minute, against the chart's 6-hourly
-    # default. Safe to leave running — count and seed are fixed, so each run
-    # upserts the same 1000 servers in about 2s and `concurrencyPolicy: Forbid`
-    # stops any overlap. Restore "0 */6 * * *" when this stops being a test bed.
-    schedule: "* * * * *"
+    # Every 6 hours. Nothing about the data changes between runs — the point
+    # is a fresh `last_seen_at` and a live audit trail, not new servers.
+    schedule: "0 */6 * * *"
     backoffLimit: 1
     activeDeadlineSeconds: 1800
     resources:
