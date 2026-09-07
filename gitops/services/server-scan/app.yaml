@@ -1,0 +1,31 @@
+# Argo config for `server-scan` — the bare-metal server inventory platform
+# (team-redbull/server_scan). Chart: gitops/charts/server-scan, a copy of that
+# repo's own deploy/helm/server-inventory with this cluster's values on top.
+#
+# Unlike segments-manager, its MongoDB is NOT a separate Helmfile release: the
+# chart bundles MongoDB and Redis as Bitnami subcharts, gated by
+# `mongodb.enabled` / `redis.enabled`. That is the same Argo-only exception
+# temporal takes for its PostgreSQL — safe here for a simpler reason than
+# temporal's sync waves, since nothing needs ordering: the API's readiness
+# probe fails until Mongo answers and Argo's own retry handles the rest, and
+# Redis is cache-aside so its absence is never a correctness problem.
+#
+# There is no vendor hardware on this cluster — no UCS Central, OneView,
+# OpenManage, Intersight or reachable BMC — so the five vendor collector
+# CronJobs stay disabled and the only one enabled is `fake`, which seeds a
+# deterministic fleet through the real ingest pipeline. Turning a vendor
+# collector on means turning that one off first: servers correlate on
+# (vendor, serial), so two sources fight over the same documents.
+#
+# ONE out-of-band Secret, `server-scan-db`, holds every credential — both
+# database passwords, the cursor-signing HMAC, and the two connection URIs.
+# Nothing secret is committed. It must exist BEFORE the first sync or the API
+# and both CronJobs stay in CreateContainerConfigError; the exact
+# `oc create secret` line is at the top of the chart's values.yaml. Same shape
+# as segments-manager-token today, and the ExternalSecret target
+# gitops/SECRETS.md already plans for.
+#
+# Its own namespace, NOT the existing `server-scanner` one: that holds the
+# Helmfile `server-scanner-dashboard` release from team-redbull/ServerScanner,
+# a different project with a confusingly similar name.
+namespace: server-scan

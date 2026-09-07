@@ -51,6 +51,7 @@ One `Application` per row, generated from `gitops/services/<service>/app.yaml` b
 | `segment-lifecycle-worker` | `redbull-workflows` | `gitops/charts/segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; `nextUrl` → `mock-segment-connectivity` |
 | `workflows-docs` | `redbull-workflows` | `gitops/charts/workflows-docs` | static docs site for the workflow layer; depends on nothing |
 | `dhcp-scope-manager` | `dhcp-scope-manager` | `gitops/charts/dhcp-scope-manager` | Linux API driving a remote Windows DHCP server over PSRP/WinRM |
+| `server-scan` | `server-scan` | `gitops/charts/server-scan` | bare-metal inventory platform; **combined** API + UI + MongoDB/Redis subcharts, fake-data collector only |
 
 The app name, the chart path and the Helm release name are all the folder name, so a
 service's resources are named the same in every cluster.
@@ -255,8 +256,8 @@ Helmfile release names (bootstrap layer): `namespaces`, `htpasswd-idp`, `crosspl
 `provider-http`, `provider-http-config`, `segments-manager-mongodb`,
 `mock-segment-connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`. (`temporal`, `segments-manager`, `workflows-orchestrator`,
-`segment-lifecycle-worker`, `workflows-docs` and `dhcp-scope-manager` are Argo CD
-apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
+`segment-lifecycle-worker`, `workflows-docs`, `dhcp-scope-manager` and `server-scan`
+are Argo CD apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
 `helmfile -l`.)
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts

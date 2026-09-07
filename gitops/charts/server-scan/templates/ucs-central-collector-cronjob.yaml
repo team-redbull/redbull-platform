@@ -1,0 +1,73 @@
+{{- /*
+The only Cisco collector: one CronJob covering every UCS Manager domain
+registered with UCS Central.
+
+The pod talks to both products. It asks Central which domains exist and
+what their addresses are, then opens a session against each domain's own
+UCS Manager using the `ucsManager.username`/`password` the collector
+Secret carries — there is no `ucsManager.ip`, because Central supplies
+the addresses. That is why the `envFrom` below pulls the whole vendor
+Secret rather than just this vendor's keys.
+
+A domain not registered with Central is not collected: Central is the
+only source of the domain list. See docs/adr/0014's Consequences.
+*/ -}}
+{{- if .Values.collectors.ucsCentral.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-collector-ucs-central
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-collector-ucs-central
+    app.kubernetes.io/component: collector
+    app.kubernetes.io/part-of: server-inventory
+spec:
+  schedule: {{ .Values.collectors.ucsCentral.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.collectors.ucsCentral.backoffLimit }}
+      activeDeadlineSeconds: {{ .Values.collectors.ucsCentral.activeDeadlineSeconds }}
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: collector
+              image: "{{ .Values.backend.image.repository }}:{{ .Values.backend.image.tag }}"
+              imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
+              command: ["python3", "-m", "tools.run_collector", "--manager-type", "UCS_CENTRAL"]
+              env:
+                - name: INVENTORY_ENVIRONMENT
+                  value: production
+                # Which servers this collector may ingest at all, matched
+                # against the server's name. Collector-scoped, so it lives
+                # here rather than in the API ConfigMap this also mounts.
+                - name: INVENTORY_COLLECTOR_NAME_PATTERN
+                  value: {{ .Values.collectors.namePattern | quote }}
+                # How many domains to read at once. Collector-scoped like
+                # the pattern above.
+                - name: INVENTORY_UCS_CENTRAL_DOMAIN_CONCURRENCY
+                  value: {{ .Values.collectors.ucsCentral.domainConcurrency | quote }}
+                {{- include "serverInventory.dbEnv" . | nindent 16 }}
+              envFrom:
+                - configMapRef:
+                    name: {{ .Release.Name }}-api-config
+                # Endpoint + login for every vendor, as INVENTORY_* env
+                # vars. `envFrom` a Secret rather than inline `env` so the
+                # passwords aren't readable in the pod spec.
+                - secretRef:
+                    name: {{ .Values.collectors.existingSecret | default (printf "%s-collector-credentials" .Release.Name) }}
+              resources:
+                {{- toYaml .Values.collectors.ucsCentral.resources | nindent 16 }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
+                readOnlyRootFilesystem: true
+                runAsNonRoot: true
+                seccompProfile:
+                  type: RuntimeDefault
+{{- end }}

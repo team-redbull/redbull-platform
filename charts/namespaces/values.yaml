@@ -4,7 +4,10 @@ namespaces:
   - temporal              # Argo-managed: the `temporal` app deploys here
   - segments-manager      # Argo `segments-manager` app + Helmfile mongodb release
   - bmh-system
-  - server-scanner
+  - server-scanner        # Helmfile `server-scanner-dashboard` (team-redbull/ServerScanner)
+  - server-scan           # Argo-managed: the `server-scan` app (team-redbull/server_scan).
+                          # A DIFFERENT project from server-scanner above, hence its own
+                          # namespace rather than sharing one with an unrelated release.
   - redbull-workflows     # Argo workflows + segment-lifecycle-worker apps + Helmfile mock release
   - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
 
@@ -26,3 +29,4 @@ argocd:
     - segments-manager
     - redbull-workflows
     - dhcp-scope-manager
+    - server-scan
