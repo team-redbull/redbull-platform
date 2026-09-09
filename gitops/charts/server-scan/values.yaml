@@ -52,7 +52,7 @@ backend:
     # across releases. Upgrading is a bump of `appVersion` (or of this),
     # which is a change GitOps can see, diff and roll back.
     repository: ghcr.io/team-redbull/server_scan-api
-    tag: "13.0.0"
+    tag: "13.0.1"
     # Correct BECAUSE the tag is immutable: an image already on the node is
     # the same image. `Always` only makes sense with a floating tag, which
     # is what the line above exists to avoid.
@@ -89,7 +89,7 @@ frontend:
   image:
     # Same rules as backend.image above — blank means `appVersion`.
     repository: ghcr.io/team-redbull/server_scan-frontend
-    tag: "13.0.0"
+    tag: "13.0.1"
     pullPolicy: IfNotPresent
   replicaCount: 2
   resources:
