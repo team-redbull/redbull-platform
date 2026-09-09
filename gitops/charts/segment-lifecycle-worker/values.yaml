@@ -35,6 +35,13 @@ config:
     mceToBmc:
       tcp: ["623"]
       udp: ["623"]
+  # Sites where connectivity is ALWAYS OPEN — no firewall between segments, so
+  # nothing for the next service to approve. initialize-segment creates a
+  # segment at one of these sites and unlocks it in the same run: no peer
+  # discovery, no open-rules requests, no approval poll. Every entry must be a
+  # site named in siteNetworks above; an empty list means every site is
+  # firewalled (the behaviour before this knob existed).
+  sitesWithOpenConnectivity: []
   day1RepoUrl: "https://github.com/team-redbull/gitops-day1-platform-config.git"
   day1Branch: "main"
   dhcpApiUrl: "http://dhcp-scope-manager.dhcp-scope-manager.svc.cluster.local:8080"

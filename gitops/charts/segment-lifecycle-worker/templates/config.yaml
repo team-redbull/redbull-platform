@@ -18,6 +18,7 @@ data:
 {{- end }}
   SITE_NETWORKS: {{ .Values.siteNetworks | toJson | quote }}
   PORTS_MCE_TO_BMC: {{ .Values.config.ports.mceToBmc | toJson | quote }}
+  SITES_WITH_OPEN_CONNECTIVITY: {{ .Values.config.sitesWithOpenConnectivity | toJson | quote }}
   DAY1_REPO_URL: {{ .Values.config.day1RepoUrl | quote }}
   DAY1_BRANCH: {{ .Values.config.day1Branch | quote }}
   DHCP_EXCLUSION_OCTET_RANGES: {{ .Values.config.dhcpExclusionOctetRanges | toJson | quote }}
