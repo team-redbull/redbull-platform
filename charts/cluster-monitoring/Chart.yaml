@@ -1,5 +1,0 @@
-apiVersion: v2
-name: cluster-monitoring
-description: Turns on OpenShift user-workload monitoring and, optionally, remote-writes it to an external Prometheus/Thanos.
-type: application
-version: 0.1.0
