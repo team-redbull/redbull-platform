@@ -1,0 +1,32 @@
+{{- /*
+Rendered only when there is something to say: an empty config.yaml is
+valid, but a ConfigMap that exists to be empty is one more thing to own
+for nothing.
+*/ -}}
+{{- if or .Values.retention .Values.remoteWrite.url }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: user-workload-monitoring-config
+  namespace: openshift-user-workload-monitoring
+  labels:
+    app.kubernetes.io/managed-by: helmfile
+    redbull.platform/managed: "true"
+data:
+  config.yaml: |
+    prometheus:
+      {{- with .Values.retention }}
+      retention: {{ . }}
+      {{- end }}
+      {{- with .Values.remoteWrite.url }}
+      remoteWrite:
+        - url: {{ . | quote }}
+          {{- with $.Values.remoteWrite.writeRelabelConfigs }}
+          writeRelabelConfigs:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $.Values.remoteWrite.extra }}
+          {{- toYaml . | nindent 10 }}
+          {{- end }}
+      {{- end }}
+{{- end }}

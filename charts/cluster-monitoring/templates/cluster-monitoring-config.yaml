@@ -1,0 +1,15 @@
+{{- /*
+The switch itself. Everything else in cluster monitoring keeps its
+defaults; this ConfigMap says only "also run the user-workload stack".
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-monitoring-config
+  namespace: openshift-monitoring
+  labels:
+    app.kubernetes.io/managed-by: helmfile
+    redbull.platform/managed: "true"
+data:
+  config.yaml: |
+    enableUserWorkload: {{ .Values.enableUserWorkload }}
