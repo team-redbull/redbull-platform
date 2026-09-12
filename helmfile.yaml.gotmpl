@@ -19,22 +19,6 @@ releases:
     namespace: default
     chart: ./charts/namespaces
 
-  # --- Cluster monitoring ----------------------------------------------------
-  # Two ConfigMaps the cluster-monitoring-operator reads: enable user-workload
-  # monitoring (off by default on OpenShift, and nothing an app chart can turn
-  # on for itself) and, when a URL is set, remote-write it to an external
-  # Prometheus/Thanos. Bootstrap-layer because it is cluster-scoped config in
-  # the openshift-monitoring namespaces, not a service. Neither ConfigMap
-  # exists on a fresh cluster (verified before this was added) — on one where
-  # an admin hand-wrote them, adopt or import first; see the chart's values.
-  - name: cluster-monitoring
-    namespace: openshift-monitoring
-    chart: ./charts/cluster-monitoring
-    values:
-      - remoteWrite:
-          url: {{ .Values.clusterMonitoring.remoteWrite.url | quote }}
-          extra: {{ .Values.clusterMonitoring.remoteWrite.extra | toYaml | nindent 12 }}
-
   # --- Cluster authentication (htpasswd identity provider) ------------------
   # Neither oauth/cluster nor its backing htpasswd Secret can be Helm-owned
   # templates: both pre-exist on every OpenShift cluster (the singleton is

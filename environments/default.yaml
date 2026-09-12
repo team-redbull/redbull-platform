@@ -24,17 +24,6 @@ refs:
 crossplane:
   version: "2.3.2"
 
-# Where OpenShift's user-workload Prometheus forwards what it scrapes (the
-# server-scan gauges, chiefly). Empty keeps metrics in-cluster only — they
-# still appear under Observe -> Metrics. Set `url` to a Thanos Receive or
-# Prometheus remote-write endpoint; put auth under `extra` in the Prometheus
-# Operator's remoteWrite schema, with the Secret it names created in
-# openshift-user-workload-monitoring out of band (gitops/SECRETS.md).
-clusterMonitoring:
-  remoteWrite:
-    url: ""
-    extra: {}
-
 # Cluster authentication: htpasswd users merged into whatever OpenShift cluster this
 # platform deploys onto, plus a cluster-admin grant. See htpasswd-idp's postsync hook
 # (charts/htpasswd-idp/scripts/apply-oauth.sh) and CLAUDE.md. ocpadmin/Password1 is a
