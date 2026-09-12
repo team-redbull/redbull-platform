@@ -6,14 +6,20 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Release.Name }}-collector-openmanage
     app.kubernetes.io/component: collector
-    app.kubernetes.io/part-of: server-inventory
+    app.kubernetes.io/part-of: server-scan
 spec:
   schedule: {{ .Values.collectors.ome.schedule | quote }}
+  {{- with .Values.collectors.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
   jobTemplate:
     spec:
+      {{- if .Values.collectors.jobTtlSeconds }}
+      ttlSecondsAfterFinished: {{ .Values.collectors.jobTtlSeconds }}
+      {{- end }}
       backoffLimit: {{ .Values.collectors.ome.backoffLimit }}
       activeDeadlineSeconds: {{ .Values.collectors.ome.activeDeadlineSeconds }}
       template:
@@ -22,7 +28,7 @@ spec:
           automountServiceAccountToken: false
           containers:
             - name: collector
-              image: {{ include "serverInventory.apiImage" . | quote }}
+              image: {{ include "serverScan.apiImage" . | quote }}
               imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
               command: ["python3", "-m", "tools.run_collector", "--manager-type", "OPENMANAGE"]
               env:
@@ -30,13 +36,17 @@ spec:
                   value: production
                 - name: INVENTORY_COLLECTOR_NAME_PATTERN
                   value: {{ .Values.collectors.namePattern | quote }}
+                {{- if hasKey .Values.collectors.ome "namePattern" }}
+                - name: INVENTORY_OME_NAME_PATTERN
+                  value: {{ .Values.collectors.ome.namePattern | quote }}
+                {{- end }}
                 - name: INVENTORY_REDFISH_FLEET_CONCURRENCY
                   value: {{ .Values.collectors.ome.bmcConcurrency | quote }}
                 - name: INVENTORY_OME_BMC_VERIFY_TLS
                   value: {{ .Values.collectors.ome.bmcVerifyTls | quote }}
                 - name: INVENTORY_OME_BMC_PORT
                   value: {{ .Values.collectors.ome.bmcPort | quote }}
-                {{- include "serverInventory.dbEnv" . | nindent 16 }}
+                {{- include "serverScan.dbEnv" . | nindent 16 }}
               envFrom:
                 - configMapRef:
                     name: {{ .Release.Name }}-api-config

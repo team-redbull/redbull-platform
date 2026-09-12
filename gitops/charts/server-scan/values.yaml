@@ -1,5 +1,5 @@
 # THE deployed configuration for `server-scan` on this cluster. The chart is a
-# copy of server_scan's own deploy/helm/server-inventory (see that repo's
+# verbatim copy of server_scan's own deploy/helm/server-scan (see that repo's
 # deploy/README.md and CLAUDE.md); this file is the only thing that differs,
 # per the ApplicationSet's "the chart's own values.yaml IS the configuration"
 # rule. Every deviation from the upstream defaults is marked OVERRIDE below.
@@ -18,6 +18,9 @@
 #     tools/seed_inventory.py driven through the real ingest pipeline.
 #     Enabling a vendor collector means disabling this one first: one estate,
 #     one source of truth.
+#   * The image tag is pinned here (17.0.0), not taken from Chart.yaml's
+#     appVersion, which upstream's CI does not bump. Both images always carry
+#     the same tag.
 #
 # NOTHING SECRET IS COMMITTED HERE. Every credential comes from one Secret,
 # `server-scan-db`, created out of band in the server-scan namespace — the
@@ -29,14 +32,32 @@
 #     --from-literal=mongodb-passwords="$MONGO_APP_PW" \
 #     --from-literal=redis-password="$REDIS_PW" \
 #     --from-literal=cursor-secret="$CURSOR_HMAC" \
-#     --from-literal=mongo-uri="mongodb://server_inventory:$MONGO_APP_PW@server-scan-mongodb:27017/server_inventory?authSource=server_inventory" \
+#     --from-literal=mongo-uri="mongodb://server-scan:$MONGO_APP_PW@server-scan-mongodb:27017/server-scan?authSource=server-scan" \
 #     --from-literal=redis-uri="redis://:$REDIS_PW@server-scan-redis-master:6379/0"
 #
 # The URIs are in the same Secret because the chart cannot compose them once
 # the passwords live outside its values — see its bundled-db-secret.yaml.
 #
-# Re-syncing the chart from server_scan is: copy deploy/helm/server-inventory
-# over gitops/charts/server-scan, then re-apply every OVERRIDE below.
+# THE 17.0.0 UPGRADE RENAMED THE DATABASE AND ITS USER, and neither moves by
+# itself. server_scan v17.0.0 changed INVENTORY_MONGO_DB's default and the
+# bundled user/database from `server_inventory` to `server-scan`. Bitnami's
+# MongoDB creates its user only on FIRST boot of an empty volume, so a
+# deployment whose PVC already holds `server_inventory` keeps that user, and
+# the 17.0.0 API — reading `server-scan` — fails every write with an
+# authorisation error. Two ways through; this cluster takes the first:
+#
+#   1. Fresh start (fine here — the fleet is `fake`-seeded and regenerable):
+#      recreate the Secret with the mongo-uri above, delete the MongoDB PVC
+#      (`oc delete pvc -n server-scan -l app.kubernetes.io/name=mongodb`),
+#      and let the next sync re-init the database; the fake CronJob re-seeds
+#      it on its next run.
+#   2. Keep the data: `mongodump --db server_inventory`, then
+#      `mongorestore --nsFrom 'server_inventory.*' --nsTo 'server-scan.*'`,
+#      and still recreate the Secret and the user as above.
+#
+# Re-syncing the chart from server_scan is: copy deploy/helm/server-scan over
+# gitops/charts/server-scan (dropping any stray tool directories), then
+# re-apply every OVERRIDE below.
 
 backend:
   image:
@@ -52,7 +73,8 @@ backend:
     # across releases. Upgrading is a bump of `appVersion` (or of this),
     # which is a change GitOps can see, diff and roll back.
     repository: ghcr.io/team-redbull/server_scan-api
-    tag: "15.0.0"
+    # OVERRIDE: pinned, not appVersion — see the header.
+    tag: "17.0.0"
     # Correct BECAUSE the tag is immutable: an image already on the node is
     # the same image. `Always` only makes sense with a floating tag, which
     # is what the line above exists to avoid.
@@ -82,14 +104,15 @@ backend:
 # The React admin UI (the `server_scan-frontend` image CI publishes
 # alongside the API). Off by default so an existing install is unchanged;
 # turning it on requires `route.host`, because the SPA and the API then
-# share one host and are split by path — see route.apiPaths below.
+# share one host, served by the frontend's own nginx proxy — see route below.
 frontend:
   # OVERRIDE: the UI is the point of deploying this here.
   enabled: true
   image:
     # Same rules as backend.image above — blank means `appVersion`.
     repository: ghcr.io/team-redbull/server_scan-frontend
-    tag: "15.0.0"
+    # OVERRIDE: same tag as the API, always — they ship together.
+    tag: "17.0.0"
     pullPolicy: IfNotPresent
   replicaCount: 2
   resources:
@@ -108,9 +131,6 @@ frontend:
 # an operated instance for the other is a supported combination — only the
 # key for the non-bundled half is read from here.
 db:
-  # OVERRIDE: the one out-of-band Secret. Read even though both databases are
-  # bundled, because their passwords come from it rather than from this file,
-  # so the chart cannot compose the URIs itself.
   secretName: server-scan-db
 
 # --- Bundled databases (both OFF by default) -------------------------------
@@ -122,7 +142,7 @@ db:
 # for anything not set here.
 #
 # Air-gapped installs need the dependencies vendored: run
-# `helm dependency update deploy/helm/server-inventory` on a connected
+# `helm dependency update deploy/helm/server-scan` on a connected
 # machine and commit the resulting charts/*.tgz.
 mongodb:
   # MongoDB is the system of record. Bundling it means this chart owns the
@@ -138,12 +158,20 @@ mongodb:
   # `bitnamilegacy/*`, frozen at August 2025. Pin one explicitly for
   # anything that has to be reproducible or mirrored into an air-gapped
   # registry — the chart version above pins the templates, not the image.
+  #
+  # A real version gap, confirmed 2026-09-08 by reading this vendored
+  # chart's own Chart.yaml: chart 19.1.16 (above) was built against
+  # MongoDB 8.3.4, which the frozen legacy catalog does not carry —
+  # `bitnamilegacy/mongodb` tops out at 8.0.13. There is no exact match
+  # available; 8.0.13 is the newest the free catalog has and is offered
+  # here as the practical choice, not a confirmed-compatible one — smoke
+  # test before trusting it in production.
   # image:
   #   repository: bitnamilegacy/mongodb
-  #   tag: 8.0.12-debian-12-r0
+  #   tag: 8.0.13-debian-12-r0
 
-  # OVERRIDE: named after the release, like every other resource here. It is
-  # also what the `mongo-uri` in the out-of-band Secret must point at.
+  # Fixed, because the connection string is built from it
+  # (templates/bundled-db-secret.yaml).
   fullnameOverride: server-scan-mongodb
   architecture: standalone
 
@@ -166,10 +194,10 @@ mongodb:
     # `db.secretName` must name it. One Secret, both keys — created by a
     # secrets operator, or by hand:
     #
-    #   oc create secret generic server-inventory-db \
+    #   oc create secret generic server-scan-db \
     #     --from-literal=mongodb-root-password=... \
     #     --from-literal=mongodb-passwords=... \
-    #     --from-literal=mongo-uri='mongodb://server_inventory:...@server-scan-mongodb:27017/server_inventory?authSource=server_inventory'
+    #     --from-literal=mongo-uri='mongodb://server-scan:...@server-scan-mongodb:27017/server-scan?authSource=server-scan'
     #
     # Leave it empty and the two passwords below are used instead, and the
     # chart composes the URI itself.
@@ -183,10 +211,10 @@ mongodb:
     # longer has. Keep them alphanumeric: they go into a URI unescaped, and
     # DO NOT commit them — that is what `existingSecret` is for.
     rootPassword: ""
-    usernames: ["server_inventory"]
+    usernames: ["server-scan"]
     passwords: [""]
-    # Must match INVENTORY_MONGO_DB, whose default is `server_inventory`.
-    databases: ["server_inventory"]
+    # Must match INVENTORY_MONGO_DB, whose default is `server-scan`.
+    databases: ["server-scan"]
 
   persistence:
     enabled: true
@@ -205,12 +233,15 @@ redis:
   # OVERRIDE: same reason as MongoDB above.
   enabled: true
 
-  # Same `:latest` trap as MongoDB above — see there.
+  # Same `:latest` trap as MongoDB above — see there. Same version gap
+  # too: chart 28.0.15 (above) was built against Redis 8.10.1, which the
+  # frozen legacy catalog does not carry — `bitnamilegacy/redis` tops out
+  # at 8.2.1. Offered as the practical choice, not a confirmed-compatible
+  # one.
   # image:
   #   repository: bitnamilegacy/redis
-  #   tag: 8.0.3-debian-12-r0
+  #   tag: 8.2.1-debian-12-r0
 
-  # OVERRIDE: as MongoDB above. The Service is `server-scan-redis-master`.
   fullnameOverride: server-scan-redis
   architecture: standalone
 
@@ -245,6 +276,9 @@ config:
   # The sites this deployment has, as `code:Display Name` pairs. The code
   # is the token that appears inside a hostname (`ocp4-prod-tlv-infra-01`
   # -> `tlv`), so it must be lowercase letters, digits and single hyphens.
+  # It may itself be `|`-separated aliases (`znif|prep:Znif`) when more
+  # than one naming convention names the same site — the first token is
+  # canonical, the rest are recognised but never produced as a value.
   #
   # This is the only place sites are defined: changing this list renames or
   # adds a site across the API, the UI's site cards, the inventory filter,
@@ -293,29 +327,23 @@ config:
 
 route:
   enabled: true
-  # Empty lets OpenShift generate one from the Service name. REQUIRED once
-  # `frontend.enabled` is set: the SPA calls the API same-origin, so the two
-  # Services must share a host, and a generated host differs per Route.
-  # OVERRIDE: mandatory once the frontend is on. The `apps.…` half is this
-  # cluster's ingress domain
+  # Empty lets OpenShift generate one from the Service name.
+  #
+  # Exactly ONE Route is created either way: the frontend's when
+  # `frontend.enabled`, the API's otherwise. With the frontend on, the
+  # SPA's own nginx forwards /api/, /health/, /metrics, /docs, /redoc and
+  # /openapi.json to the API Service in-cluster, so the API needs no Route
+  # of its own and every one of those is reachable on the single host.
+  # Exposing another path is a `location` block in
+  # templates/frontend-api-proxy-configmap.yaml, never another Route.
+  #
+  # OVERRIDE: the `apps.…` half is this cluster's ingress domain
   # (`oc get ingresses.config/cluster -o jsonpath='{.spec.domain}'`) and it
   # changes with the cluster — on a sandbox rebuild this is the one value to
   # re-check, and a stale one makes the UI unreachable while every pod stays
-  # green.
+  # green. No longer mandatory with the frontend on (one Route can take a
+  # generated host); kept so the URL is stable across syncs.
   host: "server-scan.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com"
-
-  # Only read when `frontend.enabled`. The top-level paths the API owns; the
-  # SPA takes everything else at `/`. OpenShift routes by longest prefix, so
-  # order here is irrelevant. `/api`, `/health` and `/metrics` are what the
-  # UI itself calls (frontend/vite.config.ts proxies exactly these in dev);
-  # `/docs` and `/openapi.json` are the OpenAPI page, and dropping them from
-  # this list is a supported way to keep it off the Route.
-  apiPaths:
-    - /api
-    - /health
-    - /metrics
-    - /docs
-    - /openapi.json
 
 # Real vendor collectors, run as CronJobs against the same image as the
 # API (tools/run_collector.py --manager-type <type>).
@@ -346,6 +374,32 @@ collectors:
   # distinction, which classification rules make over what *is* collected.
   # Verify with `--dry-run` before letting a CronJob run with it.
   namePattern: "^ocp"
+
+  # Each collector below may override it with its own `namePattern`, for an
+  # estate whose vendors don't share one naming scheme. Leaving the key out
+  # inherits this default; setting it to "" collects everything for that
+  # collector alone — which is the only way to opt one out of a non-empty
+  # default here, so an override is left commented out rather than set to "".
+
+  # IANA name, applied to every CronJob's `spec.timeZone` (Kubernetes 1.27+,
+  # GA). Left blank, a CronJob runs on the cluster's own configured
+  # timezone — kube-controller-manager's, almost always UTC regardless of
+  # where the cluster physically sits. Setting this keeps a schedule like
+  # "0 2 * * *" meaning 2am local, DST included, rather than 2am UTC.
+  timeZone: "Asia/Jerusalem"
+
+  # Applied to every CronJob's `jobTemplate.spec.ttlSecondsAfterFinished`
+  # (the TTL controller, GA since Kubernetes 1.23): the finished Job object
+  # (and its Pod) is deleted this many seconds after it completes, success
+  # or failure, independent of `successfulJobsHistoryLimit`/
+  # `failedJobsHistoryLimit` below — whichever cleanup condition is met
+  # first wins. 8 hours: long enough that a run's logs/status are still
+  # there to check shortly after it finished, short enough that even the
+  # least frequent collector here (every 6 hours) never has more than two
+  # finished Jobs visible at once. For an hourly collector the count-based
+  # limits below prune first in practice, so this mostly matters for the
+  # slower ones. Set to 0 to disable and rely on the count limits alone.
+  jobTtlSeconds: 28800
 
   # Fake data, for a cluster with no vendor hardware to reach at all — a
   # demo, a UI environment, or a soak test of the ingest path. Runs
@@ -406,6 +460,7 @@ collectors:
     # opt-in: also needs ucsManager.username/password above, since every
     # domain is read through a UCS Manager login.
     enabled: false
+    # namePattern: "^ocp"
     ip: ""
     username: ""
     password: ""
@@ -416,10 +471,12 @@ collectors:
     # are independent, so this bounds wall-clock time without bounding
     # what gets collected.
     domainConcurrency: 4
-    # Hourly. One run covers the whole fleet, opening a session against
-    # every collected domain, so it is the more expensive job on both
-    # sides of the wire.
-    schedule: "0 * * * *"
+    # Every 6 hours, matching every other collector here — a shared,
+    # uniform cadence across the whole fleet, at the operator's request
+    # (2026-09-10). Nothing here needs sub-6h freshness on its own; this
+    # opens a session against every collected domain, so it is also the
+    # more expensive job on both sides of the wire.
+    schedule: "0 */6 * * *"
     backoffLimit: 1
     # Generous: one run covers every domain, several at a time.
     activeDeadlineSeconds: 1800
@@ -438,9 +495,10 @@ collectors:
   # conformance grounds, not vendor grounds.
   #
   # There is no `ip`. The fleet is the inventory file below, and that file
-  # is also the ONLY collection filter — `namePattern` deliberately does
-  # not apply here, because a BMC does not know the server's `ocp4-...`
-  # name. Treat the inventory as a production-critical, review-gated,
+  # is normally the only collection filter — the shared `namePattern`
+  # deliberately does not reach here, because a BMC does not know the
+  # server's `ocp4-...` name, and only this collector's own override
+  # below applies. Treat the inventory as a production-critical, review-gated,
   # GitOps-owned artifact: write access to it is equivalent to write
   # access to the credential Secret, since it decides where credentials
   # are sent.
@@ -450,6 +508,9 @@ collectors:
   # hardware that degrades when polled. Do not copy ucsCentral's numbers.
   redfishStandalone:
     enabled: false
+    # The global namePattern never reaches this collector; setting this is
+    # the only way to name-filter it, on top of the inventory file.
+    # namePattern: "^ocp"
 
     # Deployed but not scheduled. Un-suspend only after the manual steps
     # in docs/test-redfish-standalone-collector.md have run green against
@@ -489,13 +550,6 @@ collectors:
     hostBudgetSeconds: 180
     runBudgetSeconds: 3600
 
-    # Estate protection. A rejected login is never retried. After this
-    # many DISTINCT hosts reject the SAME credential it is disabled for
-    # the rest of the run; the budget is the total across all credentials,
-    # and is the one that matters when every BMC has its own account.
-    authFailureThreshold: 3
-    authFailureBudget: 10
-
     tls:
       # ConfigMap with a `ca-bundle.crt` key. Empty means the image's
       # system trust store, which correctly rejects a factory self-signed
@@ -507,17 +561,58 @@ collectors:
       minVersion: "TLSv1_2"
 
     # ConfigMap holding the fleet list under an `inventory.toml` key.
-    # Defaults to `<release>-redfish-inventory`, which this chart does NOT
-    # create — it is GitOps-owned. See
-    # docs/examples/redfish-inventory.example.toml.
+    # Defaults to `<release>-redfish-inventory`.
+    #
+    # Two ways to supply it, same choice `collectors.<vendor>.password`
+    # below already offers for credentials:
+    #
+    # 1. Leave `inventoryToml` below blank (the default) and provision the
+    #    ConfigMap yourself — this chart then does NOT create it. Set
+    #    `inventoryConfigMap` if your ConfigMap isn't named
+    #    `<release>-redfish-inventory`.
+    # 2. Set `inventoryToml` and this chart renders and owns the ConfigMap
+    #    (`templates/redfish-inventory-configmap.yaml`) — the natural
+    #    shape for Argo CD, whose Application `spec.source.helm.values` is
+    #    inline YAML anyway. The fleet list then lives in whatever repo
+    #    that Application manifest does, so give it the same access
+    #    control as any other GitOps-committed config — it names every
+    #    BMC and decides which credential each one gets
+    #    (docs/examples/redfish-inventory.example.toml explains why that
+    #    makes it review-gated, same as the credentials Secret). It holds
+    #    no password itself, which is why this is a ConfigMap and the
+    #    credentials file below is a Secret.
+    #
+    # Setting `inventoryConfigMap` means this chart creates nothing and
+    # only mounts what you named — it wins over both sources below.
     inventoryConfigMap: ""
+    inventoryToml: ""
+
+    # 3. The default, and the one most estates want: a real .toml file in
+    #    the chart, read with `.Files.Get`. Edit
+    #    `files/redfish/inventory.toml` in your checkout and the fleet
+    #    changes — no `--set`, no inline YAML block, and a GitOps diff
+    #    shows the file line by line. `inventoryToml` above overrides it
+    #    when both are set. Point this at another path under the chart to
+    #    shard per site; blank disables the file source entirely.
+    inventoryFile: files/redfish/inventory.toml
 
     # Secret holding per-host logins under a `credentials.toml` key.
     # Leave empty for a fleet sharing one account, which uses
     # INVENTORY_REDFISH_USERNAME/_PASSWORD from the collector Secret
     # instead. At a few hundred entries this belongs to a secrets operator
-    # (Vault, External Secrets), not to `--set`.
+    # (Vault, External Secrets), not to `--set`. This is the production
+    # path and it wins over `credentialsFile` below.
     credentialsSecret: ""
+
+    # The file-in-the-chart counterpart, deliberately EMPTY by default
+    # and deliberately not symmetric with `inventoryFile` above: setting
+    # it to `files/redfish/credentials.toml` renders that file into a
+    # Secret, which means **every BMC password in it is committed to
+    # git**, in the history, unremovable by a later edit. The shipped
+    # file carries placeholders and says the same thing in its header.
+    # Fine for a lab or a demo; use `credentialsSecret` for anything
+    # real.
+    credentialsFile: ""
 
     resources:
       requests:
@@ -560,6 +655,7 @@ collectors:
   # enabling this.
   oneview:
     enabled: false
+    # namePattern: "^ocp"
     ip: ""
     username: ""
     password: ""
@@ -592,10 +688,12 @@ collectors:
     # Appliances ship a self-signed certificate in an air-gapped estate.
     verifyTls: false
 
-    # Every 4 hours. Between Cisco's hourly cadence and the BMC-touching
-    # collectors' 6-hourly one: this is three bulk calls per appliance,
-    # not thousands of requests against embedded hardware.
-    schedule: "0 */4 * * *"
+    # Every 6 hours, matching every other collector here — a shared,
+    # uniform cadence across the whole fleet, at the operator's request
+    # (2026-09-10; this used to be 4 hours). Three bulk calls per
+    # appliance, so the wire cost would support more often than this if
+    # a future need for tighter freshness ever outweighs the uniformity.
+    schedule: "0 */6 * * *"
     backoffLimit: 1
     activeDeadlineSeconds: 3600
     resources:
@@ -622,6 +720,7 @@ collectors:
   # See docs/adr/0020-dell-identity-from-ome-hardware-from-redfish.md.
   ome:
     enabled: false
+    # namePattern: "^ocp"
     ip: ""
     username: ""
     password: ""
@@ -640,9 +739,11 @@ collectors:
     # each), not per appliance.
     bmcConcurrency: 16
 
-    # Every 6 hours, matching redfishStandalone. Deliberately NOT the
-    # Cisco collector's hourly cadence: every sweep is thousands of
-    # requests against embedded hardware that degrades when polled.
+    # Every 6 hours, matching redfishStandalone and every other collector
+    # here — a shared, uniform cadence across the whole fleet, at the
+    # operator's request (2026-09-10). Every sweep is thousands of
+    # requests against embedded hardware that degrades when polled, so
+    # this one specifically should not go tighter even if others do.
     schedule: "0 */6 * * *"
     backoffLimit: 1
     # Generous: one run sweeps the whole Dell estate a batch of BMCs at a
@@ -673,6 +774,7 @@ collectors:
   # pre-existing Secret, and no key file to mount.
   intersight:
     enabled: false
+    # namePattern: "^ocp"
 
     # "intersight.com" for the SaaS tenant, or the appliance FQDN.
     # A bare hostname: no scheme, no port, no path.
@@ -717,10 +819,13 @@ collectors:
     # reaching the endpoint at all.
     readTimeoutSeconds: 60
 
-    # Hourly. One run covers the whole tenant in a flat number of
-    # requests, so this is cheap on both sides of the wire — unlike the
-    # per-BMC Redfish sweep, which must not be scheduled this often.
-    schedule: "0 * * * *"
+    # Every 6 hours, matching every other collector here — a shared,
+    # uniform cadence across the whole fleet, at the operator's request
+    # (2026-09-10; this used to be hourly). One run covers the whole
+    # tenant in a flat number of requests, so the wire cost would support
+    # more often than this — unlike the per-BMC Redfish sweep, which
+    # genuinely must not be scheduled tighter.
+    schedule: "0 */6 * * *"
     backoffLimit: 1
 
     # In-process budget, so a throttled run ends with a summary naming

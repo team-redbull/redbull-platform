@@ -6,14 +6,20 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Release.Name }}-collector-fake
     app.kubernetes.io/component: collector
-    app.kubernetes.io/part-of: server-inventory
+    app.kubernetes.io/part-of: server-scan
 spec:
   schedule: {{ .Values.collectors.fake.schedule | quote }}
+  {{- with .Values.collectors.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
   jobTemplate:
     spec:
+      {{- if .Values.collectors.jobTtlSeconds }}
+      ttlSecondsAfterFinished: {{ .Values.collectors.jobTtlSeconds }}
+      {{- end }}
       backoffLimit: {{ .Values.collectors.fake.backoffLimit }}
       activeDeadlineSeconds: {{ .Values.collectors.fake.activeDeadlineSeconds }}
       template:
@@ -22,7 +28,7 @@ spec:
           automountServiceAccountToken: false
           containers:
             - name: collector
-              image: {{ include "serverInventory.apiImage" . | quote }}
+              image: {{ include "serverScan.apiImage" . | quote }}
               imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
               command:
                 - python3
@@ -35,7 +41,7 @@ spec:
               env:
                 - name: INVENTORY_ENVIRONMENT
                   value: production
-                {{- include "serverInventory.dbEnv" . | nindent 16 }}
+                {{- include "serverScan.dbEnv" . | nindent 16 }}
               envFrom:
                 - configMapRef:
                     name: {{ .Release.Name }}-api-config

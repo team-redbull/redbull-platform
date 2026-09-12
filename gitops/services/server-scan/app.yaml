@@ -1,6 +1,6 @@
 # Argo config for `server-scan` — the bare-metal server inventory platform
 # (team-redbull/server_scan). Chart: gitops/charts/server-scan, a copy of that
-# repo's own deploy/helm/server-inventory with this cluster's values on top.
+# repo's own deploy/helm/server-scan with this cluster's values on top.
 #
 # Unlike segments-manager, its MongoDB is NOT a separate Helmfile release: the
 # chart bundles MongoDB and Redis as Bitnami subcharts, gated by

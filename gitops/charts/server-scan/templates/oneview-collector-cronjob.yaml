@@ -6,14 +6,20 @@ metadata:
   labels:
     app.kubernetes.io/name: {{ .Release.Name }}-collector-oneview
     app.kubernetes.io/component: collector
-    app.kubernetes.io/part-of: server-inventory
+    app.kubernetes.io/part-of: server-scan
 spec:
   schedule: {{ .Values.collectors.oneview.schedule | quote }}
+  {{- with .Values.collectors.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 3
   failedJobsHistoryLimit: 5
   jobTemplate:
     spec:
+      {{- if .Values.collectors.jobTtlSeconds }}
+      ttlSecondsAfterFinished: {{ .Values.collectors.jobTtlSeconds }}
+      {{- end }}
       backoffLimit: {{ .Values.collectors.oneview.backoffLimit }}
       activeDeadlineSeconds: {{ .Values.collectors.oneview.activeDeadlineSeconds }}
       template:
@@ -22,7 +28,7 @@ spec:
           automountServiceAccountToken: false
           containers:
             - name: collector
-              image: {{ include "serverInventory.apiImage" . | quote }}
+              image: {{ include "serverScan.apiImage" . | quote }}
               imagePullPolicy: {{ .Values.backend.image.pullPolicy }}
               command: ["python3", "-m", "tools.run_collector", "--manager-type", "ONEVIEW"]
               env:
@@ -30,6 +36,10 @@ spec:
                   value: production
                 - name: INVENTORY_COLLECTOR_NAME_PATTERN
                   value: {{ .Values.collectors.namePattern | quote }}
+                {{- if hasKey .Values.collectors.oneview "namePattern" }}
+                - name: INVENTORY_ONEVIEW_NAME_PATTERN
+                  value: {{ .Values.collectors.oneview.namePattern | quote }}
+                {{- end }}
                 - name: INVENTORY_ONEVIEW_COLLECT_PSUS
                   value: {{ .Values.collectors.oneview.collectPsus | quote }}
                 - name: INVENTORY_ONEVIEW_PSU_CONCURRENCY
@@ -44,7 +54,7 @@ spec:
                   value: {{ .Values.collectors.oneview.pageSize | quote }}
                 - name: INVENTORY_ONEVIEW_VERIFY_TLS
                   value: {{ .Values.collectors.oneview.verifyTls | quote }}
-                {{- include "serverInventory.dbEnv" . | nindent 16 }}
+                {{- include "serverScan.dbEnv" . | nindent 16 }}
               envFrom:
                 - configMapRef:
                     name: {{ .Release.Name }}-api-config
