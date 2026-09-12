@@ -18,7 +18,7 @@
 #     tools/seed_inventory.py driven through the real ingest pipeline.
 #     Enabling a vendor collector means disabling this one first: one estate,
 #     one source of truth.
-#   * The image tag is pinned here (17.3.0), not taken from Chart.yaml's
+#   * The image tag is pinned here (17.4.1), not taken from Chart.yaml's
 #     appVersion, which upstream's CI does not bump. Both images always carry
 #     the same tag.
 #
@@ -82,7 +82,7 @@ backend:
     # which is a change GitOps can see, diff and roll back.
     repository: ghcr.io/team-redbull/server_scan-api
     # OVERRIDE: pinned, not appVersion — see the header.
-    tag: "17.3.0"
+    tag: "17.4.1"
     # Correct BECAUSE the tag is immutable: an image already on the node is
     # the same image. `Always` only makes sense with a floating tag, which
     # is what the line above exists to avoid.
@@ -120,7 +120,7 @@ frontend:
     # Same rules as backend.image above — blank means `appVersion`.
     repository: ghcr.io/team-redbull/server_scan-frontend
     # OVERRIDE: same tag as the API, always — they ship together.
-    tag: "17.3.0"
+    tag: "17.4.1"
     pullPolicy: IfNotPresent
   replicaCount: 2
   resources:
