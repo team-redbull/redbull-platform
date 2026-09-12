@@ -56,8 +56,16 @@
 #      and still recreate the Secret and the user as above.
 #
 # Re-syncing the chart from server_scan is: copy deploy/helm/server-scan over
-# gitops/charts/server-scan (dropping any stray tool directories), then
-# re-apply every OVERRIDE below.
+# gitops/charts/server-scan (dropping any stray tool directories), re-apply
+# every OVERRIDE below, then — before pushing — render THIS file and dry-run
+# it against the cluster:
+#
+#   helm template server-scan gitops/charts/server-scan -n server-scan \
+#     | oc apply --dry-run=server -f -
+#
+# `helm template` alone renders a missing value as nothing and says so to
+# nobody; the admission webhooks are what reject it, and only the real API
+# server runs them (CLAUDE.md, "Verifying a chart before pushing").
 
 backend:
   image:

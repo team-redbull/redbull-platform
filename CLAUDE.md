@@ -510,6 +510,41 @@ The air-gapped GitLab now differs only by the **host** — the charts travel wit
 so there is no flat-vs-subgroup naming translation left. Change the two `repoURL`s in
 `gitops/appset.yaml` and `sourceRepos` in `gitops/project.yaml`. See README.
 
+## Verifying a chart before pushing: `helm template` is not enough
+
+Every Argo app renders from `gitops/charts/<service>/`, so a bad render is a
+failed sync, not a failed CI job — there is no CI between a push here and
+the cluster. Three checks look like they cover it and do not:
+
+- `helm lint` checks the chart against its *own* `values.yaml`; a values
+  file that is valid YAML with the keys in the wrong map passes.
+- `helm template` renders a missing `.Values.x` as an **empty string, with
+  no warning**. This is Helm's documented behaviour, not a bug.
+- `promtool`/`kubeconform`-style offline validators only see what was
+  rendered, and never see an admission webhook.
+
+What actually bit (2026-09-13, `server-scan`): a block inserted between a
+map's `enabled` key and its siblings moved two alert thresholds under the
+wrong parent, the `PrometheusRule` rendered `expr: … >` with no right-hand
+side, all three checks above passed, and OpenShift's
+`prometheusrules.openshift.io` webhook rejected the sync with the terse
+"Rules are not valid". The full reason only came from the API server.
+
+So, before pushing a chart change, **render it and dry-run it against the
+real cluster** — that runs every admission webhook the sync will:
+
+```bash
+helm template <release> gitops/charts/<service> -n <namespace> \
+  | oc apply --dry-run=server -f -
+```
+
+It needs a kubeconfig for the cluster the app targets, which is why it is
+a habit here rather than a CI step. When a chart comes from another repo
+(`server-scan` is copied from `team-redbull/server_scan`'s
+`deploy/helm/server-scan`, with this cluster's `OVERRIDE`s re-applied on
+top), the values file that matters is **this repo's** — the upstream chart's
+defaults may render fine while ours does not.
+
 ## Related repos
 
 - `team-redbull/helm-charts-*` — the seven **retired** chart repos (`-temporal`,
