@@ -540,7 +540,7 @@ helm template <release> gitops/charts/<service> -n <namespace> \
 
 It needs a kubeconfig for the cluster the app targets, which is why it is
 a habit here rather than a CI step. When a chart comes from another repo
-(`server-scan` is copied from `team-redbull/server_scan`'s
+(`server-scan` is copied from `team-redbull/server-scan`'s
 `deploy/helm/server-scan`, with this cluster's `OVERRIDE`s re-applied on
 top), the values file that matters is **this repo's** — the upstream chart's
 defaults may render fine while ours does not.

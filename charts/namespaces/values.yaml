@@ -5,7 +5,7 @@ namespaces:
   - segments-manager      # Argo `segments-manager` app + Helmfile mongodb release
   - bmh-system
   - server-scanner        # Helmfile `server-scanner-dashboard` (team-redbull/ServerScanner).
-                          # NOT the `server-scan` Argo app (team-redbull/server_scan) —
+                          # NOT the `server-scan` Argo app (team-redbull/server-scan) —
                           # a different project, in a `server-scan` namespace it creates
                           # itself with CreateNamespace=true. Deliberately not listed here:
                           # two owners for one namespace is a race.
