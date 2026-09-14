@@ -1,0 +1,14 @@
+apiVersion: v2
+name: kubevirt-redfish
+description: >-
+  KubeVirt Redfish (Technology Preview) — a Redfish-compatible API in front of
+  OpenShift Virtualization VMs, so BMC-oriented tooling (Metal3/BareMetalHost,
+  Agent-based installer, ZTP) can drive VM power, inventory and VirtualMedia the
+  same way it drives physical servers.
+type: application
+version: 0.1.0
+# Tracks the CNV release whose kubevirt-redfish image this deploys. Keep in step with
+# image.tag in values.yaml, and with the `openshift-virtualization` chart's appVersion
+# — this is a soft dependency, but a Redfish image far ahead of the installed CNV is
+# not a combination Red Hat tests.
+appVersion: "4.22.0"

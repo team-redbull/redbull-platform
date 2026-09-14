@@ -1,0 +1,29 @@
+apiVersion: v2
+name: openshift-virtualization
+description: >-
+  OpenShift Virtualization (CNV) operator install, HyperConverged tuning for this
+  cluster, and the VM bridge NNCP. KubeVirt Redfish is a separate chart/app:
+  gitops/charts/kubevirt-redfish.
+type: application
+version: 0.1.0
+# The CNV release this chart targets. Keep in step with subscription.startingCSV
+# here, and with the kubevirt-redfish chart's image.tag — they move together on a
+# CNV upgrade.
+appVersion: "4.22.0"
+
+# The OLM install (OperatorGroup + Subscription) comes from the generic operator-olm
+# subchart, VENDORED under charts/. Regenerate with gitops/charts/operator-olm/vendor.sh;
+# never hand-edit the vendored artifact.
+#
+# An empty repository marks it as already-present, so `helm dependency build` never tries
+# to resolve it — same reasoning as gitops/charts/dhcp-scope-manager's dhcp-api-token. No
+# Chart.lock is committed. `helm template` loads charts/ with or without this block;
+# `helm lint` refuses it as undeclared, so it is declared.
+#
+# WHY A COPY AND NOT file://../operator-olm: on the air-gapped GitLab this chart is its
+# own repo under the helm-charts group, with no shared checkout, so a relative-path
+# dependency cannot resolve there.
+dependencies:
+  - name: operator-olm
+    version: 0.1.0
+    repository: ""

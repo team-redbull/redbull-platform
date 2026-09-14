@@ -1,0 +1,36 @@
+{{- $ns := include "operator-olm.namespace" . -}}
+{{- /*
+  Two gates, both deliberate.
+
+  1. operatorGroup.enabled — the declaration that THIS chart owns this namespace's
+     OperatorGroup. Set it false in every co-tenant. A SECOND OperatorGroup in a
+     namespace puts every CSV there into TooManyOperatorGroups and breaks ALL operator
+     installs in that namespace, not just this one, and needs a human to fix.
+  2. The openshift-operators guard — that namespace already ships the cluster-wide
+     `global-operators` OperatorGroup. Creating another is the exact failure above, on
+     the busiest namespace on the cluster.
+*/ -}}
+{{- if and .Values.operatorGroup.enabled (ne $ns "openshift-operators") }}
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: {{ include "operator-olm.operatorGroupName" . }}
+  namespace: {{ $ns }}
+  annotations:
+    # Wave 0: must exist BEFORE the Subscription, or OLM refuses to install the CSV
+    # into this namespace and it sits at NoOperatorGroup.
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  {{- if .Values.operatorGroup.targetNamespaces }}
+  targetNamespaces:
+    {{- range .Values.operatorGroup.targetNamespaces }}
+    - {{ . | quote }}
+    {{- end }}
+  {{- else }}
+  # AllNamespaces. An emitted `targetNamespaces: []` is what OLM reads as AllNamespaces,
+  # and a CSV supporting only OwnNamespace/SingleNamespace (OpenShift Virtualization,
+  # for one) then fails to install. If you did not mean AllNamespaces, set
+  # operatorGroup.targetNamespaces in the consumer's values.
+  targetNamespaces: []
+  {{- end }}
+{{- end }}

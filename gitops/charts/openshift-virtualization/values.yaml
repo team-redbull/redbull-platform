@@ -1,0 +1,60 @@
+# OpenShift Virtualization (CNV): the OLM operator install, this cluster's
+# HyperConverged tuning, and the VM bridge NNCP.
+#
+# KubeVirt Redfish is NOT here — it is its own chart and Argo app at
+# gitops/charts/kubevirt-redfish. Deliberate: a Technology Preview component churns
+# on a different cadence than the operator install, and the dependency is soft.
+#
+# ── CNV operator install (generic operator-olm subchart) ─────────────────────
+operator-olm:
+  subscription:
+    # metadata.name AND the OLM package name. One command verifies this and the
+    # startingCSV below against the mirrored catalog:
+    #   oc get packagemanifest kubevirt-hyperconverged -n openshift-marketplace \
+    #     -o jsonpath='{.status.catalogSource} {.status.channels[?(@.name=="stable")].currentCSV}'
+    name: kubevirt-hyperconverged
+    namespace: openshift-cnv
+    channel: stable
+    # source / sourceNamespace are INHERITED from the subchart: the shared `generic-cs`
+    # catalog in openshift-marketplace (gitops/charts/generic-cs). Override them here
+    # only if CNV ever resolves from a different catalog.
+    #
+    # Pins the FIRST install only — installPlanApproval stays Automatic, so OLM still
+    # upgrades within the channel. Empty takes the channel head, which is right for a
+    # mirror holding one version; a CSV absent from the catalog leaves the Subscription
+    # at ResolutionFailed and installs nothing.
+    startingCSV: ""
+
+  operatorGroup:
+    name: kubevirt-hyperconverged-group
+    namespace: openshift-cnv
+    # The CNV CSV supports only OwnNamespace/SingleNamespace. Stated explicitly because
+    # an empty list renders `targetNamespaces: []` = AllNamespaces, and the CSV then
+    # fails to install with an install-mode error.
+    targetNamespaces:
+      - openshift-cnv
+
+# ── HyperConverged ───────────────────────────────────────────────────────────
+hyperconverged:
+  enabled: true
+  name: kubevirt-hyperconverged
+  namespace: openshift-cnv
+
+# ── VM bridge (NodeNetworkConfigurationPolicy) ───────────────────────────────
+# REQUIRES the kubernetes-nmstate operator AND an `NMState` CR instance — neither is
+# installed by this chart, and nmstate is NOT part of CNV (it is its own OLM package,
+# `kubernetes-nmstate-operator`, in `openshift-nmstate`). Without it the NNCP is never
+# reconciled onto the nodes; without the CRD at all the apply fails outright, which is
+# why this sits in the LAST sync wave — a missing nmstate then degrades only the tail
+# of this app's sync, leaving the CNV install itself applied. Verify with:
+#   oc get nmstate
+vmBridge:
+  enabled: true
+  name: vm-bridge
+  bridgeName: br-virtual
+  ports:
+    - bond0
+  mtu: 9000
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  maxUnavailable: 1

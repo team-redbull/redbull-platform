@@ -1,0 +1,25 @@
+# ONE CatalogSource per OpenShift version, holding every operator `oc mirror` put in this
+# cluster's index. Every operator's Subscription resolves from it:
+# gitops/charts/operator-olm defaults `subscription.source` to the name below, so no
+# operator chart restates it.
+#
+# THE COUPLING IS BY NAME AND NOTHING CHECKS IT. Renaming this without changing
+# operator-olm's default breaks every operator at once, and the only symptom is each
+# Subscription reporting CatalogSourcesUnhealthy.
+#
+# ON AN OPENSHIFT UPGRADE: mirror a new index and bump `image` here. Keep the NAME
+# stable — every Subscription references it by name, and a rename is a delete+recreate
+# that leaves each Subscription unresolvable in between.
+catalogSource:
+  name: generic-cs
+  # Created by OLM on every OpenShift cluster, so it is deliberately NOT in
+  # charts/namespaces/values.yaml. A CatalogSource here is visible cluster-wide; one in
+  # any other namespace is visible only to Subscriptions in that same namespace.
+  namespace: openshift-marketplace
+  # REQUIRED — the index image `oc mirror` pushed to the internal registry. Prefer a
+  # digest: a mutable tag re-pushed in place is not re-pulled unless you also set a
+  # registryPoll interval, which this chart deliberately does not template.
+  image: ""
+  sourceType: grpc
+  displayName: ""    # empty = name
+  publisher: redbull-platform

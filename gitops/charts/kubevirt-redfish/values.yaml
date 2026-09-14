@@ -1,0 +1,106 @@
+# KubeVirt Redfish — Technology Preview.
+#
+# Exposes OpenShift Virtualization VMs through a Redfish-compatible API (power,
+# inventory, VirtualMedia). Deliberately its OWN chart and Argo app, separate from
+# `openshift-virtualization`: a Technology Preview component churns on a different
+# cadence than the CNV operator install, and the dependency between them is SOFT —
+# with CNV absent this app still applies cleanly and the pod recovers on its own via
+# the appset's retry/selfHeal once CNV is up. No sync-wave coupling, no shared
+# failure. See CLAUDE.md.
+#
+# ── ONE out-of-band Secret is required before the first sync ──────────────────
+# The Redfish config carries a bcrypt password hash that grants FULL management
+# control over every VM it exposes, independently of any OpenShift RBAC. It is NOT
+# committed here (this repo's GitHub copy is public; a bcrypt hash in git is an
+# offline brute-force target forever). Create it by hand, once per cluster:
+#
+#   htpasswd -nbB "" '<password>' | cut -d: -f2      # → $2y$05$…  (the hash)
+#
+#   # write config.yaml using the `config:` block below as the template, then:
+#   oc create secret generic kubevirt-redfish-secret \
+#     -n kubevirt-redfish --from-file=config.yaml=./config.yaml
+#
+# Until it exists the Deployment stays in ContainerCreating. Same shape as
+# `server-scan-db` and `segments-manager-token`; see gitops/SECRETS.md.
+# Set config.existingSecret to "" to have this chart render the Secret from the
+# values below instead — dev clusters only, it puts the hash in git.
+# ──────────────────────────────────────────────────────────────────────────────
+
+# Pre-created by the `namespaces` Helmfile release (CreateNamespace is off in the
+# appset). Every template sets metadata.namespace explicitly from this value.
+namespace: kubevirt-redfish
+
+serviceAccountName: kubevirt-redfish
+# Cluster-scoped, so these names must not collide with another install.
+clusterRoleName: kubevirt-redfish-role
+clusterRoleBindingName: kubevirt-redfish-binding
+
+image:
+  # AIR-GAPPED: verify this image is actually in your mirror. It ships in the CNV
+  # bundle's relatedImages on a connected cluster, but if `oc mirror` did not pull
+  # it, add it to ImageSetConfiguration.mirror.additionalImages.
+  # Note it is referenced BY TAG: an ImageDigestMirrorSet does not redirect tag
+  # pulls. You need an ImageTagMirrorSet covering registry.redhat.io, or point
+  # `repository` straight at the mirror host below.
+  repository: registry.redhat.io/container-native-virtualization/kubevirt-redfish-rhel9
+  tag: v4.22
+  pullPolicy: Always
+
+replicas: 1
+port: 8443
+logLevel: info
+
+resources:
+  requests:
+    memory: 512Mi
+    cpu: 100m
+  limits:
+    memory: 2Gi
+    cpu: 500m
+
+service:
+  name: kubevirt-redfish
+
+route:
+  enabled: true
+  name: kubevirt-redfish
+  # Empty → the ingress controller generates the hostname.
+  host: ""
+  # Edge termination: TLS stops at the router, the backend is plain HTTP
+  # (config.server.tls.enabled is false below, matching the Red Hat procedure).
+  termination: edge
+  insecureEdgeTerminationPolicy: Redirect
+
+config:
+  # Name of the Secret holding config.yaml. Created out-of-band (see header).
+  # Set to "" to render it from the values below instead — dev only.
+  existingSecret: kubevirt-redfish-secret
+
+  # ── Only used when existingSecret is "" ────────────────────────────────────
+  # Kept here as the documented shape of config.yaml even when the Secret is
+  # out-of-band: copy this block into the file you feed `oc create secret`.
+  secretName: kubevirt-redfish-secret
+  # `enhanced` → Redfish system IDs are <namespace>.<vm-name>. `legacy` → <vm-name>.
+  # BMC addresses embed this, so changing it later invalidates every consumer.
+  systemIdConvention: enhanced
+  chassis:
+    - name: vms
+      # The namespace your VMs live in.
+      namespace: ""
+      serviceAccount: kubevirt-redfish
+      vmSelector:
+        labels:
+          # ONLY VMs carrying this label are visible over Redfish.
+          redfish-enabled: "true"
+  users:
+    - username: admin
+      # bcrypt hash from `htpasswd -nbB "" '<password>' | cut -d: -f2`.
+      # NEVER commit a real one — this path is dev-only.
+      passwordHash: ""
+      chassis:
+        - vms
+  datavolume:
+    # Backs VirtualMedia (InsertMedia) — the ISO is imported into a DataVolume by
+    # CDI. Must be a storage class that exists on this cluster.
+    storageClass: ""
+    storageSize: 3Gi

@@ -1,0 +1,8 @@
+apiVersion: v2
+name: generic-cs
+description: >-
+  The one OLM CatalogSource this cluster resolves every operator from — the mirrored
+  index for this OpenShift version. Consumed by name: gitops/charts/operator-olm defaults
+  subscription.source to `generic-cs`.
+type: application
+version: 0.1.0

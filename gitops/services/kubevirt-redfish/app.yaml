@@ -1,0 +1,27 @@
+# Argo config for `kubevirt-redfish` — the KubeVirt Redfish Technology Preview API
+# in front of this cluster's OpenShift Virtualization VMs.
+#
+# Its own app, NOT part of `openshift-virtualization`, on purpose. It consumes what
+# that app installs, but the dependency is SOFT in exactly the sense CLAUDE.md means:
+# with CNV absent this app still applies cleanly, and the pod either serves no VMs or
+# crash-loops on the missing kubevirt.io CRDs — either way it RECOVERS on its own via
+# the appset's retry/selfHeal once CNV is up. Nothing here needs a sync wave relative
+# to that app, and a TP component gets to churn (image bumps, config changes) without
+# re-syncing the operator install.
+#
+# Namespace `kubevirt-redfish` is pre-created by the `namespaces` Helmfile release;
+# CreateNamespace stays off (see appset.yaml).
+#
+# It owns two CLUSTER-scoped objects — a ClusterRole granting VM power/inventory/CDI
+# access in every namespace, and its binding. Which VMs are actually reachable is
+# narrowed by the chassis `vm_selector` in config.yaml, not by RBAC. The
+# redbull-platform AppProject whitelists all cluster resources, so no project change
+# is needed.
+#
+# ONE out-of-band Secret, `kubevirt-redfish-secret`, holds config.yaml including a
+# bcrypt password hash that grants full management control over every exposed VM,
+# independently of any OpenShift RBAC. Nothing secret is committed. It must exist
+# BEFORE the first sync or the Deployment stays in ContainerCreating; the exact
+# commands are at the top of the chart's values.yaml. Same shape as `server-scan-db`,
+# and an ExternalSecret target gitops/SECRETS.md now lists.
+namespace: kubevirt-redfish

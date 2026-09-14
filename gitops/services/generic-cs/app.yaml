@@ -1,0 +1,24 @@
+# Argo config for `generic-cs` — the ONE OLM CatalogSource this cluster resolves every
+# operator from: the mirrored index for this OpenShift version.
+#
+# Its own app, not a piece of any operator's chart, on purpose. One catalog serves every
+# operator, so exactly one thing may own it; folding it into an operator chart would make
+# that ownership arbitrary, and retiring THAT operator would delete the catalog out from
+# under every remaining Subscription.
+#
+# Not in the Helmfile bootstrap layer either, where IDMS/ITMS and the OperatorHub CR
+# live. Those belong there because they are cluster-scoped singletons needing an admin
+# kubeconfig, and IDMS triggers a node-rebooting MachineConfig rollout. A CatalogSource
+# is none of those — a plain namespaced object, continuously reconciled, changing on an
+# OpenShift upgrade. That is an Argo concern.
+#
+# The ordering it introduces is SOFT, which is what CLAUDE.md requires of anything in
+# the Argo layer: an operator whose catalog is missing sits at CatalogSourcesUnhealthy
+# and resolves itself once this syncs. No cross-app sync waves; retry/selfHeal covers it.
+#
+# `openshift-marketplace` is created by OLM on every OpenShift cluster, so unlike every
+# other service here its namespace is NOT in charts/namespaces/values.yaml.
+#
+# The name `generic-cs` is load-bearing: gitops/charts/operator-olm defaults
+# `subscription.source` to it, and nothing checks the two agree.
+namespace: openshift-marketplace

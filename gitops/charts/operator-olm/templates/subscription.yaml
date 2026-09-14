@@ -1,0 +1,28 @@
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ include "operator-olm.subscriptionName" . }}
+  namespace: {{ required "operator-olm: subscription.namespace is required" .Values.subscription.namespace }}
+  annotations:
+    # Wave 1: after the OperatorGroup, before ANY config CR the consumer adds.
+    #
+    # THIS WAVE IS A REAL GATE. Argo CD ships a built-in health check for
+    # operators.coreos.com/Subscription: Healthy only at status.state == AtLatestKnown,
+    # Progressing while status is absent or InstallPlanPending, Degraded on
+    # CatalogSourcesUnhealthy / ResolutionFailed / InstallPlanFailed / InstallPlanMissing.
+    # Argo will not apply a later wave until this is Healthy — so the operator's CRDs
+    # genuinely exist by the time a consumer's config CR (wave >= 10) is applied.
+    # Do not "optimise" these waves away.
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  channel: {{ .Values.subscription.channel | quote }}
+  name: {{ include "operator-olm.subscriptionName" . }}
+  source: {{ .Values.subscription.source }}
+  sourceNamespace: {{ .Values.subscription.sourceNamespace }}
+  installPlanApproval: {{ .Values.subscription.installPlanApproval }}
+  {{- with .Values.subscription.startingCSV }}
+  # Omitted entirely when empty, so OLM resolves the channel head — the right default
+  # for a mirror containing exactly one version. A startingCSV absent from the catalog
+  # leaves this at ResolutionFailed and installs nothing.
+  startingCSV: {{ . }}
+  {{- end }}

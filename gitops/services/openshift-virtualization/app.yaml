@@ -1,0 +1,34 @@
+# Argo config for `openshift-virtualization` — the CNV operator install via OLM, this
+# cluster's HyperConverged tuning, and the VM bridge NNCP.
+#
+# KubeVirt Redfish is a SEPARATE app (gitops/services/kubevirt-redfish). It consumes
+# what this app installs, but the dependency is soft — the Redfish pod cannot serve VMs
+# until CNV is up, then it can — so it gets its own lifecycle rather than a shared sync.
+#
+# The CatalogSource is ALSO a separate app (gitops/services/generic-cs): one mirrored
+# index serves every operator on this cluster, so exactly one thing owns it. This chart's
+# Subscription resolves from it BY NAME, inherited from the operator-olm subchart's
+# defaults. Soft again: if generic-cs has not synced, the Subscription reports
+# CatalogSourcesUnhealthy and clears itself once the catalog lands.
+#
+# `openshift-cnv` is pre-created by the `namespaces` Helmfile release; CreateNamespace
+# stays off (see appset.yaml).
+#
+# This app owns CLUSTER-scoped objects: the NNCP, and via OLM every CNV CRD. The
+# redbull-platform AppProject whitelists all cluster resources, so no project change is
+# needed.
+#
+# ORDERING is intra-app, via sync waves, exactly as CLAUDE.md prefers:
+#   0 OperatorGroup → 1 Subscription → 10 HyperConverged → 11 NNCP.
+# Waves 0 and 1 come from the vendored operator-olm subchart, which RESERVES 0-9;
+# consumers start at 10. Wave 1 is a real gate: Argo ships a built-in health check for
+# Subscription, so 10 is not applied until OLM reaches AtLatestKnown and the
+# hco.kubevirt.io CRD exists.
+#
+# Waves 10 and 11 carry SkipDryRunOnMissingResource=true. For the HyperConverged it is
+# belt-and-braces against the window where the CRD is registered but the HCO webhook is
+# not yet serving. For the NNCP it is load-bearing in a different way: the
+# kubernetes-nmstate operator is NOT part of CNV and nothing in this repo installs it, so
+# on a cluster without it that apply genuinely fails — which is why the NNCP is LAST, so
+# its failure costs only the tail of the sync and never the CNV install itself.
+namespace: openshift-cnv

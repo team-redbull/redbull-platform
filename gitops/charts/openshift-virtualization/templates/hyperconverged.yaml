@@ -1,0 +1,67 @@
+{{- if .Values.hyperconverged.enabled }}
+apiVersion: hco.kubevirt.io/v1beta1
+kind: HyperConverged
+metadata:
+  annotations:
+    deployOVS: 'false'
+    # Wave 10: the operator-olm subchart owns waves 0-9, consumers start at 10.
+    # Argo's built-in Subscription health check makes wave 1 a real gate, so by the time
+    # this is applied OLM has reached AtLatestKnown and the hco.kubevirt.io CRD exists.
+    # SkipDryRunOnMissingResource stays anyway: there is a real window where the CRD is
+    # registered but the HCO validating webhook is not yet serving, and the annotation
+    # costs nothing.
+    argocd.argoproj.io/sync-wave: "10"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+  name: {{ .Values.hyperconverged.name }}
+  namespace: {{ .Values.hyperconverged.namespace }}
+  finalizers:
+    - kubevirt.io/hyperconverged
+  labels:
+    app: kubevirt-hyperconverged
+spec:
+  enableCommonBootImageImport: false
+  virtualMachineOptions:
+    disableFreePageReporting: false
+    disableSerialConsoleLog: false
+  higherWorkloadDensity:
+    memoryOvercommitPercentage: 100
+  liveMigrationConfig:
+    allowAutoConverge: false
+    allowPostCopy: false
+    completionTimeoutPerGiB: 150
+    parallelMigrationsPerCluster: 5
+    parallelOutboundMigrationsPerNode: 2
+    progressTimeout: 150
+  certConfig:
+    ca:
+      duration: 48h0m0s
+      renewBefore: 24h0m0s
+    server:
+      duration: 24h0m0s
+      renewBefore: 12h0m0s
+  enableApplicationAwareQuota: false
+  infra: {}
+  applicationAwareConfig:
+    allowApplicationAwareClusterResourceQuota: false
+    vmiCalcConfigName: DedicatedVirtualResources
+  evictionStrategy: LiveMigrate
+  featureGates:
+    alignCPUs: false
+    decentralizedLiveMigration: false
+    declarativeHotplugVolumes: false
+    deployKubeSecondaryDNS: false
+    disableMdevConfiguration: false
+    downwardMetrics: false
+    enableMultiArchBootImageImport: false
+    persistentReservation: false
+  workloadUpdateStrategy:
+    batchEvictionInterval: 1m0s
+    batchEvictionSize: 10
+    workloadUpdateMethods:
+      - Evict
+  deployVmConsoleProxy: false
+  uninstallStrategy: BlockUninstallIfWorkloadExist
+  workloads: {}
+  resourceRequirements:
+    vmiCPUAllocationRatio: 10
+{{- end }}

@@ -1,0 +1,39 @@
+{{- if .Values.vmBridge.enabled }}
+# REQUIRES the kubernetes-nmstate operator + an `NMState` CR. Neither is installed by
+# this chart or by the bootstrap Helmfile — without them this object is applied and
+# then never reconciled onto the nodes.
+apiVersion: nmstate.io/v1
+kind: NodeNetworkConfigurationPolicy
+metadata:
+  name: {{ .Values.vmBridge.name }}
+  annotations:
+    # LAST wave, deliberately. SkipDryRunOnMissingResource only skips the dry run —
+    # if the nmstate.io CRD is genuinely absent, the real apply still fails. Putting
+    # this last means a missing kubernetes-nmstate operator fails only the tail of the
+    # sync, after the OLM install and the HyperConverged have all landed.
+    argocd.argoproj.io/sync-wave: "11"
+    argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
+spec:
+  desiredState:
+    interfaces:
+      - bridge:
+          options:
+            stp:
+              enabled: false
+          port:
+            {{- range .Values.vmBridge.ports }}
+            - name: {{ . | quote }}
+            {{- end }}
+        description: Vlan aware bridge for kubevirt vms
+        ipv4:
+          enabled: false
+        ipv6:
+          enabled: false
+        mtu: {{ .Values.vmBridge.mtu }}
+        name: {{ .Values.vmBridge.bridgeName }}
+        state: up
+        type: linux-bridge
+  maxUnavailable: {{ .Values.vmBridge.maxUnavailable }}
+  nodeSelector:
+    {{- toYaml .Values.vmBridge.nodeSelector | nindent 4 }}
+{{- end }}

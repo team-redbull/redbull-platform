@@ -1,0 +1,20 @@
+{{- $cs := .Values.catalogSource }}
+# NO SYNC WAVE, deliberately: this app renders exactly one object, so there is nothing
+# to order within it. The ordering it implies for the OPERATOR apps is SOFT by design —
+# a Subscription whose catalog is missing sits at CatalogSourcesUnhealthy and resolves
+# itself the moment this lands, because OLM re-resolves continuously. No cross-app sync
+# waves; retry/selfHeal covers it (see CLAUDE.md).
+#
+# Note Argo ships NO health check for CatalogSource, so this app reports Healthy the
+# instant it is applied, even if the registry pod never serves. The legible signal is
+# the consuming Subscription going Degraded.
+apiVersion: operators.coreos.com/v1alpha1
+kind: CatalogSource
+metadata:
+  name: {{ $cs.name }}
+  namespace: {{ $cs.namespace }}
+spec:
+  image: {{ required "generic-cs: catalogSource.image is required — the mirrored index image for this OpenShift version" $cs.image | quote }}
+  sourceType: {{ $cs.sourceType }}
+  displayName: {{ $cs.displayName | default $cs.name | quote }}
+  publisher: {{ $cs.publisher | quote }}

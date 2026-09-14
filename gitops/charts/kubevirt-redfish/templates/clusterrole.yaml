@@ -1,0 +1,46 @@
+# Rules are verbatim from the Red Hat 4.22 procedure. Two notes:
+#  - This is CLUSTER-scoped and grants VM control in EVERY namespace; which VMs are
+#    actually reachable is narrowed by the chassis/vm_selector in config.yaml, not here.
+#  - Power actions are listed under apiGroup "kubevirt.io", but KubeVirt's real
+#    subresource group is "subresources.kubevirt.io". Shipped verbatim as documented
+#    and presumed to work because power is most likely driven by patching the VM's
+#    runStrategy (covered by the first rule) — this has NOT been verified. If power
+#    actions return 403, add a rule for subresources.kubevirt.io on
+#    virtualmachines/start|stop|restart.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.clusterRoleName }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+  labels:
+    {{- include "redfish.labels" . | nindent 4 }}
+    app.kubernetes.io/component: rbac
+rules:
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines", "virtualmachineinstances"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines/status", "virtualmachineinstances/status"]
+    verbs: ["get", "list", "watch", "patch"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines/restart", "virtualmachines/start", "virtualmachines/stop"]
+    verbs: ["create"]
+  - apiGroups: ["subresources.kubevirt.io"]
+    resources: ["virtualmachineinstances/pause", "virtualmachineinstances/unpause"]
+    verbs: ["create", "update"]
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get", "list"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes", "volumeimportsources"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get", "list", "create", "update", "patch", "delete", "watch"]
+  - apiGroups: ["storage.k8s.io"]
+    resources: ["storageclasses"]
+    verbs: ["get", "list"]

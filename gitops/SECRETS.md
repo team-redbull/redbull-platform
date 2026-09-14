@@ -33,6 +33,7 @@ Vault  ──(ClusterSecretStore)──▶  ESO  ──writes──▶  k8s Secr
 | `segments-manager-token` (`SEGMENTS_MANAGER_API_TOKEN`) | `oc create secret` out-of-band in `redbull-workflows` | `ExternalSecret` → same Secret name; segment-lifecycle-worker already reads it via `secrets.existingSecret` |
 | `next-api-credentials` (`NEXT_CLIENT_ID`, `NEXT_PASSWORD`) | plaintext in `gitops/charts/segment-lifecycle-worker/values.yaml` (`secrets.nextClientId` / `secrets.nextPassword`), rendered by that chart | `ExternalSecret` → same Secret name and keys; set `secrets.existingNextSecret` and the chart stops rendering its own |
 | `htpasswdIdp.users[].password` | `environments/default.yaml` (Helmfile htpasswd-idp) | stays in the bootstrap Helmfile — switch to `requiredEnv`/Vault-pull so it leaves git |
+| `kubevirt-redfish-secret` (`config.yaml`) | `oc create secret` out-of-band in `kubevirt-redfish` | `ExternalSecret` → same Secret name/key; the chart already mounts it via `config.existingSecret` |
 | `dhcp-scope-manager-token` (`api-token`) | **committed in git** — `gitops/charts/dhcp-scope-manager/charts/dhcp-api-token/values.yaml` | `ExternalSecret` rendered by that same subchart: same Secret name, same key, no consumer changes |
 
 The DHCP token is the odd one out and deliberately so. It is neither out-of-band nor

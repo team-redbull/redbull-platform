@@ -1,0 +1,10 @@
+apiVersion: v2
+name: operator-olm
+description: >-
+  Generic OLM operator install — OperatorGroup + Subscription. Vendored as a subchart
+  into each gitops/charts/<operator> chart; never deployed on its own. The CatalogSource
+  is NOT here: this cluster runs one shared catalog, gitops/charts/generic-cs.
+type: application
+version: 0.1.0
+# No appVersion: this chart tracks no upstream application. The operator version is
+# subscription.channel / startingCSV, per consumer.

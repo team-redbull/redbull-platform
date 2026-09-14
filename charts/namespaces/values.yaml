@@ -11,6 +11,9 @@ namespaces:
                           # two owners for one namespace is a race.
   - redbull-workflows     # Argo workflows + segment-lifecycle-worker apps + Helmfile mock release
   - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
+  - openshift-cnv         # Argo `openshift-virtualization` app: OLM OperatorGroup +
+                          # Subscription + the HyperConverged CR live here
+  - kubevirt-redfish      # Argo-managed: the `kubevirt-redfish` app (TP) deploys here
 
 # OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. A
 # namespace-scoped instance only gets RBAC in namespaces labeled
@@ -30,3 +33,5 @@ argocd:
     - segments-manager
     - redbull-workflows
     - dhcp-scope-manager
+    - openshift-cnv
+    - kubevirt-redfish

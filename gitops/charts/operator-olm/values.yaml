@@ -1,0 +1,64 @@
+# Generic OLM install: OperatorGroup + Subscription.
+#
+# TEMPLATES ONLY — this is a DEFAULTS LAYER, never a configuration. Vendored into each
+# consumer at gitops/charts/<operator>/charts/operator-olm-<ver>.tgz; Helm coalesces it
+# under the consumer's `operator-olm:` key. Never deployed on its own — there is
+# deliberately no gitops/services/operator-olm/app.yaml.
+#
+# Empty values below are REQUIRED FROM THE CONSUMER. Non-empty ones are cluster-wide
+# constants the consumer inherits and normally never touches.
+#
+# The CatalogSource is NOT here. This cluster runs ONE generic catalog per OpenShift
+# version, owned by gitops/charts/generic-cs. The defaults below point at it, so an
+# operator chart normally states NEITHER source NOR sourceNamespace.
+#
+# Maps deep-merge; LISTS ARE REPLACED WHOLE (targetNamespaces is all-or-nothing — a
+# consumer can never append to it).
+#
+# SYNC WAVES: this chart owns 0-9. Consumers start their config CRs at 10.
+
+operatorGroup:
+  # EXACTLY ONE OperatorGroup PER NAMESPACE. A second one puts EVERY CSV in that
+  # namespace into TooManyOperatorGroups and breaks ALL operator installs there, not
+  # just this one — and it is not recoverable by retry, a human must delete one. Set
+  # this false in any chart installing into a namespace another chart already owns.
+  #
+  # `openshift-operators` is handled automatically by the template: it ships a global
+  # OperatorGroup, so nothing is rendered there regardless of this flag.
+  enabled: true
+  name: ""             # empty = <subscription.name>-group
+  namespace: ""        # empty = subscription.namespace
+
+  # ── REQUIRED FROM THE CONSUMER ──
+  # AN EMPTY LIST IS NOT "DEFAULT" — it renders `targetNamespaces: []`, which OLM reads
+  # as AllNamespaces. A CSV supporting only OwnNamespace/SingleNamespace (OpenShift
+  # Virtualization, for one) then fails to install with an install-mode error. Always
+  # set it explicitly.
+  targetNamespaces: []
+
+subscription:
+  # ── REQUIRED FROM THE CONSUMER ──
+  # Used for BOTH metadata.name and spec.name. spec.name is the OLM PACKAGE name — what
+  # `oc get packagemanifest -n openshift-marketplace` lists — so this is not free-form.
+  name: ""
+  namespace: ""
+
+  # ── CLUSTER-WIDE DEFAULTS — inherited, rarely overridden ──
+  channel: stable
+  # THE SHARED CATALOG. One per OpenShift version, owned by gitops/charts/generic-cs.
+  # Keep these in step with that chart's values — the coupling is BY NAME and nothing
+  # checks it on either side. An operator overrides them only if it genuinely resolves
+  # from a different catalog.
+  source: generic-cs
+  sourceNamespace: openshift-marketplace
+  # Pins the FIRST install only; Automatic approval still upgrades within the channel.
+  # Empty OMITS the field so OLM takes the channel head — the right default for a mirror
+  # holding exactly one version. A CSV absent from the catalog leaves the Subscription
+  # at ResolutionFailed forever and installs nothing (Argo shows the app Degraded).
+  startingCSV: ""
+  # Manual STALLS UNDER GITOPS: the Subscription sits at InstallPlanPending, Argo's
+  # built-in Subscription health check reports Progressing, and NO LATER WAVE EVER RUNS
+  # — so the consumer's config CRs are never applied. Nothing here approves an
+  # InstallPlan, deliberately: a self-approving Job defeats the point of asking for
+  # manual approval.
+  installPlanApproval: Automatic
