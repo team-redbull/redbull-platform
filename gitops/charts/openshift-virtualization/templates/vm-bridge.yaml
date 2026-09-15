@@ -1,7 +1,8 @@
 {{- if .Values.vmBridge.enabled }}
 # REQUIRES the kubernetes-nmstate operator + an `NMState` CR. Neither is installed by
 # this chart or by the bootstrap Helmfile — without them this object is applied and
-# then never reconciled onto the nodes.
+# then never reconciled onto the nodes. See values.yaml for the full rationale behind
+# every field below.
 apiVersion: nmstate.io/v1
 kind: NodeNetworkConfigurationPolicy
 metadata:
@@ -14,26 +15,44 @@ metadata:
     argocd.argoproj.io/sync-wave: "11"
     argocd.argoproj.io/sync-options: SkipDryRunOnMissingResource=true
 spec:
+  nodeSelector:
+    {{- toYaml .Values.vmBridge.nodeSelector | nindent 4 }}
+  maxUnavailable: {{ .Values.vmBridge.maxUnavailable }}
   desiredState:
     interfaces:
-      - bridge:
-          options:
-            stp:
-              enabled: false
-          port:
-            {{- range .Values.vmBridge.ports }}
-            - name: {{ . | quote }}
-            {{- end }}
-        description: Vlan aware bridge for kubevirt vms
+      - name: {{ .Values.vmBridge.bridgeName }}
+        description: VLAN trunk bridge for KubeVirt VMs
+        type: linux-bridge
+        state: up
+        mtu: {{ .Values.vmBridge.mtu }}
+        {{- with .Values.vmBridge.copyMacFrom }}
+        copy-mac-from: {{ . | quote }}
+        {{- end }}
+        # The bridge itself carries no address: it is a pure L2 trunk for VM veths, and
+        # the node reaches the network over its own uplink. Leaving DHCP/autoconf on
+        # would have every node race for a lease on the VM network.
         ipv4:
           enabled: false
         ipv6:
           enabled: false
-        mtu: {{ .Values.vmBridge.mtu }}
-        name: {{ .Values.vmBridge.bridgeName }}
-        state: up
-        type: linux-bridge
-  maxUnavailable: {{ .Values.vmBridge.maxUnavailable }}
-  nodeSelector:
-    {{- toYaml .Values.vmBridge.nodeSelector | nindent 4 }}
+        bridge:
+          options:
+            stp:
+              enabled: {{ .Values.vmBridge.stp }}
+            multicast-snooping: {{ .Values.vmBridge.multicastSnooping }}
+          port:
+            {{- $vlan := .Values.vmBridge.vlan }}
+            {{- range .Values.vmBridge.ports }}
+            - name: {{ . | quote }}
+              {{- if $vlan.enabled }}
+              vlan:
+                mode: trunk
+                enable-native: {{ $vlan.enableNative }}
+                {{- if $vlan.enableNative }}
+                tag: {{ $vlan.nativeTag }}
+                {{- end }}
+                trunk-tags:
+                  {{- toYaml $vlan.trunkTags | nindent 18 }}
+              {{- end }}
+            {{- end }}
 {{- end }}

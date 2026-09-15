@@ -41,6 +41,10 @@ hyperconverged:
   namespace: openshift-cnv
 
 # ── VM bridge (NodeNetworkConfigurationPolicy) ───────────────────────────────
+# A VLAN-trunk Linux bridge on every VM-capable worker, so KubeVirt VMs can attach
+# straight to the physical network on a per-tenant VLAN. A NAD (authored elsewhere)
+# names this bridge plus a `vlan` id; the VM's veth lands in that VLAN.
+#
 # REQUIRES the kubernetes-nmstate operator AND an `NMState` CR instance — neither is
 # installed by this chart, and nmstate is NOT part of CNV (it is its own OLM package,
 # `kubernetes-nmstate-operator`, in `openshift-nmstate`). Without it the NNCP is never
@@ -48,13 +52,59 @@ hyperconverged:
 # why this sits in the LAST sync wave — a missing nmstate then degrades only the tail
 # of this app's sync, leaving the CNV install itself applied. Verify with:
 #   oc get nmstate
+#
+# `ports` MUST be a bond/NIC dedicated to VM traffic. It must NOT be the machine-network
+# uplink: on OCP bare metal, configure-ovs has already made that an OVS port of `br-ex`,
+# and a NIC cannot be enslaved to two bridges — the enactment fails. If there is only one
+# bond, use a VLAN sub-interface of it here, or drop this bridge for OVN localnet
+# (br-ex bridge-mappings + ovn-k8s-cni-overlay NADs) instead.
 vmBridge:
   enabled: true
   name: vm-bridge
   bridgeName: br-virtual
+  # Uplink port(s) enslaved into the bridge. See the dedicated-NIC warning above.
   ports:
     - bond0
+  # The bridge cannot exceed its lowest port's MTU, so this must be <= the MTU of every
+  # entry in `ports` (and the switch must carry it end to end — a 9000 host against a
+  # 1500 switch hop blackholes only large frames: SSH works, `oc` hangs). Deliberately
+  # NOT also templated onto the bond: bond0's MTU is owned by whatever provisions the
+  # node, and a virtualization chart should not reach into the machine network.
   mtu: 9000
+  # Pin the bridge MAC to a port's. Without it the bridge takes the lowest port MAC and
+  # re-derives it whenever ports change — MAC churn on the switch and a non-deterministic
+  # address across reboots. Must name one of `ports`; set "" to leave it to the kernel.
+  copyMacFrom: bond0
+  # VLAN trunking on each uplink port. This is the ONLY thing that puts the uplink into
+  # the tagged VLANs, and it cannot be delegated to the CNI: the bridge CNI plugin
+  # configures the container's veth port and nothing else — it never touches an uplink.
+  # It also only sets bridge vlan_filtering when IT creates the bridge, which is never
+  # the case here. Disable only for a flat, untagged bridge.
+  vlan:
+    enabled: true
+    # Untagged traffic on the uplink. Left off so a guest cannot reach the native VLAN:
+    # every tenant gets its own tagged segment, so nothing legitimately needs untagged.
+    # Turn on ONLY if VMs must PXE/DHCP untagged, and then `nativeTag` must NOT appear
+    # in `trunkTags`.
+    enableNative: false
+    nativeTag: 1
+    # Passed through verbatim to nmstate, so `- id: 101` works alongside ranges.
+    # The full range is deliberate: segments are allocated per hosted cluster at runtime,
+    # and a narrower list would mean a node-level network reconfiguration on every tenant
+    # onboarding. The trunk is not the tenancy boundary — the NAD is, and NADs are
+    # namespaced. Narrow it anyway if the VLAN plan is genuinely static.
+    trunkTags:
+      - id-range:
+          min: 2
+          max: 4094
+  # Snooping ON with no querier (the kernel default pair) ages out group membership and
+  # silently drops IPv6 ND/MLD to VM ports — IPv6 that works at boot and dies minutes
+  # later. Flooding multicast across a handful of VM ports costs nothing here.
+  multicastSnooping: false
+  # STP stays off: one uplink means no loop is possible, and with STP on every VM start
+  # would put its new veth through ~30s of listening/learning, timing out PXE and DHCP.
+  # Switch ports facing these nodes should be edge/portfast + BPDU guard.
+  stp: false
   nodeSelector:
     node-role.kubernetes.io/worker: ""
   maxUnavailable: 1
