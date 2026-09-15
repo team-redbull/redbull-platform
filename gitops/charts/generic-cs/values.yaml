@@ -7,7 +7,8 @@
 # operator-olm's default breaks every operator at once, and the only symptom is each
 # Subscription reporting CatalogSourcesUnhealthy.
 #
-# ON AN OPENSHIFT UPGRADE: mirror a new index and bump `image` here. Keep the NAME
+# ON AN OPENSHIFT UPGRADE: mirror a new index and bump `image` here (gitops/OLM.md
+# documents the full `oc mirror` + IDMS sequence this depends on). Keep the NAME
 # stable — every Subscription references it by name, and a rename is a delete+recreate
 # that leaves each Subscription unresolvable in between.
 catalogSource:
