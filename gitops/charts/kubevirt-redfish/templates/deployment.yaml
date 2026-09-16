@@ -1,8 +1,7 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: kubevirt-redfish
-  namespace: {{ .Values.namespace }}
+  name: {{ include "redfish.fullname" . }}
   annotations:
     argocd.argoproj.io/sync-wave: "1"
   labels:
@@ -18,13 +17,13 @@ spec:
       labels:
         {{- include "redfish.selectorLabels" . | nindent 8 }}
     spec:
-      serviceAccountName: {{ .Values.serviceAccountName }}
+      serviceAccountName: {{ include "redfish.fullname" . }}
       securityContext:
         # No runAsUser on purpose: OpenShift's restricted-v2 SCC assigns a UID from
         # the namespace's own range. Pinning one here would be rejected outright.
         runAsNonRoot: true
       containers:
-        - name: kubevirt-redfish
+        - name: {{ .Chart.Name }}
           image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
