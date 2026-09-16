@@ -105,6 +105,10 @@ Everything under [gitops/](gitops/):
   value override. **Empty today**, and nothing references it; see its README for why the
   files live there and not next to `app.yaml`.
 - [gitops/SECRETS.md](gitops/SECRETS.md) — the (not-yet-wired) ESO + Vault plan.
+- [gitops/OLM.md](gitops/OLM.md) — how OLM works: CatalogSource, Subscription,
+  OperatorGroup, InstallPlan, CSV, the `oc mirror`/IDMS pipeline, and the debug kit.
+  Background for the operator charts; `gitops/charts/operator-olm/README.md` is the
+  point-of-use reference.
 
 There is no per-environment values layer and no second `$values` source: an Application
 renders from exactly one source, this repo, at `gitops/charts/<service>`.
@@ -355,7 +359,11 @@ Helmfile still needs to *fetch the charts*, so mirror both **chart sources** and
    Helm repo) and repoint the `chart:` refs in `helmfile.yaml.gotmpl` (and the
    `crossplane-stable` repository URL) at the internal mirror.
 2. **Images** — each service chart has its own image values; pull/retag/push to
-   Artifactory and override per release. The platform-level ones:
+   Artifactory and override per release. **Operator images are different**: they are
+   mirrored as whole catalogs with `oc mirror` and rewritten cluster-side by an
+   `ImageDigestMirrorSet`, not overridden per chart — see
+   [gitops/OLM.md](gitops/OLM.md#3-mirroring-oc-mirror-and-idms) for the full sequence.
+   The platform-level ones:
    - Crossplane core: set `image.repository` via a `crossplane` release `values:` block.
    - provider-http package: `providerHttp.package` → your Artifactory path, and add
      `providerHttp.packagePullSecrets: [artifactory]`.

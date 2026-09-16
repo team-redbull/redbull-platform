@@ -16,7 +16,11 @@
 #
 #   htpasswd -nbB "" '<password>' | cut -d: -f2      # → $2y$05$…  (the hash)
 #
-#   # write config.yaml using the `config:` block below as the template, then:
+#   # Do NOT hand-copy the `config:` block below — it is camelCase Helm values, while the
+#   # file the binary parses is snake_case with a `server:` stanza. Render the real thing:
+#   #   helm template kubevirt-redfish . -f my-values.yaml -s templates/secret.yaml
+#   # (my-values.yaml = the `config:` block with existingSecret "", never committed), then
+#   # lift stringData.config.yaml out of it into ./config.yaml and:
 #   oc create secret generic kubevirt-redfish-secret \
 #     -n kubevirt-redfish --from-file=config.yaml=./config.yaml
 #
@@ -26,14 +30,34 @@
 # values below instead — dev clusters only, it puts the hash in git.
 # ──────────────────────────────────────────────────────────────────────────────
 
-# Pre-created by the `namespaces` Helmfile release (CreateNamespace is off in the
-# appset). Every template sets metadata.namespace explicitly from this value.
-namespace: kubevirt-redfish
+# NO `namespace` value, deliberately. Every template omits metadata.namespace, so its
+# objects land in the Application's destination.namespace — `namespace:` in
+# gitops/services/kubevirt-redfish/app.yaml here, `projectNamespace` under the day2
+# platform — which this chart now REQUIRES: day2's deployApp omits destination.namespace
+# entirely when projectNamespace is unset, and these objects would land in `default`.
+# One place states the namespace instead of two that must agree; a mismatch
+# used to mean Argo created one namespace while the manifests targeted another. This is
+# also what every other workload chart in this repo already does.
+#
+# The ONE namespace reference left is the ClusterRoleBinding's SUBJECT namespace, which
+# uses .Release.Namespace (Argo sets it to that same destination). That is a field in the
+# object BODY, not metadata — Argo does not rewrite it, so it cannot simply be omitted,
+# and getting it wrong is silent: the app reports Synced/Healthy and the pod 403s on
+# every VM. Same pattern as temporal/templates/ui-rbac.yaml.
+#
+# The namespace must already exist: `kubevirt-redfish` is pre-created by the `namespaces`
+# Helmfile release and CreateNamespace is off in the appset (see gitops/appset.yaml).
 
-serviceAccountName: kubevirt-redfish
-# Cluster-scoped, so these names must not collide with another install.
-clusterRoleName: kubevirt-redfish-role
-clusterRoleBindingName: kubevirt-redfish-binding
+# NO name values. Every object is named from the RELEASE name via the `redfish.fullname`
+# helper — `kubevirt-redfish` under both the redbull-platform appset and the day2 platform,
+# which set releaseName to the service/chart folder name. The ServiceAccount takes that name,
+# the ClusterRole adds `-role` and the ClusterRoleBinding `-binding`.
+#
+# This is not only deduplication: the ClusterRole/ClusterRoleBinding are CLUSTER-scoped, and
+# as fixed literals a second install of this chart on the same cluster silently collided on
+# them. Derived from the release name, two installs cannot clash.
+#
+# See templates/_helpers.tpl — and do NOT set day2's `oldConvention: true` for this chart.
 
 image:
   # AIR-GAPPED: verify this image is actually in your mirror. It ships in the CNV
@@ -58,12 +82,10 @@ resources:
     memory: 2Gi
     cpu: 500m
 
-service:
-  name: kubevirt-redfish
-
+# The Route exists because this block does — there is no `enabled` flag. Delete it, or set
+# `route: null` in a higher values layer, to deploy without one (Helm's coalesce drops a key
+# set to null; `route: {}` would still render a Route).
 route:
-  enabled: true
-  name: kubevirt-redfish
   # Empty → the ingress controller generates the hostname.
   host: ""
   # Edge termination: TLS stops at the router, the backend is plain HTTP
@@ -87,7 +109,7 @@ config:
     - name: vms
       # The namespace your VMs live in.
       namespace: ""
-      serviceAccount: kubevirt-redfish
+      # Defaults to the chart's own ServiceAccount (the release name) when omitted.
       vmSelector:
         labels:
           # ONLY VMs carrying this label are visible over Redfish.

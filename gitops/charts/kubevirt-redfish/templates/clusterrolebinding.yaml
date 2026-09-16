@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ .Values.clusterRoleBindingName }}
+  name: {{ include "redfish.fullname" . }}-binding
   annotations:
     argocd.argoproj.io/sync-wave: "0"
   labels:
@@ -10,8 +10,8 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ .Values.clusterRoleName }}
+  name: {{ include "redfish.fullname" . }}-role
 subjects:
   - kind: ServiceAccount
-    name: {{ .Values.serviceAccountName }}
-    namespace: {{ .Values.namespace }}
+    name: {{ include "redfish.fullname" . }}
+    namespace: {{ .Release.Namespace }}

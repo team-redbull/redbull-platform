@@ -2,6 +2,10 @@
 
 Generic OLM operator install: **OperatorGroup + Subscription**. Nothing else.
 
+**Background:** [`gitops/OLM.md`](../../OLM.md) explains how OLM actually works —
+the objects, the install flow, and the mechanism behind every trap listed below.
+This file is the point-of-use reference; that one is the why.
+
 **Never deployed on its own.** There is deliberately no
 `gitops/services/operator-olm/app.yaml` — this chart is vendored as a subchart into each
 `gitops/charts/<operator>/` chart, which supplies the operator-specific values and owns
@@ -103,7 +107,9 @@ dependencies:
 
 with values under `cnv:` and `nmstate:`. Object names derive from
 `subscription.name`, not `.Release.Name`, precisely so the two do not collide. If both
-aliases target the **same** namespace, exactly one may set `operatorGroup.enabled: true`.
+aliases target the **same** namespace, one of them must set `operatorGroup.enabled: false`
+— both are enabled by default, and two OperatorGroups in one namespace is
+`TooManyOperatorGroups`.
 
 ## Vendoring
 
