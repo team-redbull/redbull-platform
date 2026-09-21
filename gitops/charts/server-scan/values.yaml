@@ -328,7 +328,7 @@ config:
   # shows the hardware name alone rather than inventing one. Example:
   # "Integrated.1=eno12399np0,eno12409np1;Slot.8=ens8f0np0,ens8f1np1".
   # Same comma-splitting gotcha as `sites` above applies to `--set`.
-  nicOsNames: ""
+  nicOsNames: "Integrated.1=eno12399np0,eno12409np1;Slot.2=ens2f0np0,ens2f1np1;Slot.8=ens8f0np0,ens8f1np1;Slot.33=ens33f0np0,ens33f1np1"
   logLevel: INFO
   metricsEnabled: "true"
   # A server not successfully collected for this long counts toward the
