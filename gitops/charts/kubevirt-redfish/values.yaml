@@ -9,12 +9,11 @@
 # failure. See CLAUDE.md.
 #
 # ── ONE out-of-band Secret is required before the first sync ──────────────────
-# The Redfish config carries a bcrypt password hash that grants FULL management
-# control over every VM it exposes, independently of any OpenShift RBAC. It is NOT
-# committed here (this repo's GitHub copy is public; a bcrypt hash in git is an
-# offline brute-force target forever). Create it by hand, once per cluster:
-#
-#   htpasswd -nbB "" '<password>' | cut -d: -f2      # → $2y$05$…  (the hash)
+# The Redfish config carries the credential that grants FULL management control over
+# every VM it exposes, independently of any OpenShift RBAC — and on the v4.22 image
+# that credential is a PLAINTEXT password, not a hash (see "Password shape" below).
+# It is NOT committed here (this repo's GitHub copy is public). Create it by hand,
+# once per cluster:
 #
 #   # Do NOT hand-copy the `config:` block below — it is camelCase Helm values, while the
 #   # file the binary parses is snake_case with a `server:` stanza. Render the real thing:
@@ -26,6 +25,34 @@
 #
 # Until it exists the Deployment stays in ContainerCreating. Same shape as
 # `server-scan-db` and `segments-manager-token`; see gitops/SECRETS.md.
+#
+# ── The password is PLAINTEXT — the OpenShift docs are ahead of the image ─────
+# The 4.22 docs tell you to bcrypt-hash it and write `password: {hash: …}`. That shape
+# does not work on ANY 4.22 image, so this chart emits a plain string and there is no
+# `passwordHash` value to reach for.
+#
+# Verified 2026-09-16 against the newest build of the floating `v4.22` tag (build-date
+# 2026-09-10, release 1788936515): its `upstream-vcs-ref` label is 6d11c8f, the frozen
+# head of upstream's kubevirt-1.8-tp branch, where the Go struct is `Password string`.
+# The extracted binary contains no bcrypt code at all and does carry the plaintext-era
+# validator ("must be at least 6 characters long"). Hashed passwords landed upstream on
+# 2026-06-17, after that branch froze — so re-mirroring a newer v4.22 changes nothing,
+# it is the same code.
+#
+# The hash form makes the pod CrashLoop at startup on `authentication.users[0].password
+# expected type string got unconvertible type map[string]interface {} value map[hash:…]`
+# — a config-decode error, not a bad password. Before re-adding hashing because the docs
+# (or a newer CNV) say so, check the image actually implements it:
+#
+#   mkdir -p /tmp/rf   # must be EMPTY, oc image extract refuses otherwise
+#   oc image extract <image> -a <pull-secret.json> --path /app/kubevirt-redfish:/tmp/rf/
+#   strings /tmp/rf/kubevirt-redfish | grep -c "password map must contain"   # >0 → hash OK
+#
+# Two consequences of the credential being stored in the clear: the Secret's RBAC is the
+# only thing protecting full management of every exposed VM, so do not reuse a password
+# used anywhere else — and rendering this Secret from the chart (existingSecret "") puts
+# that password in git, which for THIS repo's GitHub copy means publishing it.
+#
 # Set config.existingSecret to "" to have this chart render the Secret from the
 # values below instead — dev clusters only, it puts the hash in git.
 # ──────────────────────────────────────────────────────────────────────────────
@@ -116,13 +143,29 @@ config:
           redfish-enabled: "true"
   users:
     - username: admin
-      # bcrypt hash from `htpasswd -nbB "" '<password>' | cut -d: -f2`.
-      # NEVER commit a real one — this path is dev-only.
-      passwordHash: ""
+      # Plaintext, min 6 characters — the only shape the v4.22 image decodes, and it
+      # compares the value verbatim. NOT a bcrypt hash, see the header. Never commit a
+      # real one to this repo (public); on a private mirror it is your call.
+      password: ""
       chassis:
         - vms
   datavolume:
-    # Backs VirtualMedia (InsertMedia) — the ISO is imported into a DataVolume by
-    # CDI. Must be a storage class that exists on this cluster.
+    # Backs VirtualMedia (InsertMedia). The controller fetches the ISO into a PVC and
+    # adds it to the VM as a SATA CD-ROM named `cdrom0`. Two fetch paths (v4.22 code):
+    # a CDI DataVolume http import when the PVC is Block mode and allowInsecureTls is
+    # false, else a short-lived HELPER POD that curls the ISO in (helperImage below).
+    # Must be a storage class that exists on this cluster.
     storageClass: ""
     storageSize: 3Gi
+    # TLS of the ISO download. The URL is whatever the BMC client (Ironic on the MCE
+    # hub) hands over — on OpenShift 4.20 that is Ironic's own httpd on a hub node IP
+    # (https://<node-ip>:6183/redfish/boot-<uuid>.iso, Ironic's self-signed cert),
+    # which the KubeVirt cluster must be able to reach. Set true so the download skips
+    # verification; it also switches the fetch to the helper-pod path above.
+    allowInsecureTls: false
+    # Image of the helper pod. Pulled on THIS cluster by tag, so the same air-gapped
+    # caveats as image.repository above apply: it must be in the mirror, and a tag pull
+    # needs an ImageTagMirrorSet (or point this at the mirror host directly).
+    helperImage: registry.access.redhat.com/ubi8/ubi-minimal:latest
+    # How long the helper pod may take to fetch the ISO before InsertMedia fails.
+    isoDownloadTimeout: 30m

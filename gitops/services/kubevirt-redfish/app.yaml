@@ -18,9 +18,10 @@
 # redbull-platform AppProject whitelists all cluster resources, so no project change
 # is needed.
 #
-# ONE out-of-band Secret, `kubevirt-redfish-secret`, holds config.yaml including a
-# bcrypt password hash that grants full management control over every exposed VM,
-# independently of any OpenShift RBAC. Nothing secret is committed. It must exist
+# ONE out-of-band Secret, `kubevirt-redfish-secret`, holds config.yaml including the
+# password that grants full management control over every exposed VM, independently of
+# any OpenShift RBAC — plaintext, because the v4.22 image parses no other shape
+# (see the chart's values.yaml). Nothing secret is committed. It must exist
 # BEFORE the first sync or the Deployment stays in ContainerCreating; the exact
 # commands are at the top of the chart's values.yaml. Same shape as `server-scan-db`,
 # and an ExternalSecret target gitops/SECRETS.md now lists.
