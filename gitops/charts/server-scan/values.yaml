@@ -84,7 +84,7 @@ backend:
     # which is a change GitOps can see, diff and roll back.
     repository: ghcr.io/team-redbull/server-scan-api
     # OVERRIDE: pinned, not appVersion — see the header.
-    tag: "2.16.0"
+    tag: "2.17.0"
     # Correct BECAUSE the tag is immutable: an image already on the node is
     # the same image. `Always` only makes sense with a floating tag, which
     # is what the line above exists to avoid.
@@ -122,7 +122,7 @@ frontend:
     # Same rules as backend.image above — blank means `appVersion`.
     repository: ghcr.io/team-redbull/server-scan-frontend
     # OVERRIDE: same tag as the API, always — they ship together.
-    tag: "2.16.0"
+    tag: "2.17.0"
     pullPolicy: IfNotPresent
   replicaCount: 2
   resources:
