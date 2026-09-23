@@ -9,7 +9,7 @@ namespaces:
                           # a different project, in a `server-scan` namespace it creates
                           # itself with CreateNamespace=true. Deliberately not listed here:
                           # two owners for one namespace is a race.
-  - redbull-workflows     # Argo workflows + segment-lifecycle-worker apps + Helmfile mock release
+  - redbull-workflows     # Argo workflows-orchestrator + segment-lifecycle-worker + workflows-docs apps
   - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
   - openshift-cnv         # Argo `openshift-virtualization` app: OLM OperatorGroup +
                           # Subscription + the HyperConverged CR live here

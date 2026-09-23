@@ -31,7 +31,6 @@ two database wrappers.
 | `provider-http` | `crossplane-system` | local glue (Provider CR) | crossplane |
 | `provider-http-config` | `crossplane-system` | local glue (ProviderConfig `dhcp-http`) | provider-http |
 | `segments-manager-mongodb` | `segments-manager` | local `charts/segments-manager-mongodb` (Bitnami MongoDB) | namespaces |
-| `mock-segment-connectivity` | `redbull-workflows` | `team-redbull/workflows` (`helm/mock-segment-connectivity`) | namespaces |
 | `bmh-generator-operator` | `bmh-system` | `team-redbull/BareMetalHostUCS` | namespaces |
 | `server-scanner-dashboard` | `server-scanner` | `team-redbull/ServerScanner` | namespaces |
 | `hosted-cluster-integration` | `crossplane-system` | `team-redbull/dhcp_scope_manager` (`helm`) | provider-http-config |
@@ -48,7 +47,7 @@ One `Application` per row, generated from `gitops/services/<service>/app.yaml` b
 | `temporal` | `temporal` | `gitops/charts/temporal` | **combined** temporal-stack + PostgreSQL subchart (sync waves) |
 | `segments-manager` | `segments-manager` | `gitops/charts/segments-manager` | uses the Helmfile-managed `segments-manager-mongodb` |
 | `workflows-orchestrator` | `redbull-workflows` | `gitops/charts/workflows-orchestrator` | the shared workflow "brain"; owns `workflows-orchestrator-config` |
-| `segment-lifecycle-worker` | `redbull-workflows` | `gitops/charts/segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; `nextUrl` → `mock-segment-connectivity` |
+| `segment-lifecycle-worker` | `redbull-workflows` | `gitops/charts/segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; talks to segments-manager, the day1 repo and the DHCP API |
 | `workflows-docs` | `redbull-workflows` | `gitops/charts/workflows-docs` | static docs site for the workflow layer; depends on nothing |
 | `dhcp-scope-manager` | `dhcp-scope-manager` | `gitops/charts/dhcp-scope-manager` | Linux API driving a remote Windows DHCP server over PSRP/WinRM |
 | `server-scan` | `server-scan` | `gitops/charts/server-scan` | bare-metal inventory platform; **combined** API + UI + MongoDB/Redis subcharts, fake-data collector only |
@@ -76,12 +75,10 @@ Argo-managed `temporal` app's Temporal UI oauth-proxy only admits the users in
 for every workflow domain, not per-domain. `segment-lifecycle-worker` (Argo app) is the
 first per-domain activity-worker limb; future domains add their own
 `gitops/charts/<domain>-worker/` chart + a `gitops/services/<domain>-worker/` folder, all
-still consuming the one orchestrator. `mock-segment-connectivity` (**Helmfile**) is a
-test-only stand-in for the real "next" (firewall) service `segment-lifecycle-worker` talks
-to — it lets e2e tests run the full submit -> poll -> complete cycle without the real,
-air-gapped next service; never install it alongside a production
-`segment-lifecycle-worker` (repoint `config.nextUrl` in that chart's values at the real
-next endpoint first). None of the charts creates its own namespace — see `CLAUDE.md`.
+still consuming the one orchestrator. Nothing from the workflows repo is Helmfile-managed
+any more — the test-only `mock-segment-connectivity` release that used to sit here stood
+in for a firewall service the orchestrator no longer calls. None of the charts creates its
+own namespace — see `CLAUDE.md`.
 
 **Ordering** — Helmfile `needs:` still sequences the bootstrap layer (Crossplane first,
 then the `provider-http` package, then a `presync` `kubectl wait` gates the
@@ -258,7 +255,7 @@ helmfile -l namespace=crossplane-system sync
 
 Helmfile release names (bootstrap layer): `namespaces`, `htpasswd-idp`, `crossplane`,
 `provider-http`, `provider-http-config`, `segments-manager-mongodb`,
-`mock-segment-connectivity`, `bmh-generator-operator`, `server-scanner-dashboard`,
+`bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`. (`temporal`, `segments-manager`, `workflows-orchestrator`,
 `segment-lifecycle-worker`, `workflows-docs`, `dhcp-scope-manager` and `server-scan`
 are Argo CD apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
@@ -309,19 +306,16 @@ Tip: to make custom groupings (e.g. all apps vs. the platform layer), add a
   second file layered on top of it, so what you read there is what the cluster runs.
   The ones worth knowing:
   - `gitops/charts/workflows-orchestrator/values.yaml` → `config.temporalHost` /
-    `temporalNamespace` / `domain` / `segmentsManagerUrl`. One place to change for the
+    `temporalNamespace` / `segmentsManagerUrl`. One place to change for the
     whole workflow layer: every limb reads the same facts at runtime from the
     `workflows-orchestrator-config` ConfigMap this chart publishes, so no other chart
     carries a copy.
   - `gitops/charts/segments-manager/values.yaml` → `mongodb.url` (in-cluster Mongo, with
     the password inline — see `SECRETS.md`) and `siteNetworks`.
-  - `gitops/charts/segment-lifecycle-worker/values.yaml` → `config.nextUrl` + the URI
-    paths, `config.dhcpApiUrl`, the two `secrets.existing*` references, and its own copy
-    of `siteNetworks`.
+  - `gitops/charts/segment-lifecycle-worker/values.yaml` → `config.day1RepoUrl` /
+    `day1Branch`, `config.dhcpApiUrl`, `config.dhcpExclusionOctetRanges` (the one DHCP
+    policy knob) and the two `secrets.existing*` references.
   - `gitops/charts/temporal/values.yaml` → `ui.auth.allowedUsers`.
-  - **`siteNetworks` is defined twice on purpose** — segments-manager and
-    segment-lifecycle-worker run in different namespaces and cannot share a ConfigMap, so
-    each chart renders its own copy. Change both in the same commit.
 - **`image.repository`/`image.tag` in those files are CI-owned.** The service's code repo
   commits the bump here on every push to its main. Hand-editing them is transient: the
   next build overwrites the edit.

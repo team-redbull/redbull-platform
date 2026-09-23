@@ -18,8 +18,8 @@ runs its own Argo architecture over its own mirror of this repo. Do not reintrod
 **Helmfile** (`helmfile.yaml.gotmpl`) owns only the **bootstrap + order-sensitive**
 layer: `namespaces`, `htpasswd-idp` (local-shell postsync hook, see below),
 `crossplane` → `provider-http` → `provider-http-config` (the one genuinely hard
-CRD-before-CR ordering), plus the still-Helmfile-managed `segments-manager-mongodb`
-and `mock-segment-connectivity`, and the not-yet-migrated `bmh-generator-operator`,
+CRD-before-CR ordering), plus the still-Helmfile-managed `segments-manager-mongodb`,
+and the not-yet-migrated `bmh-generator-operator`,
 `server-scanner-dashboard`, `hosted-cluster-integration`. Argo CD is **already
 installed** (OpenShift GitOps, namespace `openshift-gitops`) — this platform does not
 deploy it.
@@ -28,9 +28,8 @@ deploy it.
 (`gitops/appset.yaml`) over `gitops/services/<service>/app.yaml`: `temporal`,
 `segments-manager`, `workflows-orchestrator`, `segment-lifecycle-worker`,
 `workflows-docs`, `dhcp-scope-manager`, `server-scan`. Each service's chart is a folder in
-**this** repo at `gitops/charts/<service>/` — the sole, hand-edited copy; the code repos
-no longer carry a `helm/` chart folder (except `workflows` keeps
-`helm/mock-segment-connectivity`), and neither do the retired `helm-charts-*` repos.
+**this** repo at `gitops/charts/<service>/` — the sole, hand-edited copy; no code repo
+carries a `helm/` chart folder any more, and neither do the retired `helm-charts-*` repos.
 
 Why keep Helmfile at all instead of going all-Argo: the bootstrap layer is
 cluster-scoped, order-sensitive, and its hooks need an admin kubeconfig
@@ -395,8 +394,6 @@ has its own chart, decoupled from any one workflow domain — see
 Under Argo they rely entirely on the `namespace:` field in
 `gitops/services/<service>/app.yaml`, which requires that namespace to already exist by
 the time they sync (the ApplicationSet does not set `CreateNamespace=true` — see below).
-`mock-segment-connectivity`, still Helmfile-managed, relies on
-`helmDefaults.createNamespace: false` + `needs: [default/namespaces]`.
 
 **Do not add a per-chart Namespace template or `createNamespace` value back
 into any workflow chart (`gitops/charts/workflows-orchestrator`,
@@ -572,10 +569,9 @@ defaults may render fine while ours does not.
   (`segment_manager`, `BareMetalHostUCS`, `ServerScanner`) still have inline copies.
 - `team-redbull/workflows` — Temporal worker code. Its three Argo charts are
   `gitops/charts/workflows-orchestrator`, `gitops/charts/segment-lifecycle-worker` and
-  `gitops/charts/workflows-docs`. `helm/mock-segment-connectivity` **stays in that repo**
-  — it's the only chart still Helmfile-pulled (`git::`), a test-only stand-in for the real
-  "next" firewall service `segment-lifecycle-worker` talks to (e2e/test environments only,
-  never alongside a production `segment-lifecycle-worker` release).
+  `gitops/charts/workflows-docs`, all here. That repo now ships no chart of its own: the
+  `helm/mock-segment-connectivity` chart this repo used to Helmfile-pull (`git::`) stood
+  in for a firewall service the orchestrator no longer calls, and both are gone.
 - `team-redbull/dhcp_scope_manager` — the DHCP scope API's code repo; its chart is
   `gitops/charts/dhcp-scope-manager`. Note that chart carries a `dhcp-api-token` subchart
   whose committed token is also consumed **outside** this platform (per-MCE standalone

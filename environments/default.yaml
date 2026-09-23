@@ -16,7 +16,6 @@
 # gitops/charts/, and are rendered by Argo from whatever revision of this repo is
 # deployed. No per-app ref to pin.)
 refs:
-  workflows: main        # only mock-segment-connectivity is still Helmfile-pulled from this repo
   dhcp: main
   bmh: main
   serverScanner: main

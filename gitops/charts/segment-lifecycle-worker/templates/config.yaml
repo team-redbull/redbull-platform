@@ -3,22 +3,6 @@ kind: ConfigMap
 metadata:
   name: segment-lifecycle-config
 data:
-  NEXT_URL: {{ .Values.config.nextUrl | quote }}
-  NEXT_TOKEN_RENEWAL_URI: {{ .Values.config.nextTokenRenewalUri | quote }}
-  NEXT_OPEN_RULES_URI: {{ .Values.config.nextOpenRulesUri | quote }}
-  NEXT_CHECK_STATUS_URI: {{ .Values.config.nextCheckStatusUri | quote }}
-  NEXT_GROUP: {{ .Values.config.nextGroup | quote }}
-  NEXT_CHECKING_REQUEST_INTERVAL_SECONDS: {{ .Values.config.nextCheckingRequestIntervalSeconds | quote }}
-  PORTS_HC_TO_MCE: {{ .Values.config.ports.hcToMce | toJson | quote }}
-  PORTS_MCE_TO_HC: {{ .Values.config.ports.mceToHc | toJson | quote }}
-  PORTS_INVENTORY_TO_MCE: {{ .Values.config.ports.inventoryToMce | toJson | quote }}
-  PORTS_MCE_TO_INVENTORY: {{ .Values.config.ports.mceToInventory | toJson | quote }}
-{{- if not .Values.siteNetworks }}
-{{- fail "siteNetworks is empty. Define it once in redbull-platform (gitops/values/<env>.yaml, key `siteNetworks`); the ApplicationSet merges that file in ahead of this chart's values." }}
-{{- end }}
-  SITE_NETWORKS: {{ .Values.siteNetworks | toJson | quote }}
-  PORTS_MCE_TO_BMC: {{ .Values.config.ports.mceToBmc | toJson | quote }}
-  SITES_WITH_OPEN_CONNECTIVITY: {{ .Values.config.sitesWithOpenConnectivity | toJson | quote }}
   DAY1_REPO_URL: {{ .Values.config.day1RepoUrl | quote }}
   DAY1_BRANCH: {{ .Values.config.day1Branch | quote }}
   DHCP_EXCLUSION_OCTET_RANGES: {{ .Values.config.dhcpExclusionOctetRanges | toJson | quote }}
@@ -32,17 +16,6 @@ metadata:
 type: Opaque
 stringData:
   SEGMENTS_MANAGER_API_TOKEN: {{ .Values.secrets.segmentsManagerApiToken | quote }}
-{{- end }}
-{{- if not .Values.secrets.existingNextSecret }}
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: next-api-credentials
-type: Opaque
-stringData:
-  NEXT_CLIENT_ID: {{ .Values.secrets.nextClientId | quote }}
-  NEXT_PASSWORD: {{ .Values.secrets.nextPassword | quote }}
 {{- end }}
 {{- if not .Values.secrets.existingDay1Secret }}
 ---

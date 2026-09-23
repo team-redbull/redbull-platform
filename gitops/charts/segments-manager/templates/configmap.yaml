@@ -9,7 +9,7 @@ metadata:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 {{- if not .Values.siteNetworks }}
-{{- fail "siteNetworks is empty. Set it in this environment's Argo CD Application values (or --set-json for a standalone install); it is merged in ahead of this chart's values.yaml, which is empty on purpose. Define it once per environment and render it into segment-connectivity too, so the two services agree on the site list." }}
+{{- fail "siteNetworks is empty. Set it in this environment's Argo CD Application values (or --set-json for a standalone install); it is merged in ahead of this chart's values.yaml, which is empty on purpose. Define it once per environment so nothing can disagree about the site list." }}
 {{- end }}
 data:
   SITE_NETWORKS: {{ .Values.siteNetworks | toJson | quote }}

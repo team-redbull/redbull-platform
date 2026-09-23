@@ -5,5 +5,4 @@ metadata:
 data:
   TEMPORAL_HOST: {{ .Values.config.temporalHost | quote }}
   TEMPORAL_NAMESPACE: {{ .Values.config.temporalNamespace | quote }}
-  DOMAIN: {{ .Values.config.domain | quote }}
   SEGMENTS_MANAGER_URL: {{ .Values.config.segmentsManagerUrl | quote }}
