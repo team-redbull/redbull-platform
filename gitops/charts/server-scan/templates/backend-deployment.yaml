@@ -19,6 +19,7 @@ spec:
         app.kubernetes.io/part-of: server-scan
     spec:
       automountServiceAccountToken: false
+      {{- $auth := .Values.auth | default dict }}
       containers:
         - name: api
           image: {{ include "serverScan.apiImage" . | quote }}
@@ -40,6 +41,12 @@ spec:
             # `EnvConnectionResolver` — so this is safe to mount unconditionally.
             - secretRef:
                 name: {{ .Values.collectors.existingSecret | default (printf "%s-collector-credentials" .Release.Name) }}
+            # AD login (docs/adr/0034). Blank when auth.enabled is false
+            # (this chart's own default), which the backend reads as no
+            # different from the variable being unset, so mounting it
+            # unconditionally is safe.
+            - secretRef:
+                name: {{ $auth.existingSecret | default (printf "%s-auth-credentials" .Release.Name) }}
           livenessProbe:
             httpGet:
               path: /health/live
