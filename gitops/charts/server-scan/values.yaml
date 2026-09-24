@@ -375,9 +375,19 @@ metrics:
     # `server_scan_servers_stale` above this per collector fires
     # ServerScanServersStale. 0 alerts on the first stale server.
     staleServersThreshold: 10
-    # A collector or cluster that has not reported for this long fires
-    # ServerScanCollectorSilent / ServerScanClusterSilent. Two cycles.
+    # A collector that has not reported for this long fires
+    # ServerScanCollectorSilent. Two of the shared 6-hour collector cycles.
+    # NOT used for the membership jobs — see membershipSilentForSeconds.
     silentForSeconds: 43200
+    # A `nodes`/`agents` membership job that has not completed a run for
+    # this long fires ServerScanMembershipRunSilent; a cluster that has
+    # not had a server matched for this long fires ServerScanClusterSilent.
+    # Two of nodes-status's 15-minute schedule cycles on this cluster.
+    membershipSilentForSeconds: 1800
+    # A `nodes`/`agents` membership job whose last real run left this many
+    # hostnames unmatched fires ServerScanMembershipUnmatched. 0 means any
+    # unmatched hostname is worth investigating.
+    membershipUnmatchedThreshold: 0
   # Turns on OpenShift's user-workload monitoring by writing the
   # `cluster-monitoring-config` ConfigMap into openshift-monitoring —
   # the only thing that makes the ServiceMonitor above get scraped. OFF
