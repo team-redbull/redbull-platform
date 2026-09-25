@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-lifecycle-config
+data:
+  SERVER_SCAN_URL: {{ .Values.config.serverScanUrl | quote }}
+{{- if not .Values.secrets.existingSecret }}
+---
+# Only when no Secret is managed outside this chart. The BMC credentials have
+# no defaults on purpose: bmhgen defaulted Dell to root/calvin (the factory
+# password), so a forgotten Secret produced a BareMetalHost that failed later
+# at Ironic instead of failing immediately with a clear reason.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: server-lifecycle-credentials
+type: Opaque
+stringData:
+  SERVER_SCAN_API_TOKEN: {{ .Values.secrets.serverScanApiToken | quote }}
+  HP_BMC_USERNAME: {{ .Values.secrets.hpBmcUsername | quote }}
+  HP_BMC_PASSWORD: {{ .Values.secrets.hpBmcPassword | quote }}
+  DELL_BMC_USERNAME: {{ .Values.secrets.dellBmcUsername | quote }}
+  DELL_BMC_PASSWORD: {{ .Values.secrets.dellBmcPassword | quote }}
+  CISCO_BMC_USERNAME: {{ .Values.secrets.ciscoBmcUsername | quote }}
+  CISCO_BMC_PASSWORD: {{ .Values.secrets.ciscoBmcPassword | quote }}
+  INTERSIGHT_BMC_USERNAME: {{ .Values.secrets.intersightBmcUsername | quote }}
+  INTERSIGHT_BMC_PASSWORD: {{ .Values.secrets.intersightBmcPassword | quote }}
+{{- end }}

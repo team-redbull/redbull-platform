@@ -1,0 +1,22 @@
+# Argo config for `server-lifecycle-worker` — the second per-domain activity-worker limb.
+# Chart: gitops/charts/server-lifecycle-worker. The folder name drives the app name, the
+# chart path and the release name, so the -worker suffix here is what makes the workload
+# read as a process rather than a peer service; the domain-scoped names it consumes
+# (server-lifecycle-config, the server-lifecycle-activity queue) deliberately stay bare.
+#
+# Same redbull-workflows namespace as the orchestrator, and it gets the Temporal
+# connection from the shared workflows-orchestrator-config ConfigMap at runtime rather
+# than from its own Helm values. That ordering is soft: it crash-loops until the
+# orchestrator publishes the ConfigMap, then connects.
+#
+# Unlike the segment-lifecycle limb, this one WRITES TO THE CLUSTER — the BMC Secret,
+# BareMetalHost and NMStateConfig — so it carries RBAC, scoped to the namespaces named in
+# the chart's rbac.targetNamespaces. Those are the namespaces your InfraEnvs live in;
+# BMAC only binds a BareMetalHost to an InfraEnv in the host's own namespace.
+#
+# ONE WORKER SERVES ONE MCE HUB. The install-server request names an MCE cluster, but
+# that only selects the inventory VLAN — the resources go to whichever cluster this pod's
+# ServiceAccount points at. Running this limb outside the MCE hub named in a request
+# would tag a host with one MCE's VLAN and create it on another cluster, and nothing
+# errors, because both halves individually succeed.
+namespace: redbull-workflows
