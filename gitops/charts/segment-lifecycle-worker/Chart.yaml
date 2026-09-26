@@ -3,5 +3,5 @@ name: segment-lifecycle-worker
 description: >-
   The segment-lifecycle domain's activity worker — creates and allocates segments in the Segments Manager, and writes their DHCP blocks to the day1 values repo. Named for the process, not the domain: it polls the domain-scoped segment-lifecycle-activity queue on behalf of every workflow in the domain. Deploys alongside the shared workflows-orchestrator chart, which runs the workflow brain.
 type: application
-version: 0.1.31
-appVersion: "v0.1.31"
+version: 0.1.32
+appVersion: "v0.1.32"
