@@ -1,6 +1,23 @@
 config:
+  # WHICH MCE THIS DEPLOYMENT SERVES. It names the activity queue the worker
+  # polls (server-lifecycle-activity-<mceCluster>), so it must equal the
+  # `mce_cluster` callers send to install-server — the same string the Segments
+  # Manager holds as that inventory segment's cluster_name.
+  #
+  # This is the whole cross-cluster mechanism: the brain runs on the hub and
+  # picks a target MCE purely by which queue it dispatches to, so one worker
+  # runs INSIDE each MCE and writes only to its own API server, as its own
+  # ServiceAccount. No kubeconfig for another cluster exists anywhere, and
+  # because the worker dials OUT to Temporal the hub needs no inbound access to
+  # any MCE.
+  #
+  # Getting it wrong is undetectable at runtime — the worker would serve
+  # another MCE's installs and create their BareMetalHosts here, both halves
+  # succeeding — so it has no default and every deployment must state it.
+  mceCluster: ""
   # server-scan's inventory API, INCLUDING the /api/v1 prefix — the worker
-  # appends only /servers/available to it.
+  # appends only /servers/available to it. Reachable from inside each MCE: it
+  # is a central service, like Temporal.
   serverScanUrl: "http://server-scan-api.server-scan.svc.cluster.local/api/v1"
 secrets:
   # The BMC credentials Ironic will use to drive each vendor's BMC, plus an

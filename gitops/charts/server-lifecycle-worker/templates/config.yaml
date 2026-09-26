@@ -1,8 +1,12 @@
+{{- if not .Values.config.mceCluster }}
+{{- fail "config.mceCluster must be set: it names the activity queue this worker polls, and a wrong value silently serves another MCE's installs from this cluster" }}
+{{- end }}
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: server-lifecycle-config
 data:
+  MCE_CLUSTER: {{ .Values.config.mceCluster | quote }}
   SERVER_SCAN_URL: {{ .Values.config.serverScanUrl | quote }}
 {{- if not .Values.secrets.existingSecret }}
 ---
