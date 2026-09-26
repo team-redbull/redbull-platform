@@ -1,13 +1,37 @@
 {{- /*
-The three resources install-server writes, and nothing more.
+What install-server writes, reads and rolls back — and nothing more.
 
-No `update` or `patch`: the workflow never overwrites an existing resource — it
-treats "already exists" as success once the contents match and raises a
-conflict when they do not — so the absence of those verbs is the design
-enforced rather than merely documented. No `delete` either: removing a server
-is a separate uninstall-server workflow, not a rollback of this one. No `list`
-or `watch`, which the Kopf operator this replaces needed only because it
-reconciled; a Temporal activity addresses one object by name.
+STILL NO `update`. The workflow never overwrites an existing resource: it treats
+"already exists" as success once the contents match and raises a conflict when
+they do not, so the absence of that verb is the design enforced rather than
+merely documented.
+
+`delete` and `patch` on baremetalhosts ARE needed, and the reason is the retry
+loop rather than an uninstall. A candidate that never registers an Agent is
+rolled back so the NEXT candidate can be tried — leaving its BareMetalHost
+behind would strand that machine, invisibly: server-scan reports a server
+unclaimed until a cluster reports the node, so no other MCE would know the
+machine was taken. `patch` covers both halves of that rollback, and both were
+established against a live cluster:
+
+  * the `baremetalhost.metal3.io/detached` annotation, which must be applied
+    BEFORE the delete — after `deletionTimestamp` is set it does nothing;
+  * dropping metal3's `baremetalhost.metal3.io` finalizer when it will not
+    release. It blocks while trying to deprovision through the BMC, and a
+    rollback happens precisely because that BMC never answered — measured stuck
+    past four minutes, in state `deleting`, with no error ever reported.
+
+`delete` on secrets is a fallback only. The BMC Secret carries an
+ownerReference to the BareMetalHost, so the garbage collector normally takes it;
+without this verb, the case where it does not leaves a BMC credential on the
+cluster after every rollback.
+
+`list` on agents is the one read that proves an install worked. An Agent exists
+because the host booted the discovery ISO and reached assisted-service, and it
+must be found by MAC — BMAC names an Agent after the host's inventory UUID and
+its spec holds no reference back to the BareMetalHost — so a `get` by name
+cannot do it. This is the only place the limb lists anything; every other
+access still addresses one object by name.
 
 Namespace-scoped by default, because the namespace to write into is a REQUEST
 field. A ClusterRole would let any caller of the install-server API create a
@@ -15,9 +39,10 @@ Secret in any namespace in the cluster; a Role per declared namespace bounds
 that to the InfraEnvs you have actually deployed.
 */ -}}
 {{- $rules := list
-  (dict "apiGroups" (list "") "resources" (list "secrets") "verbs" (list "get" "create"))
-  (dict "apiGroups" (list "metal3.io") "resources" (list "baremetalhosts") "verbs" (list "get" "create"))
-  (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "nmstateconfigs") "verbs" (list "get" "create"))
+  (dict "apiGroups" (list "") "resources" (list "secrets") "verbs" (list "get" "create" "delete"))
+  (dict "apiGroups" (list "metal3.io") "resources" (list "baremetalhosts") "verbs" (list "get" "create" "delete" "patch"))
+  (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "nmstateconfigs") "verbs" (list "get" "create" "delete"))
+  (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "agents") "verbs" (list "get" "list"))
 -}}
 {{- if .Values.rbac.clusterWide }}
 apiVersion: rbac.authorization.k8s.io/v1
