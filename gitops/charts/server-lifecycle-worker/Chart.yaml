@@ -3,5 +3,5 @@ name: server-lifecycle-worker
 description: >-
   The server-lifecycle domain's activity worker — installs a physical server into an MCE InfraEnv by creating its BMC Secret, BareMetalHost and NMStateConfig from server-scan's inventory. Named for the process, not the domain: it polls the domain-scoped server-lifecycle-activity queue on behalf of every workflow in the domain. Replaces the bmh-generator-operator (a Kopf operator that queried the vendor managers itself). Deploys alongside the shared workflows-orchestrator chart, which runs the workflow brain.
 type: application
-version: 1.0.0
-appVersion: "v1.0.0"
+version: 1.0.1
+appVersion: "v1.0.1"
