@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: server-lifecycle-worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server-lifecycle-worker
+  labels:
+    app: server-lifecycle-worker
+spec:
+  replicas: {{ .Values.activityWorker.replicas }}
+  selector:
+    matchLabels:
+      app: server-lifecycle-worker
+  template:
+    metadata:
+      labels:
+        app: server-lifecycle-worker
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: server-lifecycle-worker
+      containers:
+        - name: server-lifecycle-worker
+          image: "{{ .Values.activityWorker.image.repository }}:{{ .Values.activityWorker.image.tag }}"
+          imagePullPolicy: {{ .Values.activityWorker.image.pullPolicy }}
+          envFrom:
+            # Temporal connection, shared with the brain and the other limb.
+            - configMapRef:
+                name: workflows-orchestrator-config
+            - configMapRef:
+                name: server-lifecycle-config
+            - secretRef:
+                name: {{ .Values.secrets.existingSecret | default "server-lifecycle-credentials" }}

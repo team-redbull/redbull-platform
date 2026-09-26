@@ -1,0 +1,67 @@
+{{- /*
+The three resources install-server writes, and nothing more.
+
+No `update` or `patch`: the workflow never overwrites an existing resource — it
+treats "already exists" as success once the contents match and raises a
+conflict when they do not — so the absence of those verbs is the design
+enforced rather than merely documented. No `delete` either: removing a server
+is a separate uninstall-server workflow, not a rollback of this one. No `list`
+or `watch`, which the Kopf operator this replaces needed only because it
+reconciled; a Temporal activity addresses one object by name.
+
+Namespace-scoped by default, because the namespace to write into is a REQUEST
+field. A ClusterRole would let any caller of the install-server API create a
+Secret in any namespace in the cluster; a Role per declared namespace bounds
+that to the InfraEnvs you have actually deployed.
+*/ -}}
+{{- $rules := list
+  (dict "apiGroups" (list "") "resources" (list "secrets") "verbs" (list "get" "create"))
+  (dict "apiGroups" (list "metal3.io") "resources" (list "baremetalhosts") "verbs" (list "get" "create"))
+  (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "nmstateconfigs") "verbs" (list "get" "create"))
+-}}
+{{- if .Values.rbac.clusterWide }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: server-lifecycle-worker
+rules:
+{{ toYaml $rules }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: server-lifecycle-worker
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: server-lifecycle-worker
+subjects:
+  - kind: ServiceAccount
+    name: server-lifecycle-worker
+    namespace: {{ .Release.Namespace }}
+{{- else }}
+{{- range $namespace := .Values.rbac.targetNamespaces }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: server-lifecycle-worker
+  namespace: {{ $namespace }}
+rules:
+{{ toYaml $rules }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: server-lifecycle-worker
+  namespace: {{ $namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: server-lifecycle-worker
+subjects:
+  - kind: ServiceAccount
+    name: server-lifecycle-worker
+    namespace: {{ $.Release.Namespace }}
+{{- end }}
+{{- end }}

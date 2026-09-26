@@ -1,0 +1,49 @@
+# Argo config for `server-lifecycle-worker` — the second per-domain activity-worker limb.
+# Chart: gitops/charts/server-lifecycle-worker. The folder name drives the app name, the
+# chart path and the release name, so the -worker suffix here is what makes the workload
+# read as a process rather than a peer service; the domain-scoped names it consumes
+# (server-lifecycle-config, the server-lifecycle-activity queue) deliberately stay bare.
+#
+# ONE OF THESE PER MCE CLUSTER, EACH RUNNING INSIDE ITS OWN MCE.
+#
+# The brain runs on the hub, but a BareMetalHost belongs on the MCE that owns the
+# InfraEnv — a different API server at api.<mce>.<domain>. The hub picks the target
+# purely by which activity queue it dispatches to, and this worker polls exactly one:
+# server-lifecycle-activity-<config.mceCluster>. So it writes only to its OWN cluster, as
+# its own ServiceAccount, and reaches Temporal by dialling OUT. No cross-cluster
+# kubeconfig exists anywhere, and the hub needs no inbound access to any MCE.
+#
+# config.mceCluster MUST equal the `mce_cluster` callers send to install-server, which is
+# the same string the Segments Manager holds as that inventory segment's cluster_name. A
+# wrong value is undetectable at runtime: the worker would serve another MCE's installs
+# and create their BareMetalHosts on this cluster, both halves succeeding. The chart
+# refuses to render without it.
+#
+# TO ADD AN MCE: copy this folder to gitops/services/server-lifecycle-worker-<mce>/ and
+# set, in its overrides, the chart path (the folder name no longer matches a chart), the
+# mceCluster, the InfraEnv namespaces to grant RBAC in, and the Argo destination cluster:
+#
+#   namespace: redbull-workflows
+#   destination:
+#     cluster: ocp4-prep-mce-batyam        # as registered in Argo CD
+#   overrides:
+#     spec:
+#       source:
+#         path: gitops/charts/server-lifecycle-worker
+#         helm:
+#           parameters:
+#             - name: config.mceCluster
+#               value: ocp4-prep-mce-batyam
+#             - name: rbac.targetNamespaces[0]
+#               value: multicluster-engine
+#
+# Each MCE must be registered as an Argo CD cluster for that destination to resolve, and
+# must be able to reach the hub's Temporal frontend (gRPC :7233) and server-scan.
+namespace: redbull-workflows
+overrides:
+  spec:
+    source:
+      helm:
+        parameters:
+          - name: config.mceCluster
+            value: ocp4-mce-workflow-test
