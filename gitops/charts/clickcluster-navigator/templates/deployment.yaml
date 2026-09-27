@@ -65,6 +65,8 @@ spec:
           mountPath: /app/config.json
           subPath: config.json
           readOnly: true
+        - name: logs
+          mountPath: /app/logs
         {{- if .Values.persistence.enabled }}
         - name: data
           mountPath: /app/data
@@ -73,6 +75,13 @@ spec:
       - name: config
         configMap:
           name: {{ include "clickcluster-navigator.fullname" . }}-config
+      # The image runs as an OpenShift-assigned arbitrary UID with no write access
+      # under /app, so src/utils/logging_config.py's log_dir.mkdir("logs") fails
+      # without this - verified live (PermissionError, CrashLoopBackOff). stdout is
+      # already the primary log path here (oc logs), so an ephemeral emptyDir for
+      # the rotating file handler is enough; it doesn't need to survive a restart.
+      - name: logs
+        emptyDir: {}
       {{- if .Values.persistence.enabled }}
       - name: data
         persistentVolumeClaim:

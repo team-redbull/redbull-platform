@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Release.Namespace }}
+  labels:
+    # The OpenShift GitOps operator watches for this label and auto-creates the
+    # namespace-scoped RoleBindings (Role/openshift-gitops-argocd-application-controller,
+    # Role/openshift-gitops-argocd-server) that let the cluster-scoped application
+    # controller actually manage workloads inside this namespace — its ClusterRole
+    # alone does not cover Deployments/Services/ServiceAccounts/Routes.
+    #
+    # `overrides: syncOptions: [CreateNamespace=true]` in app.yaml only creates a BARE
+    # namespace with no labels, so without this template the first sync creates the
+    # namespace, then every subsequent apply fails "forbidden" on every namespaced
+    # resource forever — that is exactly what happened before this file existed.
+    # Every other self-namespacing service (server-scan) has this label; this makes
+    # it declarative instead of a manual `oc label` a human has to remember.
+    argocd.argoproj.io/managed-by: openshift-gitops

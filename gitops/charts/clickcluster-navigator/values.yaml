@@ -97,11 +97,12 @@ readinessProbe:
   failureThreshold: 3
 serviceAccount:
   create: true
-# No runAsUser/fsGroup hardcoded: OpenShift's restricted-v2 SCC allocates a UID from the
-# namespace's own range. fsGroup IS set (unlike dhcp-scope-manager, which has no PVC) so
-# the OpenShift-assigned group can write to the persistence volume above.
-podSecurityContext:
-  fsGroup: 0
+# No runAsUser/fsGroup hardcoded: OpenShift's restricted-v2/v3 SCC allocates a UID (and
+# rejects fsGroup: 0 outright - "0 is not an allowed group") from the namespace's own
+# range and injects a valid fsGroup automatically, which the AWS EBS CSI driver honors
+# for the PVC above. Verified live: fsGroup: 0 here put every pod in ReplicaFailure
+# ("unable to validate against any security context constraint").
+podSecurityContext: {}
 securityContext:
   allowPrivilegeEscalation: false
   capabilities:
