@@ -1,0 +1,29 @@
+# Argo config for `clickcluster-navigator` (team-redbull/ClickCluster-Navigator) — a
+# read-mostly web UI that syncs cluster/network data from the `segments-manager` Argo
+# app and lets an admin track a small number of manual clusters on top. Chart:
+# gitops/charts/clickcluster-navigator, the sole hand-edited copy (CI only bumps
+# image.repository/image.tag and Chart.yaml's appVersion/version — see that chart's
+# values.yaml).
+#
+# No database: manual clusters and the Segments Manager sync cache are flat JSON files
+# on the chart's PVC (ReadWriteOnce, so replicaCount stays at 1 — see values.yaml).
+#
+# ONE out-of-band Secret, `clickcluster-navigator-auth`, holds the admin username and
+# password for the write endpoints (create/delete cluster, trigger sync). Nothing
+# secret is committed. It must exist BEFORE the first sync or the pod stays in
+# CreateContainerConfigError — same shape as segments-manager-token and
+# dhcp-scope-manager-winrm today; the exact `oc create secret` line is at the top of
+# the chart's values.yaml.
+namespace: clickcluster-navigator
+
+# The other service that creates its own namespace, rather than taking it from the
+# `namespaces` Helmfile release every other service uses — same reasoning and same
+# `overrides:` mechanism as `server-scan` (see that service's app.yaml): safe because
+# `openshift-gitops` is the operator's default, CLUSTER-scoped instance, and it keeps
+# this one namespace out of `charts/namespaces/values.yaml` on purpose (two owners for
+# a namespace is a race — do not add it back there).
+overrides:
+  spec:
+    syncPolicy:
+      syncOptions:
+        - CreateNamespace=true

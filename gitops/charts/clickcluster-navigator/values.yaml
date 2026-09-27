@@ -1,0 +1,128 @@
+# Values for `clickcluster-navigator`, deployed by the redbull-services ApplicationSet
+# (gitops/services/clickcluster-navigator/app.yaml). THIS FILE IS THE SINGLE SOURCE OF
+# TRUTH for how the service is configured — see gitops/appset.yaml's own comment.
+#
+# ClickCluster-Navigator (team-redbull/ClickCluster-Navigator) is a read-mostly web UI:
+# it syncs cluster/network data from Segments Manager every `syncInterval` seconds and
+# lets an admin add/delete a small number of manually-tracked clusters on top. No
+# database — manual clusters and the Segments Manager sync cache are both flat JSON
+# files on the PVC below.
+
+# CI (team-redbull/.github ghcr-build-push.yml) rewrites image.repository and image.tag
+# here on every push to the code repo's main. Keep this block at the top level and named
+# `image` — the workflow's default helm-image-path targets it.
+image:
+  repository: ghcr.io/team-redbull/clickcluster-navigator
+  # CI-managed from here on — do not edit by hand.
+  tag: v0.1.0
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+# Stays at 1: persistence below is ReadWriteOnce, and two replicas would each get
+# their own PVC (StatefulSet-style) or fight over the same node for a shared one —
+# either way the file-locked JSON store (src/utils/file_operations.py) is designed
+# for multiple replicas sharing ONE PVC, which ReadWriteOnce cannot give across nodes.
+# Scale this deliberately (RWX storage class first), not by luck.
+autoscaling:
+  enabled: false
+
+app:
+  title: "OpenShift Cluster Navigator"
+  # In-cluster Service DNS for the `segments-manager` Argo app (gitops/charts/segments-manager,
+  # namespace segments-manager, service port 8000) — not the external sandbox route the
+  # code repo's local config.json uses for dev. Same cluster, so this avoids an external
+  # network hop and stays correct if that Route's hostname ever changes.
+  segmentsManagerUrl: "http://segments-manager.segments-manager.svc.cluster.local:8000"
+  syncInterval: 300
+  # Only these two segment types are cluster-facing (see the code repo's CLAUDE.md) —
+  # INVENTORY_REDFISH/INVENTORY_IPMI/PXE segments exist in Segments Manager but are not
+  # OpenShift clusters and must stay filtered out.
+  segmentTypes:
+    - HC
+    - MCE
+
+# Admin credentials for the write endpoints (create/delete cluster, trigger sync).
+# Credentials come from a pre-existing Secret — never from values.yaml, which lives in
+# git. Create it out of band before the first sync, same shape as segments-manager-token
+# and dhcp-scope-manager-winrm today:
+#
+#   oc create secret generic clickcluster-navigator-auth \
+#     --from-literal=username=admin \
+#     --from-literal=password='...' -n clickcluster-navigator
+#
+# Until that secret exists, the pod stays in CreateContainerConfigError — expected,
+# not a bug (see gitops/SECRETS.md).
+auth:
+  existingSecret: clickcluster-navigator-auth
+  # Only used if existingSecret is empty, which it never should be here — see above.
+  username: admin
+  password: ""
+
+service:
+  type: ClusterIP
+  port: 8000
+  targetPort: 8000
+
+route:
+  enabled: true
+  # Empty host = OpenShift generates one from the route/namespace/cluster domain.
+  host: ""
+  path: /
+  tls:
+    enabled: true
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+
+persistence:
+  enabled: true
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+
+resources:
+  limits:
+    cpu: 500m
+    memory: 512Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi
+
+livenessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+serviceAccount:
+  create: true
+
+# No runAsUser/fsGroup hardcoded: OpenShift's restricted-v2 SCC allocates a UID from the
+# namespace's own range. fsGroup IS set (unlike dhcp-scope-manager, which has no PVC) so
+# the OpenShift-assigned group can write to the persistence volume above.
+podSecurityContext:
+  fsGroup: 0
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop: ["ALL"]
+
+imagePullSecrets: []
+podAnnotations: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+configMap:
+  data: {}

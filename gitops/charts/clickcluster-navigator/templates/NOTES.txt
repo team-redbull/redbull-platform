@@ -1,0 +1,51 @@
+1. Get the application URL by running these commands:
+{{- if .Values.route.enabled }}
+  export ROUTE_HOST=$(oc get route {{ include "clickcluster-navigator.fullname" . }} -o jsonpath='{.spec.host}')
+  echo "OpenShift Cluster Navigator URL: https://$ROUTE_HOST"
+{{- else if contains "NodePort" .Values.service.type }}
+  export NODE_PORT=$(kubectl get --namespace {{ .Release.Namespace }} -o jsonpath="{.spec.ports[0].nodePort}" services {{ include "clickcluster-navigator.fullname" . }})
+  export NODE_IP=$(kubectl get nodes --namespace {{ .Release.Namespace }} -o jsonpath="{.items[0].status.addresses[0].address}")
+  echo http://$NODE_IP:$NODE_PORT
+{{- else if contains "LoadBalancer" .Values.service.type }}
+     NOTE: It may take a few minutes for the LoadBalancer IP to be available.
+           You can watch the status of by running 'kubectl get --namespace {{ .Release.Namespace }} svc -w {{ include "clickcluster-navigator.fullname" . }}'
+  export SERVICE_IP=$(kubectl get svc --namespace {{ .Release.Namespace }} {{ include "clickcluster-navigator.fullname" . }} --template "{{"{{ range (index .status.loadBalancer.ingress 0) }}{{.}}{{ end }}"}}")
+  echo http://$SERVICE_IP:{{ .Values.service.port }}
+{{- else if contains "ClusterIP" .Values.service.type }}
+  export POD_NAME=$(kubectl get pods --namespace {{ .Release.Namespace }} -l "app.kubernetes.io/name={{ include "clickcluster-navigator.name" . }},app.kubernetes.io/instance={{ .Release.Name }}" -o jsonpath="{.items[0].metadata.name}")
+  export CONTAINER_PORT=$(kubectl get pod --namespace {{ .Release.Namespace }} $POD_NAME -o jsonpath="{.spec.containers[0].ports[0].containerPort}")
+  echo "Visit http://127.0.0.1:8080 to use your application"
+  kubectl --namespace {{ .Release.Namespace }} port-forward $POD_NAME 8080:$CONTAINER_PORT
+{{- end }}
+
+2. Default admin credentials:
+   Username: {{ .Values.auth.username }}
+   Password: (stored in secret {{ include "clickcluster-navigator.secretName" . }})
+
+   To view the password:
+   kubectl get secret {{ include "clickcluster-navigator.secretName" . }} -o jsonpath='{.data.password}' | base64 -d
+
+3. Segments Manager Configuration:
+   The application is configured to sync with Segments Manager at: {{ .Values.app.segmentsManagerUrl }}
+   Sync interval: {{ .Values.app.syncInterval }} seconds
+
+4. Health Check:
+   kubectl exec -it deployment/{{ include "clickcluster-navigator.fullname" . }} -- curl http://localhost:8000/health
+
+5. View logs:
+   kubectl logs -f deployment/{{ include "clickcluster-navigator.fullname" . }}
+
+{{- if .Values.persistence.enabled }}
+6. Persistent storage:
+   PVC: {{ include "clickcluster-navigator.pvcName" . }}
+   Size: {{ .Values.persistence.size }}
+{{- end }}
+
+{{- if .Values.autoscaling.enabled }}
+7. Autoscaling is enabled:
+   Min replicas: {{ .Values.autoscaling.minReplicas }}
+   Max replicas: {{ .Values.autoscaling.maxReplicas }}
+{{- end }}
+
+Thank you for installing {{ .Chart.Name }}!
+Documentation: https://github.com/yourusername/openshift-cluster-navigator

@@ -1,0 +1,17 @@
+apiVersion: v2
+name: clickcluster-navigator
+description: Navigate and manage OpenShift clusters organized by site, synced from Segments Manager
+type: application
+version: 0.1.0
+appVersion: "v0.1.0"
+keywords:
+  - openshift
+  - cluster
+  - navigator
+  - segments-manager
+  - red-bull-racing
+home: https://github.com/team-redbull/ClickCluster-Navigator
+sources:
+  - https://github.com/team-redbull/ClickCluster-Navigator
+maintainers:
+  - name: Roi Blum
