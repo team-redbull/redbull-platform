@@ -14,9 +14,8 @@
 image:
   repository: ghcr.io/team-redbull/clickcluster-navigator
   # CI-managed from here on — do not edit by hand.
-  tag: v0.1.0
+  tag: v1.0.0
   pullPolicy: IfNotPresent
-
 replicaCount: 1
 # Stays at 1: persistence below is ReadWriteOnce, and two replicas would each get
 # their own PVC (StatefulSet-style) or fight over the same node for a shared one —
@@ -25,7 +24,6 @@ replicaCount: 1
 # Scale this deliberately (RWX storage class first), not by luck.
 autoscaling:
   enabled: false
-
 app:
   title: "OpenShift Cluster Navigator"
   # In-cluster Service DNS for the `segments-manager` Argo app (gitops/charts/segments-manager,
@@ -40,7 +38,6 @@ app:
   segmentTypes:
     - HC
     - MCE
-
 # Admin credentials for the write endpoints (create/delete cluster, trigger sync).
 # Credentials come from a pre-existing Secret — never from values.yaml, which lives in
 # git. Create it out of band before the first sync, same shape as segments-manager-token
@@ -57,12 +54,10 @@ auth:
   # Only used if existingSecret is empty, which it never should be here — see above.
   username: admin
   password: ""
-
 service:
   type: ClusterIP
   port: 8000
   targetPort: 8000
-
 route:
   enabled: true
   # Empty host = OpenShift generates one from the route/namespace/cluster domain.
@@ -72,13 +67,11 @@ route:
     enabled: true
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
-
 persistence:
   enabled: true
   storageClass: ""
   accessMode: ReadWriteOnce
   size: 1Gi
-
 resources:
   limits:
     cpu: 500m
@@ -86,7 +79,6 @@ resources:
   requests:
     cpu: 100m
     memory: 128Mi
-
 livenessProbe:
   httpGet:
     path: /health
@@ -95,7 +87,6 @@ livenessProbe:
   periodSeconds: 10
   timeoutSeconds: 5
   failureThreshold: 3
-
 readinessProbe:
   httpGet:
     path: /health
@@ -104,10 +95,8 @@ readinessProbe:
   periodSeconds: 5
   timeoutSeconds: 3
   failureThreshold: 3
-
 serviceAccount:
   create: true
-
 # No runAsUser/fsGroup hardcoded: OpenShift's restricted-v2 SCC allocates a UID from the
 # namespace's own range. fsGroup IS set (unlike dhcp-scope-manager, which has no PVC) so
 # the OpenShift-assigned group can write to the persistence volume above.
@@ -117,12 +106,10 @@ securityContext:
   allowPrivilegeEscalation: false
   capabilities:
     drop: ["ALL"]
-
 imagePullSecrets: []
 podAnnotations: {}
 nodeSelector: {}
 tolerations: []
 affinity: {}
-
 configMap:
   data: {}
