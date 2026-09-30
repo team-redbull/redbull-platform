@@ -3,5 +3,5 @@ name: server-provisioning-worker
 description: >-
   The server-provisioning domain's activity worker — takes a freshly racked Dell from "the iDRAC has an IP" to "server-scan lists it, ready to install", which is the point server-lifecycle's install-server can draw it: OME discovery, the server profile template for its (model, iDRAC firmware), RAID 1 on the BOSS pair with every PERC drive Non-RAID, and the naming service's rename. Named for the process, not the domain: it polls the domain-scoped server-provisioning-activity queue on behalf of every workflow in the domain. Unlike the other limbs it writes to no Kubernetes API at all — it only makes outbound HTTPS calls — so it carries no RBAC. Deploys alongside the shared workflows-orchestrator chart, which runs the workflow brain.
 type: application
-version: 1.0.0
-appVersion: "v1.0.0"
+version: 1.0.1
+appVersion: "v1.0.1"
