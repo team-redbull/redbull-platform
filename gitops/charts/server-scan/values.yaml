@@ -500,8 +500,14 @@ collectors:
     count: 2500
     seed: 42
 
-    # Every 6 hours. Nothing about the data changes between runs — the point
-    # is a fresh `last_seen_at` and a live audit trail, not new servers.
+    # "auto" = floor(unix_time / 21600) % 8: every six-hourly run is a new
+    # epoch, so a few percent of servers degrade or recover each time and the
+    # audit trail gets real HEALTH_STATUS_CHANGED events. Identity never
+    # changes, so the same servers are updated in place. "0" freezes the data.
+    epoch: "auto"
+
+    # Every 6 hours. With epoch "auto" a few servers' health changes each run,
+    # and every run refreshes `last_seen_at` and the audit trail.
     schedule: "0 */6 * * *"
     backoffLimit: 1
     activeDeadlineSeconds: 1800
