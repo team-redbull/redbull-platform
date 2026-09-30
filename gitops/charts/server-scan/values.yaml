@@ -512,6 +512,29 @@ collectors:
       limits:
         memory: 1Gi
 
+  # Deletes servers no manager has listed for `afterSeconds` (server-scan ADR-0037).
+  # Off by default. Even when enabled it only REPORTS until `apply` is true, so
+  # the first rollout shows in the job logs what it would delete.
+  prune:
+    enabled: false
+    apply: false
+    suspend: false
+    # 03:00, 09:00, 15:00, 21:00: three hours after each 6-hourly collector sweep.
+    schedule: "0 3,9,15,21 * * *"
+    afterSeconds: 86400
+    # Most of one collector's servers a single pass may delete.
+    maxFraction: 0.2
+    # A manager whose last run is older than this blocks its own pruning.
+    maxRunAgeSeconds: 21600
+    backoffLimit: 0
+    activeDeadlineSeconds: 600
+    resources:
+      requests:
+        cpu: 50m
+        memory: 128Mi
+      limits:
+        memory: 512Mi
+
   # Cisco UCS Manager — a login, and deliberately no endpoint.
   #
   # There is no UCS Manager CronJob. The ucsCentral collector below is
