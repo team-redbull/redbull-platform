@@ -1,0 +1,87 @@
+config:
+  # OpenManage Enterprise — the appliance that holds the Dell estate. BASE URL
+  # only: the worker appends /api itself. It must be https, and the worker
+  # refuses to start otherwise, because OME serves its API over nothing else.
+  #
+  # No default: an OME URL is per-site, and a wrong one is not a near miss — it
+  # is another site's fleet being discovered, templated and rebooted.
+  omeUrl: ""
+  # The naming service inside the disconnected environment. It reads the
+  # server's data from OME, rounds cores/memory/disk its own way and renames
+  # the server profile; the workflow only calls it and then verifies the name
+  # it produced. Full URL of the rename endpoint, not a base.
+  serverNamerUrl: ""
+  # server-scan's inventory API, INCLUDING the /api/v1 prefix. The worker only
+  # READS it, twice: once to refuse a server a cluster is already using, and
+  # then to wait for server-scan's own OME collector (every 6 h) to list the
+  # finished machine. There is deliberately no refresh call — "done" means
+  # server-scan found it by itself, which is the moment install-server can use
+  # it. Same central service the server-lifecycle limb reads.
+  serverScanUrl: "http://server-scan-api.server-scan.svc.cluster.local/api/v1"
+  # WHICH OME TEMPLATE PROVISIONS WHICH MACHINE: Redfish model -> iDRAC
+  # firmware version -> template name. Per firmware as well as per model
+  # because a template captures attributes that move between firmware
+  # releases, so one template is only ever right for the firmware it was
+  # captured from. A machine whose (model, firmware) is not listed fails its
+  # run by name (TemplateNotConfiguredError) rather than being given a
+  # near-miss template.
+  #
+  # THE TEMPLATE MUST NOT CARRY STORAGE COMPONENTS. A Dell template that
+  # includes them deploys with RAIDresetConfig=True, which WIPES the
+  # controller — every volume on the machine, before this workflow has read
+  # the layout it promised never to destroy. Capture templates from BIOS and
+  # iDRAC components only. The workflow builds the BOSS RAID 1 and converts
+  # the PERC drives itself, afterwards.
+  #
+  # The template is also what ENFORCES root's password: it must carry the
+  # iDRAC user-2 password attribute set to secrets.idracRootPassword, or every
+  # run fails at verifying-root-password with TemplatePasswordNotAppliedError.
+  #
+  #   dellTemplates:
+  #     "PowerEdge R660":
+  #       "7.10.70.00": ocp-r660-idrac-7.10.70.00
+  dellTemplates: {}
+secrets:
+  # Every credential this worker holds. Point existingSecret at a Secret
+  # managed outside this chart — the normal case, and the required one here:
+  # these are real root passwords for the whole Dell estate and they must
+  # never be committed. The placeholders below exist only for a throwaway
+  # environment, and are templated into a Secret ONLY when existingSecret is
+  # cleared.
+  existingSecret: "server-provisioning-credentials"
+  # The OME account the worker discovers devices and deploys templates with,
+  # so it needs OME's device-manager rights over the Dell estate.
+  omeUsername: ""
+  omePassword: ""
+  # ROOT ON THE iDRAC (user slot 2) IS THE ONLY ACCOUNT THIS WORKFLOW TOUCHES.
+  # The OME account on the iDRAC is never read or changed: changing it would
+  # cut OME off from the machine.
+  #
+  # idracRootPassword is the password the Dell template enforces, and the one
+  # tried first — a machine provisioned before, or a re-run, already has it.
+  idracRootPassword: ""
+  # The passwords a server may ARRIVE with, tried in the order given. At most
+  # two, which the worker refuses to start without: iDRAC9 blocks the source
+  # address after 3 failed logins inside its fail window, so the target
+  # password plus two factory ones is exactly one round that cannot trip the
+  # block before the right password has been tried. A run whose whole round is
+  # rejected waits the penalty out before the next one.
+  idracFactoryPasswords: []
+  serverNamerApiToken: ""
+  # A VIEWER token is enough — the worker only ever GETs from server-scan.
+  serverScanApiToken: ""
+activityWorker:
+  image:
+    repository: ghcr.io/team-redbull/server-provisioning-worker
+    # NOT IN GHCR YET. There are no server-provisioning-worker/v* tags in this
+    # repo, so the workflows repo's first build off ITS main both publishes
+    # v1.0.0 and rewrites this line — CI owns it from then on. Until that
+    # build, only branch-tagged images exist, which is the other half of why
+    # no Argo Application points here yet.
+    tag: v1.0.0
+    pullPolicy: IfNotPresent
+  # Two for availability, as the other limbs. Safe despite iDRAC9's per-source
+  # login block: one probe activity tries every candidate password in a single
+  # invocation, so a round is one pod's work and splitting runs across pods
+  # cannot turn two rounds into one block.
+  replicas: 2
