@@ -1,0 +1,42 @@
+
+# The only limb with no RBAC: it writes to no Kubernetes API at all, only out
+# to the iDRACs, OME, the naming service and server-scan. The ServiceAccount
+# exists so the pod is not the namespace's `default` — nothing is bound to it,
+# and nothing should be.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: server-provisioning-worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server-provisioning-worker
+  labels:
+    app: server-provisioning-worker
+spec:
+  replicas: {{ .Values.activityWorker.replicas }}
+  selector:
+    matchLabels:
+      app: server-provisioning-worker
+  template:
+    metadata:
+      labels:
+        app: server-provisioning-worker
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: server-provisioning-worker
+      containers:
+        - name: server-provisioning-worker
+          image: "{{ .Values.activityWorker.image.repository }}:{{ .Values.activityWorker.image.tag }}"
+          imagePullPolicy: {{ .Values.activityWorker.image.pullPolicy }}
+          envFrom:
+            # Temporal connection, shared with the brain and the other limbs —
+            # so the workflows-orchestrator release must be installed first.
+            - configMapRef:
+                name: workflows-orchestrator-config
+            - configMapRef:
+                name: server-provisioning-config
+            - secretRef:
+                name: {{ .Values.secrets.existingSecret | default "server-provisioning-credentials" }}

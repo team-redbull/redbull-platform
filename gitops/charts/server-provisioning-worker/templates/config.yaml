@@ -1,0 +1,56 @@
+{{/*
+These three have no default and are refused HERE rather than left to the pod.
+The worker validates its own settings and dies on a bad one, which is right for
+the process but reads as a crash-looping pod with a traceback; failing the
+render names the missing key in the Argo sync instead, before anything rolls.
+*/}}
+{{- if not .Values.config.omeUrl }}
+{{- fail "config.omeUrl must be set: it names the OpenManage Enterprise appliance whose Dell estate this worker discovers, templates and reboots" }}
+{{- end }}
+{{- if not (hasPrefix "https://" .Values.config.omeUrl) }}
+{{- fail "config.omeUrl must be an https:// URL — OME serves its API over nothing else, and the worker refuses to start on anything else" }}
+{{- end }}
+{{- if not .Values.config.serverNamerUrl }}
+{{- fail "config.serverNamerUrl must be set: the naming service is the author of every server's name, and the run does not finish until OME reads that name back" }}
+{{- end }}
+{{- if not .Values.config.dellTemplates }}
+{{- fail "config.dellTemplates must map at least one Redfish model and iDRAC firmware to an OME template, or every run fails with TemplateNotConfiguredError" }}
+{{- end }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: server-provisioning-config
+data:
+  OME_URL: {{ .Values.config.omeUrl | quote }}
+  SERVER_NAMER_URL: {{ .Values.config.serverNamerUrl | quote }}
+  SERVER_SCAN_URL: {{ .Values.config.serverScanUrl | quote }}
+  # Rendered from structured YAML so the operator reviews the model/firmware
+  # tree next to every other tunable, not as JSON buried in a template.
+  DELL_TEMPLATES: {{ .Values.config.dellTemplates | toJson | quote }}
+{{- if not .Values.secrets.existingSecret }}
+---
+# Only when no Secret is managed outside this chart — a throwaway environment.
+# THE REAL PASSWORDS NEVER BELONG IN GIT: these are root on every Dell in the
+# estate, and anything committed here is readable by everyone with repo access
+# and travels into every clone. Leave secrets.existingSecret set and manage the
+# Secret outside the chart.
+#
+# The placeholders have no defaults on purpose. The factory password every Dell
+# ships with is public knowledge, so defaulting to it would quietly give this
+# worker a working credential for machines nobody meant it to touch.
+{{- if gt (len .Values.secrets.idracFactoryPasswords) 2 }}
+{{- fail "secrets.idracFactoryPasswords holds at most 2 entries: with the target password tried first, a third would be a third failed login, which iDRAC9 answers by blocking this worker's address" }}
+{{- end }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: server-provisioning-credentials
+type: Opaque
+stringData:
+  OME_USERNAME: {{ .Values.secrets.omeUsername | quote }}
+  OME_PASSWORD: {{ .Values.secrets.omePassword | quote }}
+  IDRAC_ROOT_PASSWORD: {{ .Values.secrets.idracRootPassword | quote }}
+  IDRAC_FACTORY_PASSWORDS: {{ .Values.secrets.idracFactoryPasswords | toJson | quote }}
+  SERVER_NAMER_API_TOKEN: {{ .Values.secrets.serverNamerApiToken | quote }}
+  SERVER_SCAN_API_TOKEN: {{ .Values.secrets.serverScanApiToken | quote }}
+{{- end }}
