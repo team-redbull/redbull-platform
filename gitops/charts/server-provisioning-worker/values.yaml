@@ -73,6 +73,11 @@ secrets:
 activityWorker:
   image:
     repository: ghcr.io/team-redbull/server-provisioning-worker
+    # NOT IN GHCR YET. There are no server-provisioning-worker/v* tags in this
+    # repo, so the workflows repo's first build off ITS main both publishes
+    # v1.0.0 and rewrites this line — CI owns it from then on. Until that
+    # build, only branch-tagged images exist, which is the other half of why
+    # no Argo Application points here yet.
     tag: v1.0.0
     pullPolicy: IfNotPresent
   # Two for availability, as the other limbs. Safe despite iDRAC9's per-source
