@@ -78,7 +78,7 @@ activityWorker:
     # v1.0.0 and rewrites this line — CI owns it from then on. Until that
     # build, only branch-tagged images exist, which is the other half of why
     # no Argo Application points here yet.
-    tag: v1.0.4
+    tag: v1.0.5
     pullPolicy: IfNotPresent
   # Two for availability, as the other limbs. Safe despite iDRAC9's per-source
   # login block: one probe activity tries every candidate password in a single
