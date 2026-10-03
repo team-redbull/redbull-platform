@@ -21,7 +21,7 @@ See [gitops/README](gitops/) and `CLAUDE.md §"The CD split"` for the why.
 Service charts are pulled **dynamically from their own repos at sync time**
 (Helmfile `git::` refs). Nothing is vendored here except three small platform-owned
 glue charts under `charts/` (`namespaces`, `htpasswd-idp`, `provider-http`) plus the
-two database wrappers.
+database wrappers.
 
 | Release | Namespace | Source | Depends on |
 |---|---|---|---|
@@ -31,6 +31,7 @@ two database wrappers.
 | `provider-http` | `crossplane-system` | local glue (Provider CR) | crossplane |
 | `provider-http-config` | `crossplane-system` | local glue (ProviderConfig `dhcp-http`) | provider-http |
 | `segments-manager-mongodb` | `segments-manager` | local `charts/segments-manager-mongodb` (Bitnami MongoDB) | namespaces |
+| `cluster-navigator-mongodb` | `cluster-navigator` | local `charts/cluster-navigator-mongodb` (Bitnami MongoDB) | namespaces |
 | `bmh-generator-operator` | `bmh-system` | `team-redbull/BareMetalHostUCS` | namespaces |
 | `server-scanner-dashboard` | `server-scanner` | `team-redbull/ServerScanner` | namespaces |
 | `hosted-cluster-integration` | `crossplane-system` | `team-redbull/dhcp_scope_manager` (`helm`) | provider-http-config |
@@ -50,6 +51,8 @@ One `Application` per row, generated from `gitops/services/<service>/app.yaml` b
 | `segment-lifecycle-worker` | `redbull-workflows` | `gitops/charts/segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; talks to segments-manager, the day1 repo and the DHCP API |
 | `workflows-docs` | `redbull-workflows` | `gitops/charts/workflows-docs` | static docs site for the workflow layer; depends on nothing |
 | `dhcp-scope-manager` | `dhcp-scope-manager` | `gitops/charts/dhcp-scope-manager` | Linux API driving a remote Windows DHCP server over PSRP/WinRM |
+| `cluster-navigator` | `cluster-navigator` | `gitops/charts/cluster-navigator` | every OpenShift cluster, its segments and details (team-redbull/cluster-navigator); uses the Helmfile-managed `cluster-navigator-mongodb` |
+| `cluster-navigator-collector` | `cluster-navigator` | `gitops/charts/cluster-navigator-collector` | CronJob reporting THIS cluster to `cluster-navigator`; reads the server's Secret for its token |
 | `server-scan` | `server-scan` | `gitops/charts/server-scan` | bare-metal inventory platform; **combined** API + UI + MongoDB/Redis subcharts, fake-data collector only |
 
 The app name, the chart path and the Helm release name are all the folder name, so a
@@ -254,11 +257,11 @@ helmfile -l namespace=crossplane-system sync
 ```
 
 Helmfile release names (bootstrap layer): `namespaces`, `htpasswd-idp`, `crossplane`,
-`provider-http`, `provider-http-config`, `segments-manager-mongodb`,
+`provider-http`, `provider-http-config`, `segments-manager-mongodb`, `cluster-navigator-mongodb`,
 `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`. (`temporal`, `segments-manager`, `workflows-orchestrator`,
-`segment-lifecycle-worker`, `workflows-docs`, `dhcp-scope-manager` and `server-scan`
-are Argo CD apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
+`segment-lifecycle-worker`, `workflows-docs`, `dhcp-scope-manager`, `server-scan`,
+`cluster-navigator` and `cluster-navigator-collector` are Argo CD apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
 `helmfile -l`.)
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts

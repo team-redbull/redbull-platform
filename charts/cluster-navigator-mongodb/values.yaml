@@ -1,0 +1,41 @@
+# Same shape as charts/segments-manager-mongodb, with one difference: the passwords
+# are NOT helmfile values. They come from a Secret created out of band, so nothing
+# secret is committed. Create it BEFORE syncing this release:
+#
+#   oc create secret generic cluster-navigator-mongodb -n cluster-navigator \
+#     --from-literal=mongodb-root-password="$(openssl rand -hex 24)" \
+#     --from-literal=mongodb-passwords="$(openssl rand -hex 24)"
+#
+# The app password (mongodb-passwords) also goes into MONGO_URI in the
+# `cluster-navigator` Secret — see gitops/charts/cluster-navigator/values.yaml.
+mongodb:
+  # Deterministic name so cluster-navigator can reference the service.
+  fullnameOverride: cluster-navigator-mongodb
+
+  # Auto-strip runAsUser/fsGroup so it runs under OpenShift's assigned UID range.
+  global:
+    compatibility:
+      openshift:
+        adaptSecurityContext: auto
+
+  architecture: standalone
+
+  auth:
+    enabled: true
+    rootUser: root
+    existingSecret: cluster-navigator-mongodb
+    usernames:
+      - cluster_navigator
+    databases:
+      - cluster-navigator
+
+  persistence:
+    enabled: true
+    # One small document per cluster, so this holds thousands of clusters.
+    size: 2Gi
+    # Empty => cluster default StorageClass.
+    storageClass: ""
+
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1",  memory: 1Gi }

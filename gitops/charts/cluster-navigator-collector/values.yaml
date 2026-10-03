@@ -1,0 +1,83 @@
+# Values for `cluster-navigator-collector`, deployed by the redbull-services
+# ApplicationSet (gitops/services/cluster-navigator-collector/app.yaml). THIS FILE IS THE
+# SINGLE SOURCE OF TRUTH for how the service is configured.
+#
+# The Cluster Navigator collector for THIS cluster: a CronJob that reads the cluster's
+# own APIs (read-only ClusterRole, no privileged SCC), asks Segments Manager which
+# segments the cluster holds, and sends one report to the `cluster-navigator` app.
+# Every other cluster runs the same chart from team-redbull/cluster-navigator
+# (charts/cluster-navigator-collector) pointing at the same server.
+#
+# Same namespace as the server, so it reads the ingest token from the server's own
+# out-of-band Secret (`cluster-navigator`, key INGEST_TOKEN). There is nothing extra to
+# create. The dependency is soft: until the server and that Secret exist a run fails,
+# and the next tick is the retry.
+
+# CI (team-redbull/.github ghcr-build-push.yml) rewrites image.repository and image.tag
+# here on every push to the code repo's main.
+image:
+  repository: ghcr.io/team-redbull/cluster-navigator-collector
+  # CI-managed from here on — do not edit by hand.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# Base URL of the central Cluster Navigator server. Required.
+# The server's Route, not its Service: see dnsPolicy below.
+navigatorUrl: "https://cluster-navigator-cluster-navigator.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com"
+
+# The bearer token the server expects on its ingest endpoint.
+ingestToken:
+  # Use an existing Secret (key below) instead of letting the chart create one.
+  existingSecret: cluster-navigator
+  key: INGEST_TOKEN
+  # Only used when existingSecret is empty. Keep it out of git.
+  value: ""
+
+# Base URL of Segments Manager. The collector asks it which segments this
+# cluster holds and sends them with its report. Empty: no segment is reported.
+# The `segments-manager` app's Route. Its search endpoint needs no token.
+segmentsManagerUrl: "https://segments-manager-segments-manager.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com"
+
+# How the cluster type is decided.
+#   auto      the collector works it out from the cluster's own APIs (recommended)
+#   generic | click | mce | kubevirt   force a type, for a cluster auto gets wrong
+clusterType: auto
+
+# Overrides the cluster name. Empty means it is read from the cluster's DNS config.
+clusterName: ""
+
+# Cron schedule, and how long one run may take.
+schedule: "*/30 * * * *"
+activeDeadlineSeconds: 300
+
+# TLS towards the server and Segments Manager. Point caBundle at a ConfigMap
+# holding the CA that signed their Route certificates, if the image's own
+# trust store lacks it.
+tls:
+  caBundle:
+    configMapName: ""
+    key: ca-bundle.crt
+  insecureSkipVerify: false
+
+# "Default" gives the pod the node's own /etc/resolv.conf. That is how the
+# collector reports the DNS servers the nodes use, with no privileged pod and
+# no hostPath. It also means in-cluster Service names do not resolve, so
+# navigatorUrl and segmentsManagerUrl must be Route or other external
+# hostnames. Set "ClusterFirst" only when they run in this same cluster and
+# you use their Service URLs;
+# the reported DNS servers will then be the cluster DNS, not the nodes'.
+dnsPolicy: Default
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 128Mi
+
+successfulJobsHistoryLimit: 1
+failedJobsHistoryLimit: 3
+nodeSelector: {}
+tolerations: []

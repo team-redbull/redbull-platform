@@ -1,0 +1,126 @@
+# Values for `cluster-navigator`, deployed by the redbull-services ApplicationSet
+# (gitops/services/cluster-navigator/app.yaml). THIS FILE IS THE SINGLE SOURCE OF TRUTH
+# for how the service is configured — see gitops/appset.yaml's own comment.
+#
+# Cluster Navigator (team-redbull/cluster-navigator) is the central server: the API and
+# the web UI behind one Route. A collector CronJob in each cluster sends it a report; on
+# this cluster that collector is the separate `cluster-navigator-collector` app.
+#
+# Its MongoDB is NOT bundled: it is the Helmfile-managed `cluster-navigator-mongodb`
+# release (charts/cluster-navigator-mongodb, service `cluster-navigator-mongodb`), the
+# same split segments-manager uses. The connection string is in the Secret below.
+
+# CI (team-redbull/.github ghcr-build-push.yml) rewrites image.repository and image.tag
+# here on every push to the code repo's main. Keep this block at the top level and named
+# `image` — the workflow's default helm-image-path targets it.
+image:
+  repository: ghcr.io/team-redbull/cluster-navigator
+  # CI-managed from here on — do not edit by hand.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+replicas: 2
+
+# ---------------------------------------------------------------------------
+# Secrets
+# ---------------------------------------------------------------------------
+# NOTHING SECRET IS COMMITTED HERE. Every credential comes from one Secret,
+# `cluster-navigator`, created out of band in the cluster-navigator namespace, the same
+# shape as segments-manager-api-token. Create it BEFORE the first sync, or the pods stay
+# in CreateContainerConfigError:
+#
+#   oc create secret generic cluster-navigator -n cluster-navigator \
+#     --from-literal=MONGO_URI="mongodb://cluster_navigator:$MONGO_APP_PW@cluster-navigator-mongodb.cluster-navigator.svc.cluster.local:27017/cluster-navigator?authSource=cluster-navigator" \
+#     --from-literal=INGEST_TOKEN="$(openssl rand -hex 32)" \
+#     --from-literal=SESSION_SECRET="$(openssl rand -hex 32)" \
+#     --from-literal=SERVICE_TOKENS='{"workflows": {"token": "<long-random>", "roles": ["admin"]}}'
+#
+# $MONGO_APP_PW is the one in the `cluster-navigator-mongodb` Secret (see
+# charts/cluster-navigator-mongodb). INGEST_TOKEN is what every cluster's collector
+# sends; the collector on this cluster reads it from this same Secret. SERVICE_TOKENS
+# is optional. The `lookup` the chart would otherwise use to keep a generated session
+# secret does not run under Argo, which renders without cluster access.
+secret:
+  existingSecret: cluster-navigator
+  # Everything below in this block is read only when existingSecret is empty, which it
+  # never should be here — see above.
+  mongoUri: ""
+  # The bearer token collectors send. Use a long random value.
+  ingestToken: ""
+  # Signs session cookies. Empty: generated once and kept across upgrades.
+  sessionSecret: ""
+  # API tokens for machine callers, for example the workflows:
+  #   workflows: { token: "<long-random>", roles: ["admin"] }
+  serviceTokens: {}
+
+mongo:
+  dbName: cluster-navigator
+  # Reports older than this are deleted, so decommissioned clusters drop out.
+  reportTtlDays: 7
+
+# Segment types shown on the cluster box. Other types (inventory, PXE) appear
+# only in the details. The segments themselves arrive in each cluster's
+# report: the collector looks them up, the server never calls Segments Manager.
+primarySegmentTypes: ["UPI", "HC", "MCE", "HUB"]
+
+# ---------------------------------------------------------------------------
+# Who may see what
+# ---------------------------------------------------------------------------
+auth:
+  # openshift  "log in with OpenShift": users sign in on the cluster's own
+  #            login page with their LDAP credentials. Needs route.enabled.
+  # none       no sign-in: everyone is a client.
+  provider: openshift
+
+  # OpenShift Groups whose members are admins. On LDAP-backed clusters these
+  # Groups come from `oc adm groups sync` or the group-sync operator, not from
+  # the login itself. Check with:  oc get group <name> -o jsonpath='{.users}'
+  # `cluster-admins` is the group the htpasswd-idp release puts the cluster admins in
+  # (environments/default.yaml, htpasswdIdp.argocdRbacGroup).
+  adminGroups: ["cluster-admins"]
+
+  # More kinds of user, each with its own view. A role says which cluster
+  # types it may see and which section audiences it holds; its groups go in
+  # roleGroups. Example, a storage team that sees an extra "storage" section:
+  #
+  #   roles:
+  #     storage:
+  #       clusterTypes: ["*"]
+  #       audiences: ["public", "storage"]
+  #   roleGroups:
+  #     storage: ["storage-team"]
+  roles: {}
+  roleGroups: {}
+
+  # Seconds a group lookup is cached. Removing someone from a group takes
+  # their access away within this time, even if they are signed in.
+  groupCacheSeconds: 60
+  sessionTtlHours: 12
+
+# A cluster whose collector has been silent this long is shown as stale.
+# Keep it at about three collector intervals.
+staleAfterSeconds: 5400
+
+# Link to Grafana on every cluster box. Placeholders: {name}, {domain}
+# (the cluster's base domain) and {clusterId}. Empty: no Grafana link.
+grafanaUrlTemplate: ""
+
+route:
+  enabled: true
+  # Empty: OpenShift assigns one.
+  host: ""
+
+service:
+  port: 8080
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    cpu: "1"
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []

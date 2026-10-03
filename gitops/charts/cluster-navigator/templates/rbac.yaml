@@ -1,0 +1,32 @@
+{{- $groups := include "navigator.groups" . | fromJsonArray -}}
+{{- if and (eq .Values.auth.provider "openshift") $groups }}
+# Group is cluster-scoped, so reading it needs a ClusterRole. resourceNames
+# limits it to the groups that grant a role: the server can read those and
+# nothing else, and cannot list Groups at all.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "navigator.name" . }}-{{ .Release.Namespace }}-groups
+  labels:
+    {{- include "navigator.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["user.openshift.io"]
+    resources: ["groups"]
+    resourceNames: {{ $groups | toJson }}
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "navigator.name" . }}-{{ .Release.Namespace }}-groups
+  labels:
+    {{- include "navigator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "navigator.name" . }}-{{ .Release.Namespace }}-groups
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "navigator.name" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

@@ -14,6 +14,8 @@ namespaces:
   - openshift-cnv         # Argo `openshift-virtualization` app: OLM OperatorGroup +
                           # Subscription + the HyperConverged CR live here
   - kubevirt-redfish      # Argo-managed: the `kubevirt-redfish` app (TP) deploys here
+  - cluster-navigator     # Argo `cluster-navigator` + `cluster-navigator-collector` apps
+                          # + Helmfile cluster-navigator-mongodb release
 
 # OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. A
 # namespace-scoped instance only gets RBAC in namespaces labeled
@@ -35,3 +37,4 @@ argocd:
     - dhcp-scope-manager
     - openshift-cnv
     - kubevirt-redfish
+    - cluster-navigator

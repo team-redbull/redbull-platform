@@ -144,6 +144,17 @@ releases:
   # Only its in-cluster MongoDB stays here: the app's DB must exist before its pods start,
   # and this is a plain Bitnami release with no schema-job pattern of its own.
 
+  # --- cluster-navigator MongoDB (cluster-navigator itself is on Argo CD) -----
+  # Same split as segments-manager: the app (gitops/charts/cluster-navigator) and its
+  # collector (gitops/charts/cluster-navigator-collector) are Argo apps; only the
+  # database is here. Its passwords come from the out-of-band `cluster-navigator-mongodb`
+  # Secret (see the chart's values.yaml), so it takes no helmfile values.
+  - name: cluster-navigator-mongodb
+    namespace: cluster-navigator
+    chart: ./charts/cluster-navigator-mongodb
+    needs:
+      - default/namespaces
+
   # --- workflows + segment-lifecycle MOVED TO ARGO CD --------------------
   # The workflow "brain" (gitops/charts/workflows-orchestrator) and the segment-lifecycle
   # limb (gitops/charts/segment-lifecycle-worker) are now Argo apps

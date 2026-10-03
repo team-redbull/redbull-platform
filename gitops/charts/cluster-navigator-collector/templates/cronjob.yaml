@@ -1,0 +1,101 @@
+{{- $types := list "auto" "generic" "click" "mce" "kubevirt" -}}
+{{- if not (has .Values.clusterType $types) -}}
+{{- fail (printf "clusterType must be one of %s, got %q" (join ", " $types) .Values.clusterType) -}}
+{{- end -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "collector.name" . }}
+  labels:
+    {{- include "collector.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.schedule | quote }}
+  # A run that is still going when the next is due is left alone, not doubled.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 300
+  successfulJobsHistoryLimit: {{ .Values.successfulJobsHistoryLimit }}
+  failedJobsHistoryLimit: {{ .Values.failedJobsHistoryLimit }}
+  jobTemplate:
+    spec:
+      # The next tick is the retry. A failed run stays visible as a failed Job.
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "collector.labels" . | nindent 12 }}
+        spec:
+          serviceAccountName: {{ include "collector.name" . }}
+          restartPolicy: Never
+          dnsPolicy: {{ .Values.dnsPolicy }}
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: collector
+              image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              env:
+                - name: NAVIGATOR_URL
+                  value: {{ required "navigatorUrl is required" .Values.navigatorUrl | quote }}
+                - name: INGEST_TOKEN_FILE
+                  value: /var/run/navigator/{{ .Values.ingestToken.key }}
+                {{- if .Values.segmentsManagerUrl }}
+                - name: SEGMENTS_MANAGER_URL
+                  value: {{ .Values.segmentsManagerUrl | quote }}
+                {{- end }}
+                - name: CLUSTER_TYPE
+                  value: {{ .Values.clusterType | quote }}
+                {{- if .Values.clusterName }}
+                - name: CLUSTER_NAME
+                  value: {{ .Values.clusterName | quote }}
+                {{- end }}
+                {{- if .Values.tls.insecureSkipVerify }}
+                - name: TLS_INSECURE_SKIP_VERIFY
+                  value: "true"
+                {{- else if .Values.tls.caBundle.configMapName }}
+                - name: TLS_CA_FILE
+                  value: /var/run/navigator-ca/{{ .Values.tls.caBundle.key }}
+                {{- end }}
+              volumeMounts:
+                - name: ingest-token
+                  mountPath: /var/run/navigator
+                  readOnly: true
+                {{- if and .Values.tls.caBundle.configMapName (not .Values.tls.insecureSkipVerify) }}
+                - name: navigator-ca
+                  mountPath: /var/run/navigator-ca
+                  readOnly: true
+                {{- end }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              resources:
+                {{- toYaml .Values.resources | nindent 16 }}
+          volumes:
+            - name: ingest-token
+              secret:
+                secretName: {{ include "collector.tokenSecret" . }}
+                # Only the token. The Secret may be the server's own, holding more.
+                items:
+                  - key: {{ .Values.ingestToken.key }}
+                    path: {{ .Values.ingestToken.key }}
+            {{- if and .Values.tls.caBundle.configMapName (not .Values.tls.insecureSkipVerify) }}
+            - name: navigator-ca
+              configMap:
+                name: {{ .Values.tls.caBundle.configMapName }}
+            {{- end }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

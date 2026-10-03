@@ -1,0 +1,11 @@
+apiVersion: v2
+name: cluster-navigator-mongodb
+description: >-
+  Platform-owned glue chart: standalone MongoDB backing cluster-navigator,
+  deployed as its own release so it's ready before cluster-navigator starts.
+type: application
+version: 0.1.0
+dependencies:
+  - name: mongodb
+    version: 19.1.16
+    repository: oci://registry-1.docker.io/bitnamicharts

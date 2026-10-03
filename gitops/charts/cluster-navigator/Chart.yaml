@@ -1,0 +1,8 @@
+apiVersion: v2
+name: cluster-navigator
+description: >-
+  The central Cluster Navigator server: the API, the Segments Manager sync and
+  the web UI, in one Deployment behind one Route.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

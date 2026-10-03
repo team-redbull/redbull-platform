@@ -18,7 +18,8 @@ runs its own Argo architecture over its own mirror of this repo. Do not reintrod
 **Helmfile** (`helmfile.yaml.gotmpl`) owns only the **bootstrap + order-sensitive**
 layer: `namespaces`, `htpasswd-idp` (local-shell postsync hook, see below),
 `crossplane` → `provider-http` → `provider-http-config` (the one genuinely hard
-CRD-before-CR ordering), plus the still-Helmfile-managed `segments-manager-mongodb`,
+CRD-before-CR ordering), plus the still-Helmfile-managed `segments-manager-mongodb`
+and `cluster-navigator-mongodb` (same split, same reason),
 and the not-yet-migrated `bmh-generator-operator`,
 `server-scanner-dashboard`, `hosted-cluster-integration`. Argo CD is **already
 installed** (OpenShift GitOps, namespace `openshift-gitops`) — this platform does not
@@ -27,7 +28,8 @@ deploy it.
 **Argo CD** owns the stateless service layer via **one generic ApplicationSet**
 (`gitops/appset.yaml`) over `gitops/services/<service>/app.yaml`: `temporal`,
 `segments-manager`, `workflows-orchestrator`, `segment-lifecycle-worker`,
-`workflows-docs`, `dhcp-scope-manager`, `server-scan`. Each service's chart is a folder in
+`workflows-docs`, `dhcp-scope-manager`, `server-scan`, `cluster-navigator`,
+`cluster-navigator-collector`. Each service's chart is a folder in
 **this** repo at `gitops/charts/<service>/` — the sole, hand-edited copy; no code repo
 carries a `helm/` chart folder any more, and neither do the retired `helm-charts-*` repos.
 
