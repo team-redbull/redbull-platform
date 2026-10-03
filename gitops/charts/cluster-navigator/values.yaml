@@ -16,12 +16,10 @@
 image:
   repository: ghcr.io/team-redbull/cluster-navigator
   # CI-managed from here on — do not edit by hand.
-  tag: ""
+  tag: "v1.0.0"
   pullPolicy: IfNotPresent
 imagePullSecrets: []
-
 replicas: 2
-
 # ---------------------------------------------------------------------------
 # Secrets
 # ---------------------------------------------------------------------------
@@ -53,17 +51,14 @@ secret:
   # API tokens for machine callers, for example the workflows:
   #   workflows: { token: "<long-random>", roles: ["admin"] }
   serviceTokens: {}
-
 mongo:
   dbName: cluster-navigator
   # Reports older than this are deleted, so decommissioned clusters drop out.
   reportTtlDays: 7
-
 # Segment types shown on the cluster box. Other types (inventory, PXE) appear
 # only in the details. The segments themselves arrive in each cluster's
 # report: the collector looks them up, the server never calls Segments Manager.
 primarySegmentTypes: ["UPI", "HC", "MCE", "HUB"]
-
 # ---------------------------------------------------------------------------
 # Who may see what
 # ---------------------------------------------------------------------------
@@ -72,14 +67,12 @@ auth:
   #            login page with their LDAP credentials. Needs route.enabled.
   # none       no sign-in: everyone is a client.
   provider: openshift
-
   # OpenShift Groups whose members are admins. On LDAP-backed clusters these
   # Groups come from `oc adm groups sync` or the group-sync operator, not from
   # the login itself. Check with:  oc get group <name> -o jsonpath='{.users}'
   # `cluster-admins` is the group the htpasswd-idp release puts the cluster admins in
   # (environments/default.yaml, htpasswdIdp.argocdRbacGroup).
   adminGroups: ["cluster-admins"]
-
   # More kinds of user, each with its own view. A role says which cluster
   # types it may see and which section audiences it holds; its groups go in
   # roleGroups. Example, a storage team that sees an extra "storage" section:
@@ -92,28 +85,22 @@ auth:
   #     storage: ["storage-team"]
   roles: {}
   roleGroups: {}
-
   # Seconds a group lookup is cached. Removing someone from a group takes
   # their access away within this time, even if they are signed in.
   groupCacheSeconds: 60
   sessionTtlHours: 12
-
 # A cluster whose collector has been silent this long is shown as stale.
 # Keep it at about three collector intervals.
 staleAfterSeconds: 5400
-
 # Link to Grafana on every cluster box. Placeholders: {name}, {domain}
 # (the cluster's base domain) and {clusterId}. Empty: no Grafana link.
 grafanaUrlTemplate: ""
-
 route:
   enabled: true
   # Empty: OpenShift assigns one.
   host: ""
-
 service:
   port: 8080
-
 resources:
   requests:
     cpu: 50m
@@ -121,6 +108,5 @@ resources:
   limits:
     cpu: "1"
     memory: 512Mi
-
 nodeSelector: {}
 tolerations: []
