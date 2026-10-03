@@ -1,9 +1,7 @@
 apiVersion: v2
 name: cluster-navigator-collector
 description: >-
-  The Cluster Navigator collector. A CronJob, installed in every OpenShift
-  cluster, that gathers facts about the cluster and reports them to the
-  central Cluster Navigator server.
+  The Cluster Navigator collector. A CronJob, installed in every OpenShift cluster, that gathers facts about the cluster and reports them to the central Cluster Navigator server.
 type: application
-version: 0.1.0
-appVersion: "0.1.0"
+version: 1.0.0
+appVersion: "v1.0.0"
