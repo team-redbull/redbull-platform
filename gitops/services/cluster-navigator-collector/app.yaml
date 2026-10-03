@@ -1,0 +1,13 @@
+# Argo config for `cluster-navigator-collector` — the Cluster Navigator collector for
+# THIS cluster: a CronJob that reports the cluster to the `cluster-navigator` app every
+# 30 minutes. Chart: gitops/charts/cluster-navigator-collector.
+#
+# Its own app, in the same namespace as the server, the way the workflow limbs sit next
+# to the orchestrator in redbull-workflows. The dependency is soft: until the server is
+# up a run fails, and the next tick is the retry. It reads its ingest token from the
+# server's `cluster-navigator` Secret, so it needs no Secret of its own.
+#
+# It owns two CLUSTER-scoped objects: a read-only ClusterRole over the objects it
+# reports on (nodes, storage classes, cluster config, MCE/HyperConverged/HostedCluster)
+# and its binding.
+namespace: cluster-navigator

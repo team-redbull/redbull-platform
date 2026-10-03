@@ -1,0 +1,19 @@
+# Argo config for `cluster-navigator` (team-redbull/cluster-navigator) — one place to see
+# every OpenShift cluster: its segment, router address, version and details. Clients
+# browse it without signing in; members of `cluster-admins` sign in with OpenShift and
+# see more. Chart: gitops/charts/cluster-navigator, the sole hand-edited copy (CI only
+# bumps image.repository/image.tag and Chart.yaml's appVersion/version).
+#
+# Same split as segments-manager. Its MongoDB is NOT bundled: it is the Helmfile-managed
+# `cluster-navigator-mongodb` release (charts/cluster-navigator-mongodb), which must
+# exist before these pods are ready. The namespace comes from the `namespaces` Helmfile
+# release; CreateNamespace stays off (see appset.yaml).
+#
+# ONE out-of-band Secret, `cluster-navigator`, holds MONGO_URI, INGEST_TOKEN,
+# SESSION_SECRET and SERVICE_TOKENS. Nothing secret is committed. It must exist BEFORE
+# the first sync or the pods stay in CreateContainerConfigError; the exact
+# `oc create secret` line is at the top of the chart's values.yaml.
+#
+# It owns two CLUSTER-scoped objects: a ClusterRole that may `get` the admin Group(s)
+# named in values.yaml and nothing else, and its binding.
+namespace: cluster-navigator
