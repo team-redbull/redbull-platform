@@ -378,7 +378,7 @@ metrics:
     # A collector that has not reported for this long fires
     # ServerScanCollectorSilent. Two of the shared 6-hour collector cycles.
     # NOT used for the membership jobs — see membershipSilentForSeconds.
-    silentForSeconds: 43200
+    silentForSeconds: 21600
     # A `nodes`/`agents` membership job that has not completed a run for
     # this long fires ServerScanMembershipRunSilent; a cluster that has
     # not had a server matched for this long fires ServerScanClusterSilent.
@@ -506,9 +506,9 @@ collectors:
     # changes, so the same servers are updated in place. "0" freezes the data.
     epoch: "auto"
 
-    # Every 6 hours. With epoch "auto" a few servers' health changes each run,
+    # Every 3 hours (was 6). With epoch "auto" a few servers' health changes each run,
     # and every run refreshes `last_seen_at` and the audit trail.
-    schedule: "0 */6 * * *"
+    schedule: "0 */3 * * *"
     backoffLimit: 1
     activeDeadlineSeconds: 1800
     resources:
@@ -581,12 +581,15 @@ collectors:
     # are independent, so this bounds wall-clock time without bounding
     # what gets collected.
     domainConcurrency: 4
-    # Every 6 hours, matching every other collector here — a shared,
+    # Overrides the shared INVENTORY_COLLECTOR_CONNECT_TIMEOUT_SECONDS default (15s)
+    # for this CronJob only.
+    timeoutSeconds: 240
+    # Every 3 hours (was 6), matching every other collector here — a shared,
     # uniform cadence across the whole fleet, at the operator's request
     # (2026-09-10). Nothing here needs sub-6h freshness on its own; this
     # opens a session against every collected domain, so it is also the
     # more expensive job on both sides of the wire.
-    schedule: "0 */6 * * *"
+    schedule: "0 */3 * * *"
     backoffLimit: 1
     # Generous: one run covers every domain, several at a time.
     activeDeadlineSeconds: 1800
@@ -628,12 +631,12 @@ collectors:
     # first.
     suspend: true
 
-    # Every 6 hours. Inventory does not change hourly, every sweep is
+    # Every 3 hours (was 6). Inventory does not change hourly, every sweep is
     # thousands of requests against the estate's management plane, and
     # <=6h freshness is ample to drive a 24h staleness check. Rule if you
     # change it: keep the interval at least 4x the measured p95 sweep
     # (`redfish.run_summary`), or `Forbid` starts silently dropping runs.
-    schedule: "0 */6 * * *"
+    schedule: "0 */3 * * *"
 
     # 1, not 0: a ConfigMap mount can lag at pod start and read as
     # "inventory absent", and with no retry that loses a whole collection
@@ -657,8 +660,17 @@ collectors:
     # 30, not the 15 the other collectors use: a documented iLO fleet
     # failed every 10-15 minutes at 3s and was fixed at 20s.
     readTimeoutSeconds: 30
-    hostBudgetSeconds: 180
+    # 600, not 180: raised for pcieGpuDetection below (docs/adr/0016, 2026-09-15).
+    hostBudgetSeconds: 600
     runBudgetSeconds: 3600
+
+    # A BMC that reports GPUs only as PCIeDevice entries (docs/adr/0016) — on by
+    # default in the chart. 250, not the code default of 50: live fleets measured
+    # 133-214 PCIeDevices on one host.
+    pcieGpuDetection: true
+    pcieGpuMaxDevices: 250
+    pcieGpuMaxGpus: 16
+    pcieGpuModels: ""
 
     tls:
       # ConfigMap with a `ca-bundle.crt` key. Empty means the image's
@@ -798,12 +810,12 @@ collectors:
     # Appliances ship a self-signed certificate in an air-gapped estate.
     verifyTls: false
 
-    # Every 6 hours, matching every other collector here — a shared,
+    # Every 3 hours (was 6), matching every other collector here — a shared,
     # uniform cadence across the whole fleet, at the operator's request
     # (2026-09-10; this used to be 4 hours). Three bulk calls per
     # appliance, so the wire cost would support more often than this if
     # a future need for tighter freshness ever outweighs the uniformity.
-    schedule: "0 */6 * * *"
+    schedule: "0 */3 * * *"
     backoffLimit: 1
     activeDeadlineSeconds: 3600
     resources:
@@ -849,12 +861,12 @@ collectors:
     # each), not per appliance.
     bmcConcurrency: 16
 
-    # Every 6 hours, matching redfishStandalone and every other collector
+    # Every 3 hours (was 6), matching redfishStandalone and every other collector
     # here — a shared, uniform cadence across the whole fleet, at the
     # operator's request (2026-09-10). Every sweep is thousands of
     # requests against embedded hardware that degrades when polled, so
     # this one specifically should not go tighter even if others do.
-    schedule: "0 */6 * * *"
+    schedule: "0 */3 * * *"
     backoffLimit: 1
     # Generous: one run sweeps the whole Dell estate a batch of BMCs at a
     # time. Keep it above redfish's runBudgetSeconds so the in-process
@@ -929,13 +941,13 @@ collectors:
     # reaching the endpoint at all.
     readTimeoutSeconds: 60
 
-    # Every 6 hours, matching every other collector here — a shared,
+    # Every 3 hours (was 6), matching every other collector here — a shared,
     # uniform cadence across the whole fleet, at the operator's request
     # (2026-09-10; this used to be hourly). One run covers the whole
     # tenant in a flat number of requests, so the wire cost would support
     # more often than this — unlike the per-BMC Redfish sweep, which
     # genuinely must not be scheduled tighter.
-    schedule: "0 */6 * * *"
+    schedule: "0 */3 * * *"
     backoffLimit: 1
 
     # In-process budget, so a throttled run ends with a summary naming
@@ -1000,6 +1012,12 @@ auth:
   # same fail-fast pattern as `backend.cursorSecret`.
   sessionSecret: ""
   sessionTtlSeconds: 28800
+
+  # Login throttle (docs/adr/0039): after loginMaxFailures wrong passwords for one
+  # username, POST /auth/login answers 429 for loginLockoutSeconds, before any
+  # LDAP bind. Keep it below AD's own lockout threshold. 0 disables.
+  loginMaxFailures: 5
+  loginLockoutSeconds: 900
 
   # Static bearer tokens for a machine caller (e.g. the BMH generator) that
   # can't do an interactive AD login — `Authorization: Bearer <token>`
