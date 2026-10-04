@@ -55,6 +55,10 @@ spec:
                 - name: CLUSTER_NAME
                   value: {{ .Values.clusterName | quote }}
                 {{- end }}
+                {{- if .Values.network }}
+                - name: CLUSTER_NETWORK
+                  value: {{ .Values.network | quote }}
+                {{- end }}
                 {{- if .Values.tls.insecureSkipVerify }}
                 - name: TLS_INSECURE_SKIP_VERIFY
                   value: "true"

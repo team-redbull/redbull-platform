@@ -11,7 +11,6 @@ spec:
     - name: http
       port: {{ .Values.service.port }}
       targetPort: http
-{{- if .Values.route.enabled }}
 ---
 apiVersion: route.openshift.io/v1
 kind: Route
@@ -31,4 +30,3 @@ spec:
   tls:
     termination: edge
     insecureEdgeTerminationPolicy: Redirect
-{{- end }}

@@ -1,6 +1,3 @@
-{{- if and (eq .Values.auth.provider "openshift") (not .Values.route.enabled) -}}
-{{- fail "auth.provider=openshift needs route.enabled: the OAuth redirect goes to the Route" -}}
-{{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,16 +7,14 @@ metadata:
 data:
   DB_NAME: {{ .Values.mongo.dbName | quote }}
   REPORT_TTL_DAYS: {{ .Values.mongo.reportTtlDays | quote }}
-  PRIMARY_SEGMENT_TYPES: {{ join "," .Values.primarySegmentTypes | quote }}
   STALE_AFTER_SECONDS: {{ .Values.staleAfterSeconds | quote }}
   GRAFANA_URL_TEMPLATE: {{ .Values.grafanaUrlTemplate | quote }}
-  AUTH_PROVIDER: {{ .Values.auth.provider | quote }}
-  ADMIN_GROUPS: {{ join "," .Values.auth.adminGroups | quote }}
+  ADMIN_GROUPS: {{ .Values.auth.adminGroups | default list | toJson | quote }}
   {{- if .Values.auth.roles }}
   ROLES: {{ .Values.auth.roles | toJson | quote }}
   {{- end }}
   {{- range $role, $members := .Values.auth.roleGroups }}
-  {{ upper $role }}_GROUPS: {{ join "," $members | quote }}
+  {{ upper $role }}_GROUPS: {{ $members | default list | toJson | quote }}
   {{- end }}
   GROUP_CACHE_SECONDS: {{ .Values.auth.groupCacheSeconds | quote }}
   SESSION_TTL_HOURS: {{ .Values.auth.sessionTtlHours | quote }}

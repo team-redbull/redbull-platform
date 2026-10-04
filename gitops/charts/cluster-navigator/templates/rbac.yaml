@@ -1,5 +1,5 @@
 {{- $groups := include "navigator.groups" . | fromJsonArray -}}
-{{- if and (eq .Values.auth.provider "openshift") $groups }}
+{{- if $groups }}
 # Group is cluster-scoped, so reading it needs a ClusterRole. resourceNames
 # limits it to the groups that grant a role: the server can read those and
 # nothing else, and cannot list Groups at all.

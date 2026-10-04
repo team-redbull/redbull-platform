@@ -41,6 +41,11 @@ segmentsManagerUrl: "https://segments-manager-segments-manager.apps.cluster-2qsc
 clusterType: auto
 # Overrides the cluster name. Empty means it is read from the cluster's DNS config.
 clusterName: ""
+# The network this cluster belongs to, for a site that runs several separate
+# networks (domains), as an air-gapped site does. Nothing in the cluster says
+# which one it is on, so it is set here. It is shown on the cluster and can be
+# filtered on. Empty: no network is shown.
+network: ""
 # Cron schedule, and how long one run may take.
 schedule: "*/30 * * * *"
 activeDeadlineSeconds: 300

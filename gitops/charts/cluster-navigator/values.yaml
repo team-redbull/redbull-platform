@@ -55,18 +55,12 @@ mongo:
   dbName: cluster-navigator
   # Reports older than this are deleted, so decommissioned clusters drop out.
   reportTtlDays: 7
-# Segment types shown on the cluster box. Other types (inventory, PXE) appear
-# only in the details. The segments themselves arrive in each cluster's
-# report: the collector looks them up, the server never calls Segments Manager.
-primarySegmentTypes: ["UPI", "HC", "MCE", "HUB"]
 # ---------------------------------------------------------------------------
 # Who may see what
 # ---------------------------------------------------------------------------
+# Users sign in with OpenShift: on the cluster's own login page, with their
+# LDAP credentials. Anyone who does not sign in is a client.
 auth:
-  # openshift  "log in with OpenShift": users sign in on the cluster's own
-  #            login page with their LDAP credentials. Needs route.enabled.
-  # none       no sign-in: everyone is a client.
-  provider: openshift
   # OpenShift Groups whose members are admins. On LDAP-backed clusters these
   # Groups come from `oc adm groups sync` or the group-sync operator, not from
   # the login itself. Check with:  oc get group <name> -o jsonpath='{.users}'
@@ -95,8 +89,8 @@ staleAfterSeconds: 5400
 # Link to Grafana on every cluster box. Placeholders: {name}, {domain}
 # (the cluster's base domain) and {clusterId}. Empty: no Grafana link.
 grafanaUrlTemplate: ""
+# Always created: OpenShift sign-in redirects back to it.
 route:
-  enabled: true
   # Empty: OpenShift assigns one.
   host: ""
 service:
