@@ -3,5 +3,5 @@ name: cluster-navigator-collector
 description: >-
   The Cluster Navigator collector. A CronJob, installed in every OpenShift cluster, that gathers facts about the cluster and reports them to the central Cluster Navigator server.
 type: application
-version: 1.0.2
-appVersion: "v1.0.2"
+version: 1.0.3
+appVersion: "v1.0.3"
