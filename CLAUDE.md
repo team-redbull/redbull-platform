@@ -578,4 +578,6 @@ defaults may render fine while ours does not.
   `gitops/charts/dhcp-scope-manager`. Note that chart carries a `dhcp-api-token` subchart
   whose committed token is also consumed **outside** this platform (per-MCE standalone
   deploys, and `helm-charts-hostedclusters-setup`'s `dhcp_api.tokenSecretRef`) — see
-  `gitops/SECRETS.md`; its path moved with the chart.
+  `gitops/SECRETS.md`; its path moved with the chart. A copy also lives in
+  `redbull-workflows` as the out-of-band Secret `dhcp-api-token`, read by
+  segment-lifecycle-worker for release-segment's scope DELETE; rotate them together.

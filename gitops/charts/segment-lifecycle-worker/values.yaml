@@ -11,9 +11,20 @@ secrets:
   segmentsManagerApiToken: "dev-token"
   existingDay1Secret: "day1-git-token"
   day1GitToken: "dev-token"
+  # release-segment's DHCP scope DELETE (DHCP_API_TOKEN). A COPY of the DHCP API's
+  # own token (Secret dhcp-scope-manager-token, key api-token, ns dhcp-scope-manager),
+  # created out of band in redbull-workflows like the two above — envFrom cannot
+  # cross namespaces, and the value stays out of this public repo:
+  #   oc create secret generic dhcp-api-token -n redbull-workflows \
+  #     --from-literal=DHCP_API_TOKEN="$(oc get secret dhcp-scope-manager-token \
+  #       -n dhcp-scope-manager -o jsonpath='{.data.api-token}' | base64 -d)"
+  # ROTATE BOTH TOGETHER: a stale copy fails every release with DhcpApiAuthError.
+  # The placeholder below is rendered only for standalone/kind installs.
+  existingDhcpSecret: "dhcp-api-token"
+  dhcpApiToken: "dev-token"
 activityWorker:
   image:
     repository: ghcr.io/team-redbull/segment-lifecycle-worker
-    tag: v0.1.43
+    tag: feat-release-segment-81831ce
     pullPolicy: IfNotPresent
   replicas: 2
