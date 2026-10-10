@@ -27,3 +27,13 @@ type: Opaque
 stringData:
   DAY1_GIT_TOKEN: {{ .Values.secrets.day1GitToken | quote }}
 {{- end }}
+{{- if not .Values.secrets.existingDhcpSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: dhcp-api-token
+type: Opaque
+stringData:
+  DHCP_API_TOKEN: {{ .Values.secrets.dhcpApiToken | quote }}
+{{- end }}

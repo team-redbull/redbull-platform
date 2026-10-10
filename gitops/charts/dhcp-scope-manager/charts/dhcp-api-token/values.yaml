@@ -17,6 +17,10 @@
 # public on GitHub and its token guards the disposable AWS test box only; the
 # air-gapped GitLab copy is private and guards the real server.
 #
+# A COPY lives in redbull-workflows as Secret dhcp-api-token (key DHCP_API_TOKEN),
+# created out of band for release-segment's scope DELETE — see
+# gitops/charts/segment-lifecycle-worker/values.yaml. Rotate it with this one.
+#
 # Rotating: replace the value, commit, then restart the API pod — DHCP_API_TOKEN is
 # env, so a running pod keeps its startup value. Generate with
 #   LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 48
