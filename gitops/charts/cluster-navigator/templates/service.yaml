@@ -19,7 +19,7 @@ metadata:
   labels:
     {{- include "navigator.labels" . | nindent 4 }}
 spec:
-  {{- with .Values.route.host }}
+  {{- with (.Values.route | default dict).host }}
   host: {{ . }}
   {{- end }}
   to:

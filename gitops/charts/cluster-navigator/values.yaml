@@ -18,7 +18,6 @@ image:
   # CI-managed from here on — do not edit by hand.
   tag: "v1.0.4"
   pullPolicy: IfNotPresent
-imagePullSecrets: []
 replicas: 2
 # ---------------------------------------------------------------------------
 # Secrets
@@ -41,16 +40,6 @@ replicas: 2
 # secret does not run under Argo, which renders without cluster access.
 secret:
   existingSecret: cluster-navigator
-  # Everything below in this block is read only when existingSecret is empty, which it
-  # never should be here — see above.
-  mongoUri: ""
-  # The bearer token collectors send. Use a long random value.
-  ingestToken: ""
-  # Signs session cookies. Empty: generated once and kept across upgrades.
-  sessionSecret: ""
-  # API tokens for machine callers, for example the workflows:
-  #   workflows: { token: "<long-random>", roles: ["admin"] }
-  serviceTokens: {}
 mongo:
   dbName: cluster-navigator
   # Reports older than this are deleted, so decommissioned clusters drop out.
@@ -67,18 +56,8 @@ auth:
   # `cluster-admins` is the group the htpasswd-idp release puts the cluster admins in
   # (environments/default.yaml, htpasswdIdp.argocdRbacGroup).
   adminGroups: ["cluster-admins"]
-  # More kinds of user, each with its own view. A role says which cluster
-  # types it may see and which section audiences it holds; its groups go in
-  # roleGroups. Example, a storage team that sees an extra "storage" section:
-  #
-  #   roles:
-  #     storage:
-  #       clusterTypes: ["*"]
-  #       audiences: ["public", "storage"]
-  #   roleGroups:
-  #     storage: ["storage-team"]
-  roles: {}
-  roleGroups: {}
+  # More kinds of user go in auth.roles and auth.roleGroups; see "Adding a new kind
+  # of user" in the cluster-navigator README.
   # Seconds a group lookup is cached. Removing someone from a group takes
   # their access away within this time, even if they are signed in.
   groupCacheSeconds: 60
@@ -86,13 +65,8 @@ auth:
 # A cluster whose collector has been silent this long is shown as stale.
 # Keep it at about three collector intervals.
 staleAfterSeconds: 5400
-# Link to Grafana on every cluster box. Placeholders: {name}, {domain}
-# (the cluster's base domain) and {clusterId}. Empty: no Grafana link.
-grafanaUrlTemplate: ""
-# Always created: OpenShift sign-in redirects back to it.
-route:
-  # Empty: OpenShift assigns one.
-  host: ""
+# Unset here: grafanaUrlTemplate (no Grafana link on the cluster boxes) and route.host
+# (OpenShift assigns the Route's host). See the cluster-navigator README, Configuration.
 service:
   port: 8080
 resources:
@@ -102,5 +76,3 @@ resources:
   limits:
     cpu: "1"
     memory: 512Mi
-nodeSelector: {}
-tolerations: []
