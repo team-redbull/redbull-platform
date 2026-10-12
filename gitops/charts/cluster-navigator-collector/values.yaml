@@ -41,13 +41,14 @@ clusterType: auto
 # Cron schedule, and how long one run may take.
 schedule: "*/30 * * * *"
 activeDeadlineSeconds: 300
-# TLS towards the server and Segments Manager. Set tls.caBundle.configMapName to a
-# ConfigMap holding the CA that signed their Route certificates, if the image's own
-# trust store lacks it.
+# TLS towards the server and Segments Manager. Certificates are not verified:
+# on-site router CAs change too often to pin. To verify, set insecureSkipVerify
+# to false and, if the image's own trust store lacks the CA that signed their
+# Route certificates, set tls.caBundle.configMapName to a ConfigMap holding it.
 tls:
   caBundle:
     key: ca-bundle.crt
-  insecureSkipVerify: false
+  insecureSkipVerify: true
 # "Default" gives the pod the node's own /etc/resolv.conf. That is how the
 # collector reports the DNS servers the nodes use, with no privileged pod and
 # no hostPath. It also means in-cluster Service names do not resolve, so

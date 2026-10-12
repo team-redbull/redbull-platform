@@ -62,6 +62,11 @@ auth:
   # their access away within this time, even if they are signed in.
   groupCacheSeconds: 60
   sessionTtlHours: 12
+  # Do not verify the OAuth server's certificate during the token exchange
+  # (image v1.0.6 and later). On-site router CAs are not in the pod's trust store
+  # and change too often to pin. The API server is still verified against the
+  # cluster CA. Set false where the router certificate is trusted.
+  oauthInsecureSkipVerify: true
 # A cluster whose collector has been silent this long is shown as stale.
 # Keep it at about three collector intervals.
 staleAfterSeconds: 5400
