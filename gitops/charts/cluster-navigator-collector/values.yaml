@@ -18,7 +18,7 @@
 image:
   repository: ghcr.io/team-redbull/cluster-navigator-collector
   # CI-managed from here on — do not edit by hand.
-  tag: "v1.0.10"
+  tag: "v1.0.11"
   pullPolicy: IfNotPresent
 # Base URL of the central Cluster Navigator server. Required.
 # The server's Route, not its Service: see dnsPolicy below.
