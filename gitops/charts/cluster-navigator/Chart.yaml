@@ -3,5 +3,5 @@ name: cluster-navigator
 description: >-
   The central Cluster Navigator server: the API that collectors report to and the web UI, in one Deployment behind one Route.
 type: application
-version: 1.0.8
-appVersion: "v1.0.8"
+version: 1.0.9
+appVersion: "v1.0.9"
