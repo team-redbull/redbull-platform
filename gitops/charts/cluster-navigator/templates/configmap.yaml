@@ -8,6 +8,7 @@ data:
   DB_NAME: {{ .Values.mongo.dbName | quote }}
   REPORT_TTL_DAYS: {{ .Values.mongo.reportTtlDays | quote }}
   STALE_AFTER_SECONDS: {{ .Values.staleAfterSeconds | quote }}
+  CONSOLE_CHECK_INTERVAL_SECONDS: {{ .Values.consoleCheckIntervalSeconds | quote }}
   GRAFANA_URL_TEMPLATE: {{ .Values.grafanaUrlTemplate | default "" | quote }}
   ADMIN_GROUPS: {{ .Values.auth.adminGroups | default list | toJson | quote }}
   {{- if .Values.auth.roles }}
