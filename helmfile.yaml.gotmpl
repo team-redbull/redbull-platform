@@ -8,6 +8,8 @@ environments:
 repositories:
   - name: crossplane-stable
     url: https://charts.crossplane.io/stable
+  - name: hashicorp            # charts/vault's dependency
+    url: https://helm.releases.hashicorp.com
 
 helmDefaults:
   wait: true
@@ -50,6 +52,48 @@ releases:
           {{- range .Values.htpasswdIdp.clusterAdmins }}
           - {{ . | quote }}
           {{- end }}
+
+  # --- Vault: the central secret store (hub only) ---------------------------
+  # Every cluster's External Secrets Operator (the Argo `external-secrets` app) reads from
+  # this one Vault. Bootstrap, not Argo, for the same reasons as crossplane: it is
+  # order-sensitive (ESO's ClusterSecretStores go Ready only once Vault is initialized,
+  # unsealed and configured) and its hooks need an admin kubeconfig.
+  #
+  # wait: false is REQUIRED, not a shortcut. A sealed Vault pod is never Ready (readiness
+  # → 503), and it stays sealed until the postsync hook unseals it. helmDefaults.wait
+  # would block on Ready before running postsync — the same "hook waits on the pods, pods
+  # wait on the hook" deadlock CLAUDE.md documents for the Temporal schema job. The hook
+  # does its own waiting instead (Running → unseal → Ready).
+  #
+  # Hooks run against the CURRENT kube context (like apply-oauth.sh), so point
+  # KUBECONFIG/--kube-context at the hub. See gitops/SECRETS.md for unseal-after-restart.
+  - name: vault
+    namespace: vault
+    chart: ./charts/vault
+    wait: false
+    needs:
+      - default/namespaces
+    hooks:
+      - events: [postsync]
+        showlogs: true
+        command: ./charts/vault/scripts/init-unseal.sh
+        args:
+          - vault
+          - vault
+          - {{ .Values.vault.keyShares | quote }}
+          - {{ .Values.vault.keyThreshold | quote }}
+          - {{ .Values.vault.initSecret | quote }}
+      - events: [postsync]
+        showlogs: true
+        command: ./charts/vault/scripts/configure.sh
+        args:
+          - vault
+          - vault-0
+          - {{ .Values.vault.initSecret | quote }}
+          - {{ .Values.vault.clusters | toJson | quote }}
+          - {{ .Values.vault.eso.namespace | quote }}
+          - {{ .Values.vault.eso.serviceAccount | quote }}
+          - {{ .Values.vault.eso.audience | quote }}
 
   # --- Crossplane core ------------------------------------------------------
   # The upstream chart pins runAsUser/runAsGroup to 65532. On OpenShift that is

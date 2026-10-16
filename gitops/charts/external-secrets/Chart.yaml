@@ -1,0 +1,12 @@
+apiVersion: v2
+name: external-secrets
+description: >-
+  External Secrets Operator (upstream chart, vendored) plus this cluster's `vault`
+  ClusterSecretStore pointing at the hub Vault. Deployed by Argo to the hub AND to every
+  remote cluster; per-cluster values come from that cluster's app.yaml. See gitops/SECRETS.md.
+type: application
+version: 0.1.0
+dependencies:
+  - name: external-secrets
+    version: 2.11.0
+    repository: https://charts.external-secrets.io

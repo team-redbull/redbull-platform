@@ -1,0 +1,27 @@
+# Argo config for `external-secrets` on the HUB — ESO + the `vault` ClusterSecretStore
+# pointing at the in-cluster Vault (Helmfile `vault` release). Chart:
+# gitops/charts/external-secrets. Every remote cluster gets its own copy of this folder
+# (see external-secrets-ocp-64spr). Design + day-2: gitops/SECRETS.md.
+#
+# The namespace is pre-created by the Helmfile `namespaces` release, like every hub app.
+namespace: external-secrets
+
+overrides:
+  spec:
+    syncPolicy:
+      syncOptions:
+        # ESO's CRDs are too large for client-side apply's last-applied annotation
+        # ("metadata.annotations: Too long") — server-side apply has no such annotation.
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+    # ESO's cert-controller writes the webhook CA into these at runtime; without this
+    # selfHeal would fight it and the app would sit OutOfSync forever.
+    ignoreDifferences:
+      - group: admissionregistration.k8s.io
+        kind: ValidatingWebhookConfiguration
+        jqPathExpressions:
+          - .webhooks[]?.clientConfig.caBundle
+      - kind: Secret
+        name: external-secrets-webhook
+        jsonPointers:
+          - /data

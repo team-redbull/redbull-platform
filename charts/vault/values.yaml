@@ -1,0 +1,108 @@
+# Vault on the HUB — the one place secrets are created and managed. Every cluster's
+# External Secrets Operator reads from it (gitops/charts/external-secrets). Init, unseal
+# and configuration (KV mount, per-cluster auth mounts, policies) are NOT templated —
+# they are imperative Vault API calls, done by this release's postsync hooks
+# (scripts/init-unseal.sh, scripts/configure.sh). See gitops/SECRETS.md.
+vault:
+  global:
+    openshift: true
+    # TLS on. The listener serves an OpenShift service-serving cert (below); without it
+    # every in-cluster client — the hub's ESO, raft peers joining — talks plaintext.
+    tlsDisable: false
+
+  # ESO is the delivery mechanism; no sidecar injection, no CSI.
+  injector:
+    enabled: false
+
+  server:
+    # Red Hat-certified UBI build (values.openshift.yaml in the upstream chart). Pulls with
+    # the cluster's global pull secret, and is in the registry.connect.redhat.com mirror set.
+    image:
+      repository: registry.connect.redhat.com/hashicorp/vault
+      tag: "2.0.4-ubi"
+
+    # standbyok: in HA, standbys answer 429 by default, which would mark 2 of 3 pods
+    # NotReady forever. Sealed still answers 503 → NotReady, which is what we want.
+    readinessProbe:
+      path: "/v1/sys/health?standbyok=true&uninitcode=204"
+
+    # TLS: the service-ca operator mints `vault-tls` for Service `vault-active` ONLY.
+    # The chart's generic server.service.annotations land on vault, vault-active AND
+    # vault-standby — three Services claiming one Secret name — so the annotation must sit
+    # on exactly one of them. vault-active is the right one: the Route targets it and the
+    # hub ESO dials it, so both reach the leader by a name the cert actually carries.
+    # The cert's only SAN is vault-active.vault.svc(.cluster.local), so every client sets
+    # that as its TLS server name: VAULT_TLS_SERVER_NAME for the in-pod CLI (127.0.0.1),
+    # leader_tls_servername for raft joins (vault-N.vault-internal).
+    service:
+      active:
+        annotations:
+          service.beta.openshift.io/serving-cert-secret-name: vault-tls
+    extraVolumes:
+      - type: secret
+        name: vault-tls
+    # The service CA (ConfigMap openshift-service-ca.crt, auto-injected into every
+    # namespace) is mounted raw, not via extraVolumes: extraVolumes names the volume after
+    # the object, and a volume name may not contain dots — the pod is rejected outright.
+    volumes:
+      - name: service-ca
+        configMap:
+          name: openshift-service-ca.crt
+    volumeMounts:
+      - name: service-ca
+        mountPath: /vault/userconfig/service-ca
+        readOnly: true
+    extraEnvironmentVars:
+      VAULT_CACERT: /vault/userconfig/service-ca/service-ca.crt
+      VAULT_TLS_SERVER_NAME: vault-active.vault.svc
+
+    # Reencrypt: the router presents the cluster's ingress cert (publicly trusted on the
+    # current hub, so remote ESOs need no CA bundle) and validates Vault's service-ca cert
+    # on the way in. No destinationCACertificate needed — the router trusts the service CA.
+    route:
+      enabled: true
+      activeService: true
+      host: ""          # empty = OpenShift default: vault-vault.<apps domain>
+      tls:
+        termination: reencrypt
+        insecureEdgeTerminationPolicy: Redirect
+
+    dataStorage:
+      size: 10Gi
+
+    ha:
+      enabled: true
+      replicas: 3      # chart default anti-affinity: one per node — needs 3 schedulable nodes
+      raft:
+        enabled: true
+        setNodeId: true
+        config: |
+          ui = true
+
+          listener "tcp" {
+            address         = "[::]:8200"
+            cluster_address = "[::]:8201"
+            tls_cert_file   = "/vault/userconfig/vault-tls/tls.crt"
+            tls_key_file    = "/vault/userconfig/vault-tls/tls.key"
+          }
+
+          storage "raft" {
+            path = "/vault/data"
+            retry_join {
+              leader_api_addr       = "https://vault-0.vault-internal:8200"
+              leader_ca_cert_file   = "/vault/userconfig/service-ca/service-ca.crt"
+              leader_tls_servername = "vault-active.vault.svc"
+            }
+            retry_join {
+              leader_api_addr       = "https://vault-1.vault-internal:8200"
+              leader_ca_cert_file   = "/vault/userconfig/service-ca/service-ca.crt"
+              leader_tls_servername = "vault-active.vault.svc"
+            }
+            retry_join {
+              leader_api_addr       = "https://vault-2.vault-internal:8200"
+              leader_ca_cert_file   = "/vault/userconfig/service-ca/service-ca.crt"
+              leader_tls_servername = "vault-active.vault.svc"
+            }
+          }
+
+          service_registration "kubernetes" {}

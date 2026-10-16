@@ -1,0 +1,50 @@
+# External Secrets Operator + the `vault` ClusterSecretStore for ONE cluster.
+#
+# The defaults below are the HUB's (Vault is in-cluster). A remote cluster overrides
+# clusterName, vault.server and vault.caConfigMap in its gitops/services/<app>/app.yaml —
+# see gitops/services/external-secrets-ocp-64spr/app.yaml.
+
+# This cluster's name in Vault: logs in at auth/k8s-<clusterName>, reads
+# kv/clusters/<clusterName>/ + kv/shared/. MUST equal the `name` of this cluster's entry in
+# environments/default.yaml `vault.clusters` (Vault side, configured by charts/vault).
+clusterName: hub
+
+vault:
+  # Hub: the leader's Service, over the service-ca cert Vault serves (its only SAN is
+  # vault-active.vault.svc). Remote: the hub Vault Route, https://vault-vault.<hub apps domain>.
+  server: https://vault-active.vault.svc:8200
+  # CA that signs vault.server's cert, as a ConfigMap in THIS namespace.
+  # Hub: openshift-service-ca.crt (auto-injected into every namespace by OpenShift).
+  # Remote: "" when the hub's ingress cert is publicly trusted (it is, on the current hub);
+  # otherwise create a ConfigMap with the hub's ingress CA and name it here.
+  caConfigMap: openshift-service-ca.crt
+  caKey: service-ca.crt
+  path: kv            # KV v2 mount
+  role: external-secrets
+  # ServiceAccount ESO presents to Vault, and the audience its token is minted for. Must
+  # match environments/default.yaml vault.eso.{serviceAccount,audience}.
+  serviceAccount: vault-auth
+  audience: vault
+  # system:auth-delegator for vault-auth. Required on REMOTE clusters (Vault reviews the
+  # login with the client's own JWT — see charts/vault/scripts/configure.sh); not needed on
+  # the hub, where Vault reviews with its own SA. Harmless either way, so on by default.
+  authDelegator: true
+
+external-secrets:
+  fullnameOverride: external-secrets
+  installCRDs: true
+
+  # OpenShift: the upstream chart pins runAsUser: 1000 on all three Deployments, which the
+  # restricted-v2 SCC rejects (each namespace gets its own UID range) — the ReplicaSets
+  # never create a pod. `force` makes the chart drop runAsUser/runAsGroup/fsGroup so the
+  # SCC assigns in-range IDs; the rest of the upstream hardening (non-root, drop ALL,
+  # read-only root FS, seccomp) stays. Not `auto`: that detects OpenShift from the API
+  # versions at render time, which a plain `helm template` (the pre-push check in
+  # CLAUDE.md) does not have — the check would render a manifest the cluster rejects.
+  # Not the `runAsUser: null` trick used for crossplane either: a null in a PARENT chart's
+  # values does not delete a subchart default (Helm), verified — it still rendered 1000.
+  # Set "disabled" on vanilla Kubernetes.
+  global:
+    compatibility:
+      openshift:
+        adaptSecurityContext: force

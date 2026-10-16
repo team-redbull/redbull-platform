@@ -16,6 +16,8 @@ namespaces:
   - kubevirt-redfish      # Argo-managed: the `kubevirt-redfish` app (TP) deploys here
   - cluster-navigator     # Argo `cluster-navigator` + `cluster-navigator-collector` apps
                           # + Helmfile cluster-navigator-mongodb release
+  - vault                 # Helmfile `vault` release (hub only) — see gitops/SECRETS.md
+  - external-secrets      # Argo `external-secrets` app (ESO + the `vault` ClusterSecretStore)
 
 # OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. A
 # namespace-scoped instance only gets RBAC in namespaces labeled
@@ -38,3 +40,4 @@ argocd:
     - openshift-cnv
     - kubevirt-redfish
     - cluster-navigator
+    - external-secrets

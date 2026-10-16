@@ -84,3 +84,53 @@ providerHttp:
 # chart guards on dhcp_values.scopeName).
 dhcp:
   apiUrl: "https://dhcp-api.lab.local"   # TODO: real DHCP API endpoint
+
+# Vault — the hub's central secret store (charts/vault). Its postsync hooks initialize,
+# unseal and configure it; nothing here is a secret. See gitops/SECRETS.md.
+vault:
+  keyShares: 5
+  keyThreshold: 3
+  # LAB MODE: init output (unseal keys + root token) is stored in this Secret in the vault
+  # namespace so the hook can unseal unattended. Set "" for anything long-lived — the hook
+  # then refuses to init, and you init by hand and keep the keys offline (SECRETS.md).
+  initSecret: vault-init
+  # Who may log in to each cluster's auth mount: the vault-auth ServiceAccount that
+  # gitops/charts/external-secrets creates, with a token minted for this audience.
+  # Must match that chart's values (vault.serviceAccount / vault.audience).
+  eso:
+    namespace: external-secrets
+    serviceAccount: vault-auth
+    audience: vault
+  # One entry per cluster whose ESO reads from this Vault. `name` is the cluster's name in
+  # Vault (auth/k8s-<name>, policy cluster-<name>, kv/clusters/<name>/) and MUST equal
+  # `clusterName` in that cluster's external-secrets app. `local: true` = the cluster Vault
+  # runs on. A remote cluster needs its API URL and the CA that signs that URL's cert
+  # (public data — on OpenShift, kube-apiserver-lb-signer from
+  # `oc get cm -n openshift-kube-apiserver kube-apiserver-server-ca`). Adding a cluster:
+  # see gitops/SECRETS.md "Onboarding a cluster".
+  clusters:
+    - name: hub
+      local: true
+    - name: ocp-64spr
+      host: https://api.cluster-64spr.dyn.redhatworkshops.io:6443
+      caCert: |
+        -----BEGIN CERTIFICATE-----
+        MIIDMjCCAhqgAwIBAgIIANbBlIuaqUAwDQYJKoZIhvcNAQELBQAwNzESMBAGA1UE
+        CxMJb3BlbnNoaWZ0MSEwHwYDVQQDExhrdWJlLWFwaXNlcnZlci1sYi1zaWduZXIw
+        HhcNMjYwOTE4MDY1NTQ1WhcNMzYwOTE1MDY1NTQ1WjA3MRIwEAYDVQQLEwlvcGVu
+        c2hpZnQxITAfBgNVBAMTGGt1YmUtYXBpc2VydmVyLWxiLXNpZ25lcjCCASIwDQYJ
+        KoZIhvcNAQEBBQADggEPADCCAQoCggEBANsQ1Tea6g2ZdNIKJqzL9XCfUbaJfaZA
+        AKIr/Sz4LoNEnpEcRuDcG6PHIzsKjYMbaqPFO74KzOF8ORfnaAK7ohCF5BR8Xtlq
+        Dm54pVFUbuZHoqz3j9MRzsgicuKGkt/p8T29JNANJhHPrIAGtBMDAQxnQ5z58uTZ
+        egKnRg4fzUTi3/DMAxP6vxAwsJgKXRc9CzIVcTgUJR50IGJdVggbYWI9Cic4VwZ3
+        zmoXzeDeGLInzUHoxSEd2xx3S+n/vLRARFA2NjzQjHXDyOz68bXOKWdNTu7z65Qk
+        7oOB33kghWF9yFeN8pP91Wh+HRQam4HWNV3c9lfFrQLPSsKOrjbzuqsCAwEAAaNC
+        MEAwDgYDVR0PAQH/BAQDAgKkMA8GA1UdEwEB/wQFMAMBAf8wHQYDVR0OBBYEFPe3
+        jEpezWL+J2tuuNYmajnw6+SEMA0GCSqGSIb3DQEBCwUAA4IBAQCVfVrVa8tzh3J8
+        4mrQF1AkutJvSpuYCMeAEK1ZERlgEiD2h8Y3tKNuJZXJoy0dpEFnXUWUTYWgd6/b
+        Qgyel77Fgvp1J7rKmgmvLgJSnNYbGg5UTkIWkQwd9bx/jA8x8KyFEAQ9NINOAqi3
+        g0fq1eHhu0mLGmKu7JzqX2qv7USf0ZODW0sMmJ3jLumcRBHxt9UpTm8V/xStHCLT
+        srRsinwI9oD5S5RRpd7wgzjLFth4MjpQmBakN36lfH33n0juIdDVgJRi8H5NQYsA
+        zeHPLduuTMeWuoketeq3XUJ8e5eTuZ2qLg3quOWLmAjVWBADa4H72Lo2QyLs1AL8
+        EIqfFOTY
+        -----END CERTIFICATE-----

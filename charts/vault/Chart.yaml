@@ -1,0 +1,12 @@
+apiVersion: v2
+name: vault
+description: >-
+  Platform-owned wrapper around the HashiCorp Vault chart: the hub's central secret
+  store (HA, integrated Raft storage, TLS from the OpenShift service CA). Read by the
+  External Secrets Operator on every cluster — see gitops/SECRETS.md.
+type: application
+version: 0.1.0
+dependencies:
+  - name: vault
+    version: 0.34.1
+    repository: https://helm.releases.hashicorp.com
