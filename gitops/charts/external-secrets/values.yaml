@@ -10,6 +10,12 @@
 clusterName: hub
 
 vault:
+  # Render the `vault` ClusterSecretStore. Under Argo leave it on (sync waves order the CRD
+  # first). For a plain `helm install`, the FIRST install must set it false: Helm resolves
+  # every kind before applying anything, and ClusterSecretStore does not exist until this
+  # same release has installed its CRD ("no matches for kind"). Then upgrade with it true.
+  # See gitops/SECRETS.md "Onboarding a cluster".
+  createClusterSecretStore: true
   # Hub: the leader's Service, over the service-ca cert Vault serves (its only SAN is
   # vault-active.vault.svc). Remote: the hub Vault Route, https://vault-vault.<hub apps domain>.
   server: https://vault-active.vault.svc:8200
