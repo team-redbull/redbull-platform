@@ -27,6 +27,8 @@ database wrappers.
 |---|---|---|---|
 | `namespaces` | (cluster) | local `charts/namespaces` | — |
 | `htpasswd-idp` | `openshift-config` | local `charts/htpasswd-idp` | — |
+| `argocd-rbac` | (cluster) | local `charts/argocd-rbac` | — (grants hub Argo CRD/webhook/ESO writes) |
+| `vault` | `vault` | local `charts/vault` (HashiCorp Vault, HA raft) | namespaces — **hub only**; hooks init/unseal/configure. See [gitops/SECRETS.md](gitops/SECRETS.md) |
 | `crossplane` | `crossplane-system` | crossplane-stable repo | namespaces |
 | `provider-http` | `crossplane-system` | local glue (Provider CR) | crossplane |
 | `provider-http-config` | `crossplane-system` | local glue (ProviderConfig `dhcp-http`) | provider-http |
@@ -54,6 +56,7 @@ One `Application` per row, generated from `gitops/services/<service>/app.yaml` b
 | `cluster-navigator` | `cluster-navigator` | `gitops/charts/cluster-navigator` | every OpenShift cluster, its segments and details (team-redbull/cluster-navigator); uses the Helmfile-managed `cluster-navigator-mongodb` |
 | `cluster-navigator-collector` | `cluster-navigator` | `gitops/charts/cluster-navigator-collector` | CronJob reporting THIS cluster to `cluster-navigator`; reads the server's Secret for its token |
 | `server-scan` | `server-scan` | `gitops/charts/server-scan` | bare-metal inventory platform; **combined** API + UI + MongoDB/Redis subcharts, fake-data collector only |
+| `external-secrets` | `external-secrets` | `gitops/charts/external-secrets` | ESO + the `vault` ClusterSecretStore (hub Vault). Remote clusters run the same chart; `ocp-64spr` installs it with plain helm (gitops/SECRETS.md §4) |
 
 The app name, the chart path and the Helm release name are all the folder name, so a
 service's resources are named the same in every cluster.
@@ -104,7 +107,8 @@ Everything under [gitops/](gitops/):
 - [gitops/overrides/](gitops/overrides/) — the escape hatch for a per-cluster/per-site
   value override. **Empty today**, and nothing references it; see its README for why the
   files live there and not next to `app.yaml`.
-- [gitops/SECRETS.md](gitops/SECRETS.md) — the (not-yet-wired) ESO + Vault plan.
+- [gitops/SECRETS.md](gitops/SECRETS.md) — hub Vault + ESO on every cluster: layout,
+  operating Vault, onboarding a cluster, and the recipe for migrating a chart's secrets.
 - [gitops/OLM.md](gitops/OLM.md) — how OLM works: CatalogSource, Subscription,
   OperatorGroup, InstallPlan, CSV, the `oc mirror`/IDMS pipeline, and the debug kit.
   Background for the operator charts; `gitops/charts/operator-olm/README.md` is the

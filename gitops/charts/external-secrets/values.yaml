@@ -1,8 +1,8 @@
 # External Secrets Operator + the `vault` ClusterSecretStore for ONE cluster.
 #
 # The defaults below are the HUB's (Vault is in-cluster). A remote cluster overrides
-# clusterName, vault.server and vault.caConfigMap in its gitops/services/<app>/app.yaml —
-# see gitops/services/external-secrets-ocp-64spr/app.yaml.
+# clusterName, vault.server, vault.caConfigMap and vault.apiServerAudience, via helm
+# --set or an Argo app's parameters. See gitops/SECRETS.md §4 for both.
 
 # This cluster's name in Vault: logs in at auth/k8s-<clusterName>, reads
 # kv/clusters/<clusterName>/ + kv/shared/. MUST equal the `name` of this cluster's entry in
@@ -31,6 +31,15 @@ vault:
   # match environments/default.yaml vault.eso.{serviceAccount,audience}.
   serviceAccount: vault-auth
   audience: vault
+  # REMOTE clusters only: this cluster's API-server audience (OpenShift:
+  # https://kubernetes.default.svc), added as a SECOND audience on the login token.
+  # On a remote cluster Vault keeps no reviewer JWT; it calls TokenReview with the login
+  # token itself as the bearer credential. The API server rejects a token minted only for
+  # `vault` with 401 (verified on ocp-64spr), so Vault answers every login with a bare
+  # "permission denied". With both audiences the API server accepts the token, and Vault's
+  # role still requires `vault`. Leave it "" on the hub, where Vault reviews with its own
+  # pod token.
+  apiServerAudience: ""
   # system:auth-delegator for vault-auth. Required on REMOTE clusters (Vault reviews the
   # login with the client's own JWT — see charts/vault/scripts/configure.sh); not needed on
   # the hub, where Vault reviews with its own SA. Harmless either way, so on by default.

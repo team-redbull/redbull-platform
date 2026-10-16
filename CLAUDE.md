@@ -509,6 +509,47 @@ The air-gapped GitLab now differs only by the **host** — the charts travel wit
 so there is no flat-vs-subgroup naming translation left. Change the two `repoURL`s in
 `gitops/appset.yaml` and `sourceRepos` in `gitops/project.yaml`. See README.
 
+## Secrets: hub Vault (Helmfile) + ESO everywhere (Argo) — the non-obvious parts
+
+Full design and day-2 in `gitops/SECRETS.md`; this is only what would get "fixed" back
+into a broken state.
+
+- **ESO comes from the upstream Helm chart, not OLM** (the user's choice), vendored as a
+  `.tgz` like every Argo subchart. `adaptSecurityContext: force` is what makes it admit
+  under `restricted-v2`. The `runAsUser: null` trick used for crossplane does **not** work
+  here: a null in a parent chart's values does not delete a subchart default (verified, it
+  still rendered 1000). And `auto` detects OpenShift from render-time API versions, which a
+  plain `helm template` lacks.
+- **The `vault` release must keep `wait: false`.** Sealed pods are never Ready, and only the
+  postsync hook unseals them. With `wait`, Helm waits for Ready before postsync: a deadlock.
+- **Vault's TLS cert is minted for Service `vault-active` only**, through
+  `server.service.active.annotations`. The chart's generic `server.service.annotations` hits
+  three Services that would all claim one Secret. Hence `VAULT_TLS_SERVER_NAME` /
+  `leader_tls_servername = vault-active.vault.svc`, and the hub ESO dials `vault-active`.
+  The service CA is mounted through raw `volumes`, because `extraVolumes` names the volume
+  after the ConfigMap and `openshift-service-ca.crt` has dots, so the pod was rejected.
+- **`charts/argocd-rbac` is required on the hub.** The OpenShift GitOps controller cannot
+  write CRDs or webhook configurations by default, so the external-secrets app failed with
+  `forbidden` until it existed. It is bootstrap, because Argo can't grant itself the right to sync.
+- **Remote clusters keep no reviewer JWT in Vault.** `disable_local_ca_jwt` makes Vault
+  review each login with the client's own token, which is why `vault-auth` carries
+  `system:auth-delegator`. Vault must reach each remote API URL. **Because the login token
+  is the bearer for that review, it must also carry the API server's audience**
+  (`vault.apiServerAudience=https://kubernetes.default.svc`). A `vault`-only token gets 401
+  from the remote API, and Vault turns that into a bare `permission denied` on login, with
+  nothing in Vault's log saying why (verified on ocp-64spr). Don't "tidy" the second
+  audience away. The hub doesn't need it, because Vault reviews with its own pod token there.
+- **`ocp-64spr` gets ESO by plain `helm install`, not hub Argo** (user's choice for a test
+  cluster). Hub-Argo push for remote clusters is documented in SECRETS.md §4 and works, but
+  registering a cluster also feeds every `clusters: {}` ApplicationSet on the hub.
+- **`creationPolicy: Owner` silently takes over a hand-made Secret of the same name and
+  replaces all its data** (verified on ESO 2.11, no error). Keys missing from Vault vanish.
+  SECRETS.md §5.3.
+- **The `namespaces` release cannot currently be synced on the hub (`ocp-2qsc5`).**
+  `openshift-cnv` exists there without Helm ownership metadata (pre-existing, not caused by
+  the secrets work). `vault` + `external-secrets` were created by hand with the release's
+  ownership annotations, so they adopt cleanly once that is fixed.
+
 ## Verifying a chart before pushing: `helm template` is not enough
 
 Every Argo app renders from `gitops/charts/<service>/`, so a bad render is a
