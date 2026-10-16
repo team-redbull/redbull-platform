@@ -53,6 +53,14 @@ releases:
           - {{ . | quote }}
           {{- end }}
 
+  # --- Extra cluster-scoped grants for the hub's Argo CD ------------------
+  # The OpenShift GitOps controller cannot write CRDs, webhook configurations or ESO's
+  # cluster-scoped CRs out of the box, so the external-secrets app could not sync at all.
+  # Bootstrap because Argo cannot grant itself the right to sync. See the chart.
+  - name: argocd-rbac
+    namespace: openshift-gitops
+    chart: ./charts/argocd-rbac
+
   # --- Vault: the central secret store (hub only) ---------------------------
   # Every cluster's External Secrets Operator (the Argo `external-secrets` app) reads from
   # this one Vault. Bootstrap, not Argo, for the same reasons as crossplane: it is

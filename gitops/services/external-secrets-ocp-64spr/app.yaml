@@ -1,0 +1,47 @@
+# Argo config for ESO on the REMOTE cluster `ocp-64spr`, run by the HUB's Argo CD.
+# Same chart as the hub (gitops/charts/external-secrets); what differs is where it lands
+# and how it reaches Vault — over the hub Vault Route, logging in at auth/k8s-ocp-64spr.
+#
+# TO ADD A CLUSTER: copy this folder to external-secrets-<cluster>/, change the three
+# `ocp-64spr` occurrences, register the cluster in hub Argo, and add it to
+# environments/default.yaml `vault.clusters` (then re-run the Helmfile `vault` release so
+# Vault gets its auth mount + policy). Step by step: gitops/SECRETS.md "Onboarding a cluster".
+namespace: external-secrets
+destination:
+  cluster: ocp-64spr          # as registered in hub Argo CD (cluster Secret `name`)
+
+overrides:
+  spec:
+    source:
+      # The folder name no longer matches a chart, so name the chart explicitly; and keep
+      # the release name `external-secrets` so resource names match the hub's
+      # (the ignoreDifferences below names the webhook Secret by that).
+      path: gitops/charts/external-secrets
+      helm:
+        releaseName: external-secrets
+        parameters:
+          # MUST equal this cluster's `name` in environments/default.yaml vault.clusters.
+          - name: clusterName
+            value: ocp-64spr
+          - name: vault.server
+            value: https://vault-vault.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com
+          # The hub's ingress cert is publicly trusted, so the system CA bundle verifies it.
+          - name: vault.caConfigMap
+            value: ""
+    syncPolicy:
+      syncOptions:
+        - ServerSideApply=true
+        - RespectIgnoreDifferences=true
+        # No Helmfile bootstrap runs on a remote cluster, so nothing else pre-creates the
+        # namespace — Argo is its only owner there (CLAUDE.md "If you do want Argo to
+        # create namespaces itself").
+        - CreateNamespace=true
+    ignoreDifferences:
+      - group: admissionregistration.k8s.io
+        kind: ValidatingWebhookConfiguration
+        jqPathExpressions:
+          - .webhooks[]?.clientConfig.caBundle
+      - kind: Secret
+        name: external-secrets-webhook
+        jsonPointers:
+          - /data

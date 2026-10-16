@@ -1,0 +1,7 @@
+apiVersion: v2
+name: argocd-rbac
+description: >-
+  Cluster-scoped grants the hub's Argo CD instance needs beyond what the OpenShift GitOps
+  operator gives it — today, what the external-secrets app installs.
+type: application
+version: 0.1.0

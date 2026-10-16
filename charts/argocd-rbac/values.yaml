@@ -1,0 +1,5 @@
+# ServiceAccounts of the Argo CD instance that syncs the redbull-services ApplicationSet.
+# Only the application-controller applies manifests; the server is read-only already.
+serviceAccounts:
+  - name: openshift-gitops-argocd-application-controller
+    namespace: openshift-gitops

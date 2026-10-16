@@ -1,0 +1,50 @@
+# The ClusterRole the GitOps operator gives a cluster-config instance is get/list/watch on
+# arbitrary API groups, and full verbs only on a fixed list (rbac, namespaces, OLM,
+# config.openshift.io, storage, …). Anything cluster-scoped outside that list fails to
+# sync with "... is forbidden: cannot patch resource ... at the cluster scope" — the same
+# gap provider-http's argocd-rbac.yaml closes for Crossplane Requests.
+#
+# Here, not in the external-secrets chart, because Argo cannot grant itself the right to
+# sync the chart that would grant it: this has to exist BEFORE the first sync, i.e. it is
+# bootstrap. Remote clusters do not need it — hub Argo reaches them as argocd-manager
+# (cluster-admin, scripts/register-argo-cluster.sh).
+#
+# What each rule is for:
+#   CRDs                     ESO ships ~25 CRDs (installCRDs: true). Full verbs because
+#                            Argo prunes them too. This is the broad one: writing CRDs
+#                            means being able to change any CRD's schema in the cluster.
+#   webhook configurations   ESO's validating webhooks (secretstore-/externalsecret-validate).
+#   external-secrets.io,     the cluster-scoped CRs: ClusterSecretStore `vault`, and any
+#   generators.…             ClusterExternalSecret / ClusterPushSecret / ClusterGenerator
+#                            a service later declares. Namespaced ExternalSecrets need
+#                            nothing here — the managed-by namespace RoleBinding plus ESO's
+#                            aggregated edit role cover them.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: argocd-redbull-platform-extra
+rules:
+  - apiGroups: ["apiextensions.k8s.io"]
+    resources: ["customresourcedefinitions"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["admissionregistration.k8s.io"]
+    resources: ["validatingwebhookconfigurations", "mutatingwebhookconfigurations"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["external-secrets.io", "generators.external-secrets.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: argocd-redbull-platform-extra
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: argocd-redbull-platform-extra
+subjects:
+  {{- range .Values.serviceAccounts }}
+  - kind: ServiceAccount
+    name: {{ .name }}
+    namespace: {{ .namespace }}
+  {{- end }}
