@@ -120,13 +120,37 @@ long-lived:
    then `vault token revoke <root>`. You can always mint a new root token with
    `vault operator generate-root` and the unseal keys.
 
-**After a pod restart, Vault comes back SEALED.** That happens on a node drain, an upgrade,
-an eviction or an OOM. A sealed pod is NotReady (503). While the leader is sealed, every
-ClusterSecretStore turns not-Ready and ESO stops refreshing. **Existing Kubernetes Secrets
-stay as they are**, so running pods are unaffected; only changes stop flowing. To recover,
-re-run `helmfile -l name=vault sync`. In lab mode it unseals by itself; otherwise pass
-`VAULT_UNSEAL_KEYS`. This is the main ongoing cost of self-hosted Vault without a cloud KMS
-(see [§11](#11-known-gaps)).
+**After a pod restart, Vault comes back SEALED.** The key that decrypts its data lives
+only in memory. That happens on a node drain, an OpenShift upgrade, an eviction or an OOM.
+A sealed pod is NotReady (503).
+- **One pod sealed:** no outage. The other two keep a raft majority, and a new leader is
+  elected within seconds.
+- **Two or more sealed:** quorum is lost, so every ClusterSecretStore turns not-Ready and ESO
+  stops refreshing. **Existing Kubernetes Secrets stay as they are**, so running pods are
+  unaffected; only changes stop flowing.
+
+**Auto-unseal sidecar (lab mode).** Each Vault pod carries an `auto-unseal` container
+(`charts/vault/values.yaml` `server.extraContainers`). Every 5s it checks its own pod and,
+if sealed, submits the threshold keys from the `unseal-keys` field of `vault/vault-init`. It
+mounts only that field: no root token, no `init.json`. The Vault container mounts none
+of it. Verified on the hub:
+- each pod deleted alone came back unsealed and Ready in about 20s;
+- deleting two pods at once (quorum lost, the leader included) recovered fully in 26s,
+  with all three raft peers back and both clusters' stores Ready again;
+- no hook or human was involved in either case.
+
+Watch it with `oc logs -n vault vault-0 -c auto-unseal`.
+
+It changes **nothing** about the security model: the keys were already in that Secret. With
+`vault.initSecret: ""` the Secret doesn't exist and the sidecar idles. Unsealing is then
+manual again: `VAULT_UNSEAL_KEYS="k1 k2 k3" helmfile -l name=vault sync` (the hook handles
+every sealed pod; re-running is always safe). For production air-gapped, replace the
+sidecar with a real trust root: **transit** auto-unseal from a small separate Vault, or an
+**HSM** (PKCS#11 needs Vault Enterprise; OpenBao has it in the community build). See [§11](#11-known-gaps).
+
+Changing the sidecar block needs each pod **deleted by hand**: the StatefulSet's
+`updateStrategy` is `OnDelete`, so a sync alone does not restart anything. Delete them one
+at a time; each comes back and unseals itself.
 
 **Why `wait: false`** on the release: a sealed pod is never Ready, and only the postsync
 hook unseals it. `helmDefaults.wait` would wait for Ready before running postsync, which
@@ -450,9 +474,11 @@ Start with `oc get clustersecretstore vault -o yaml` (the condition message) and
 
 ## 11. Known gaps
 
-- **Lab-mode keys.** The unseal keys and root token are in `vault/vault-init` ([§3](#3-operating-vault)).
-- **Manual unseal after a restart.** Remove that by auto-unsealing (transit from a second
-  small Vault, or an HSM/KMS where one exists).
+- **Lab-mode keys.** The unseal keys and root token are in `vault/vault-init` ([§3](#3-operating-vault)),
+  and the auto-unseal sidecar depends on them being there. Anyone who can read that Secret,
+  or an etcd backup, can unseal Vault and read everything. At minimum for production: etcd
+  encryption on, the root token removed from the Secret, tight RBAC on `vault`. Better:
+  replace the sidecar with transit auto-unseal (a second small Vault) or an HSM.
 - **No SSO for humans.** The `secrets-admin` policy exists, and the userpass mount has no
   users. OpenShift OAuth → Vault OIDC is the natural next step.
 - **No Reloader yet** ([§8](#8-day-2-change-rotate-restart)).

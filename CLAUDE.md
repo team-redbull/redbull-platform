@@ -522,6 +522,14 @@ into a broken state.
   plain `helm template` lacks.
 - **The `vault` release must keep `wait: false`.** Sealed pods are never Ready, and only the
   postsync hook unseals them. With `wait`, Helm waits for Ready before postsync: a deadlock.
+- **Auto-unseal is a sidecar (`auto-unseal`), chosen over a CronJob.** It recovers in
+  seconds, causes no per-minute pod churn, and needs no scheduling when nodes are being
+  drained. The user's call after comparing the two. Its volume is `optional: true`
+  (otherwise a fresh cluster can never init), mounts only the `unseal-keys` field
+  (init-unseal.sh writes and backfills it), and uses `defaultMode: 0440`: the files are
+  root-owned with fsGroup, so `0400` is unreadable to the non-root UID. It unseals over the
+  HTTP API with the key on stdin, because the CLI takes keys only as argv or from a TTY.
+  Verified: a 2-of-3 pod loss (leader included) healed in 26s with no human.
 - **Vault's TLS cert is minted for Service `vault-active` only**, through
   `server.service.active.annotations`. The chart's generic `server.service.annotations` hits
   three Services that would all claim one Secret. Hence `VAULT_TLS_SERVER_NAME` /

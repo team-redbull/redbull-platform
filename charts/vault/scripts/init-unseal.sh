@@ -79,6 +79,20 @@ if [[ "$initialized" != "true" ]]; then
   echo "vault: initialized; keys + root token stored in Secret $ns/$init_secret (LAB MODE)"
 fi
 
+# The auto-unseal sidecar (charts/vault/values.yaml) mounts ONLY this field: the threshold
+# unseal keys, one per line — never root-token / init.json. Derived from init.json, so it
+# is (re)written on every run: that backfills Secrets created before the sidecar existed.
+# The patch travels on stdin, so no key ever appears in a local process's arguments.
+if [[ -n "$init_secret" ]] && oc get secret "$init_secret" -n "$ns" >/dev/null 2>&1; then
+  unseal_b64=$(oc get secret "$init_secret" -n "$ns" -o jsonpath='{.data.init\.json}' | base64 -d |
+    jq -r '.unseal_keys_b64[:'"$key_threshold"'] | join("\n")' | base64 | tr -d '\n')
+  if [[ "$(oc get secret "$init_secret" -n "$ns" -o jsonpath='{.data.unseal-keys}')" != "$unseal_b64" ]]; then
+    printf '{"data":{"unseal-keys":"%s"}}' "$unseal_b64" |
+      oc patch secret "$init_secret" -n "$ns" --type=merge --patch-file=/dev/stdin >/dev/null
+    echo "vault: wrote unseal-keys into Secret $ns/$init_secret (for the auto-unseal sidecar)"
+  fi
+fi
+
 # Plain space-separated string, not an array: macOS still ships bash 3.2, which has no
 # mapfile and treats an empty array as unbound under `set -u`.
 keys="${VAULT_UNSEAL_KEYS:-}"

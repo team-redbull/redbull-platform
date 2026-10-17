@@ -48,6 +48,21 @@ vault:
       - name: service-ca
         configMap:
           name: openshift-service-ca.crt
+      # The unseal keys for the auto-unseal sidecar below — ONLY the `unseal-keys` field of
+      # the lab-mode init Secret, never `root-token` / `init.json`. optional: on a fresh
+      # cluster the Secret does not exist until init-unseal.sh creates it, and a required
+      # volume would leave every pod in ContainerCreating, so Vault could never be
+      # initialized at all. Kubelet fills the file in once the Secret appears.
+      # 0440, not 0400: Secret files are owned by root with the pod's fsGroup as group, and
+      # the sidecar runs as the namespace's non-root UID, so it reads them via the group.
+      - name: unseal-keys
+        secret:
+          secretName: vault-init        # = environments/default.yaml vault.initSecret
+          optional: true
+          defaultMode: 0440
+          items:
+            - key: unseal-keys
+              path: unseal-keys
     volumeMounts:
       - name: service-ca
         mountPath: /vault/userconfig/service-ca
@@ -55,6 +70,81 @@ vault:
     extraEnvironmentVars:
       VAULT_CACERT: /vault/userconfig/service-ca/service-ca.crt
       VAULT_TLS_SERVER_NAME: vault-active.vault.svc
+
+    # AUTO-UNSEAL SIDECAR (lab mode). A restarted Vault pod comes back sealed — the key
+    # that decrypts its data lives only in memory — and stays sealed until someone feeds it
+    # 3 of the 5 unseal keys. This container does that for ITS OWN pod: every 5s it asks
+    # 127.0.0.1 whether it is sealed and, if so, submits the keys. Node reboots, evictions
+    # and OpenShift upgrades then heal themselves instead of costing quorum one pod at a
+    # time.
+    #
+    # Security is unchanged from lab mode, not reduced: the keys already sit in the
+    # vault-init Secret. Whoever can read that Secret (or an etcd backup) can unseal Vault —
+    # see gitops/SECRETS.md §3 for what production should do instead (transit / HSM).
+    # With vault.initSecret: "" there is no Secret, the volume stays empty and this
+    # container just idles.
+    #
+    # Keys never appear in a process's argv: `vault operator unseal` only takes them as an
+    # argument or from a TTY prompt, so this uses the HTTP API with the body on stdin
+    # (printf is a shell builtin). It talks to 127.0.0.1 under the cert's only SAN.
+    #
+    # Image must stay equal to server.image above (no way to reference it from here) — the
+    # same image means nothing extra to mirror for air-gapped.
+    # Changing this block needs each Vault pod deleted by hand (updateStrategy OnDelete);
+    # the pods come back and this sidecar unseals them.
+    extraContainers:
+      - name: auto-unseal
+        image: registry.connect.redhat.com/hashicorp/vault:2.0.4-ubi
+        command: ["/bin/sh", "-c"]
+        args:
+          - |
+            keys=/vault/unseal/unseal-keys
+            api=https://vault-active.vault.svc:8200
+            c() {
+              curl -sS --max-time 5 --cacert /vault/userconfig/service-ca/service-ca.crt \
+                --resolve vault-active.vault.svc:8200:127.0.0.1 "$@"
+            }
+            last=""
+            echo "auto-unseal: watching this pod"
+            while true; do
+              status=$(c "$api/v1/sys/seal-status" 2>/dev/null)
+              case "$status" in
+                *'"sealed":true'*)
+                  if [ -s "$keys" ]; then
+                    [ "$last" = sealed ] || echo "auto-unseal: pod is sealed, submitting unseal keys"
+                    while read -r k; do
+                      [ -n "$k" ] || continue
+                      printf '{"key":"%s"}' "$k" | c -X PUT --data @- "$api/v1/sys/unseal" >/dev/null 2>&1
+                    done < "$keys"
+                  else
+                    [ "$last" = nokeys ] || echo "auto-unseal: pod is sealed but no keys are mounted (not initialized yet, or initSecret is off)"
+                    last=nokeys; sleep 5; continue
+                  fi
+                  last=sealed ;;
+                *'"sealed":false'*)
+                  [ "$last" = unsealed ] || echo "auto-unseal: pod is unsealed"
+                  last=unsealed ;;
+              esac
+              sleep 5
+            done
+        volumeMounts:
+          - name: unseal-keys
+            mountPath: /vault/unseal
+            readOnly: true
+          - name: service-ca
+            mountPath: /vault/userconfig/service-ca
+            readOnly: true
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+          runAsNonRoot: true
+        resources:
+          requests:
+            cpu: 5m
+            memory: 16Mi
+          limits:
+            memory: 64Mi
 
     # Reencrypt: the router presents the cluster's ingress cert (publicly trusted on the
     # current hub, so remote ESOs need no CA bundle) and validates Vault's service-ca cert
