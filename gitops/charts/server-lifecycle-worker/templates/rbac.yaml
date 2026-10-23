@@ -1,5 +1,6 @@
 {{- /*
-What install-server writes, reads and rolls back — and nothing more.
+What install-server, remove-server and publish-infraenv-boot write, read and
+roll back — and nothing more.
 
 STILL NO `update`. The workflow never overwrites an existing resource: it treats
 "already exists" as success once the contents match and raises a conflict when
@@ -33,6 +34,18 @@ its spec holds no reference back to the BareMetalHost — so a `get` by name
 cannot do it. This is the only place the limb lists anything; every other
 access still addresses one object by name.
 
+`delete` on agents is remove-server's. It deletes a host's Agent LAST — after
+powering the host off and removing its BareMetalHost and NMStateConfig — because
+a host still running discovery re-registers a deleted Agent within a minute.
+It refuses, changing nothing, while the Agent is bound to a cluster.
+
+`get` on infraenvs is the InfraEnv pre-check (install-server's
+`validating-infraenv`, publish-infraenv-boot's `check_infra_env`), and the wait
+for the discovery image to include a new NMStateConfig before an IPMI host's
+PXE boot entry is published. Without it every install fails at that first step
+with a 403 — found on the 2qsc5 hub on 2026-10-23, where this list had fallen
+behind the workflows chart it is vendored from.
+
 Namespace-scoped by default, because the namespace to write into is a REQUEST
 field. A ClusterRole would let any caller of the install-server API create a
 Secret in any namespace in the cluster; a Role per declared namespace bounds
@@ -42,7 +55,8 @@ that to the InfraEnvs you have actually deployed.
   (dict "apiGroups" (list "") "resources" (list "secrets") "verbs" (list "get" "create" "delete"))
   (dict "apiGroups" (list "metal3.io") "resources" (list "baremetalhosts") "verbs" (list "get" "create" "delete" "patch"))
   (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "nmstateconfigs") "verbs" (list "get" "create" "delete"))
-  (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "agents") "verbs" (list "get" "list"))
+  (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "agents") "verbs" (list "get" "list" "delete"))
+  (dict "apiGroups" (list "agent-install.openshift.io") "resources" (list "infraenvs") "verbs" (list "get"))
 -}}
 {{- if .Values.rbac.clusterWide }}
 apiVersion: rbac.authorization.k8s.io/v1
