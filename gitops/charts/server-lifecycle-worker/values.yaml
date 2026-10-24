@@ -52,6 +52,11 @@ rbac:
   # install-server API create a Secret in ANY namespace, since the namespace is
   # a request field.
   clusterWide: false
+  # uninstall-server's ClusterRole (templates/rbac.yaml): get/list/delete on
+  # CAPI Machines, get/list on AgentMachines and HostedClusters, and get on
+  # Secrets CLUSTER-WIDE (a HostedCluster's admin kubeconfig) — the widest
+  # grant this worker holds. Off where no hosted cluster runs.
+  hostedClusters: true
 activityWorker:
   image:
     repository: ghcr.io/team-redbull/server-lifecycle-worker
