@@ -15,18 +15,29 @@
 # Restart the redfish pod before each run (a helm upgrade does) so the log
 # only holds that run.
 #
-#   BMH_NS=inventory VM_NS=inventory RF_NS=<ns> RF_DEPLOY=<deploy> scripts/vmedia-race-collect.sh
+#   MCE_KUBECONFIG=openshift4-installation/clusters/<mce-cluster>/auth/kubeconfig \
+#   KV_KUBECONFIG=openshift4-installation/clusters/<kubevirt-cluster>/auth/kubeconfig \
+#   BMH_NS=inventory VM_NS=<vm-ns> RF_NS=<ns> RF_DEPLOY=<deploy> scripts/vmedia-race-collect.sh
+#
+# BMHs live on the MCE hub; VMs, copy pods, events and kubevirt-redfish live on
+# the KubeVirt cluster. Each side is reached with its own context and/or
+# kubeconfig (MCE_CONTEXT/MCE_KUBECONFIG, KV_CONTEXT/KV_KUBECONFIG); unset
+# means the current one, so a single-cluster setup needs neither.
 #
 # Required env: BMH_NS, VM_NS, RF_NS (redfish namespace), RF_DEPLOY (redfish deployment)
-# Optional env: LOGFILE (analyse a saved log instead of fetching), SYS_PREFIX ("$VM_NS." for enhanced IDs)
+# Optional env: LOGFILE (analyse a saved log instead of fetching), SYS_PREFIX ("$VM_NS." for enhanced IDs),
+#               MCE_CONTEXT, MCE_KUBECONFIG, KV_CONTEXT, KV_KUBECONFIG
 set -u
 : "${BMH_NS:?}" "${VM_NS:?}"
 SYS_PREFIX="${SYS_PREFIX:-}"
 
+mce() { kubectl ${MCE_KUBECONFIG:+--kubeconfig "$MCE_KUBECONFIG"} ${MCE_CONTEXT:+--context "$MCE_CONTEXT"} "$@"; }
+kv() { kubectl ${KV_KUBECONFIG:+--kubeconfig "$KV_KUBECONFIG"} ${KV_CONTEXT:+--context "$KV_CONTEXT"} "$@"; }
+
 if [ -z "${LOGFILE:-}" ]; then
 	: "${RF_NS:?}" "${RF_DEPLOY:?}"
 	LOGFILE="redfish-$(date +%Y%m%d-%H%M%S).log"
-	kubectl logs -n "$RF_NS" "deploy/$RF_DEPLOY" --tail=-1 >"$LOGFILE"
+	kv logs -n "$RF_NS" "deploy/$RF_DEPLOY" --tail=-1 >"$LOGFILE"
 	echo "redfish log saved to $LOGFILE"
 fi
 
@@ -54,6 +65,12 @@ timeline() { # "VM ns/name" -> "JOB LABEL ON DEFER UNLBL"
 	' "$LOGFILE"
 }
 
+bmhs=$(mce get bmh -n "$BMH_NS" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.bmc.address}{" "}{.status.provisioning.state}{"\n"}{end}') || exit 1
+if [ -z "$bmhs" ]; then
+	echo "no BMHs in namespace $BMH_NS on the MCE cluster (check MCE_CONTEXT / MCE_KUBECONFIG)" >&2
+	exit 1
+fi
+
 printf '%-22s %-20s %-10s %-9s %-6s | %-12s %-12s %-12s %-5s %-12s | %s\n' \
 	BMH STATE VMI COPY_POD MULTI JOB LABEL ON DEFER UNLBL VERDICT
 while read -r -u 3 bmh addr state; do
@@ -61,12 +78,12 @@ while read -r -u 3 bmh addr state; do
 	vm="${sys#"$SYS_PREFIX"}"
 	key="VM $VM_NS/$vm"
 
-	vmi=$(kubectl get vmi -n "$VM_NS" "$vm" -o jsonpath='{.status.phase}' 2>/dev/null)
-	lbl=$(kubectl get vm -n "$VM_NS" "$vm" -o jsonpath='{.metadata.labels.importing\.redfish/cdrom0}' 2>/dev/null)
+	vmi=$(kv get vmi -n "$VM_NS" "$vm" -o jsonpath='{.status.phase}' 2>/dev/null)
+	lbl=$(kv get vm -n "$VM_NS" "$vm" -o jsonpath='{.metadata.labels.importing\.redfish/cdrom0}' 2>/dev/null)
 	pod="-" ma="-"
 	if [ -n "$lbl" ]; then
-		pod=$(kubectl get pod -n "$VM_NS" "$lbl" -o jsonpath='{.status.phase}' 2>/dev/null)
-		ma=$(kubectl get events -n "$VM_NS" --field-selector "involvedObject.name=$lbl,reason=FailedAttachVolume" -o name 2>/dev/null | wc -l | tr -d ' ')
+		pod=$(kv get pod -n "$VM_NS" "$lbl" -o jsonpath='{.status.phase}' 2>/dev/null)
+		ma=$(kv get events -n "$VM_NS" --field-selector "involvedObject.name=$lbl,reason=FailedAttachVolume" -o name 2>/dev/null | wc -l | tr -d ' ')
 	fi
 
 	read -r t_job t_lbl t_on defer t_unl <<EOF
@@ -85,4 +102,4 @@ EOF
 
 	printf '%-22s %-20s %-10s %-9s %-6s | %-12s %-12s %-12s %-5s %-12s | %s\n' \
 		"$bmh" "$state" "${vmi:--}" "${pod:--}" "$ma" "$t_job" "$t_lbl" "$t_on" "$defer" "$t_unl" "$verdict"
-done 3< <(kubectl get bmh -n "$BMH_NS" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.bmc.address}{" "}{.status.provisioning.state}{"\n"}{end}')
+done 3<<<"$bmhs"
