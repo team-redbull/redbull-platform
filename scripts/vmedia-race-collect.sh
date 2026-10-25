@@ -15,24 +15,30 @@
 # Restart the redfish pod before each run (a helm upgrade does) so the log
 # only holds that run.
 #
-#   MCE_KUBECONFIG=openshift4-installation/clusters/<mce-cluster>/auth/kubeconfig \
-#   KV_KUBECONFIG=openshift4-installation/clusters/<kubevirt-cluster>/auth/kubeconfig \
+#   MCE_CLUSTER=<mce-cluster> KV_CLUSTER=<kubevirt-cluster> \
 #   BMH_NS=inventory VM_NS=<vm-ns> RF_NS=<ns> RF_DEPLOY=<deploy> scripts/vmedia-race-collect.sh
 #
 # BMHs live on the MCE hub; VMs, copy pods, events and kubevirt-redfish live on
-# the KubeVirt cluster. Each side is reached with its own context and/or
-# kubeconfig (MCE_CONTEXT/MCE_KUBECONFIG, KV_CONTEXT/KV_KUBECONFIG); unset
-# means the current one, so a single-cluster setup needs neither.
+# the KubeVirt cluster. Each cluster is named, and its kubeconfig is taken from
+# $CLUSTERS_DIR/<name>/auth/kubeconfig (the openshift-install layout).
 #
-# Required env: BMH_NS, VM_NS, RF_NS (redfish namespace), RF_DEPLOY (redfish deployment)
-# Optional env: LOGFILE (analyse a saved log instead of fetching), SYS_PREFIX ("$VM_NS." for enhanced IDs),
-#               MCE_CONTEXT, MCE_KUBECONFIG, KV_CONTEXT, KV_KUBECONFIG
+# Required env: MCE_CLUSTER, KV_CLUSTER, BMH_NS, VM_NS,
+#               RF_NS (redfish namespace), RF_DEPLOY (redfish deployment)
+# Optional env: CLUSTERS_DIR (default openshift4-installation/clusters),
+#               LOGFILE (analyse a saved log instead of fetching), SYS_PREFIX ("$VM_NS." for enhanced IDs)
 set -u
-: "${BMH_NS:?}" "${VM_NS:?}"
+: "${MCE_CLUSTER:?}" "${KV_CLUSTER:?}" "${BMH_NS:?}" "${VM_NS:?}"
 SYS_PREFIX="${SYS_PREFIX:-}"
+CLUSTERS_DIR="${CLUSTERS_DIR:-openshift4-installation/clusters}"
 
-mce() { kubectl ${MCE_KUBECONFIG:+--kubeconfig "$MCE_KUBECONFIG"} ${MCE_CONTEXT:+--context "$MCE_CONTEXT"} "$@"; }
-kv() { kubectl ${KV_KUBECONFIG:+--kubeconfig "$KV_KUBECONFIG"} ${KV_CONTEXT:+--context "$KV_CONTEXT"} "$@"; }
+MCE_KUBECONFIG="$CLUSTERS_DIR/$MCE_CLUSTER/auth/kubeconfig"
+KV_KUBECONFIG="$CLUSTERS_DIR/$KV_CLUSTER/auth/kubeconfig"
+for kc in "$MCE_KUBECONFIG" "$KV_KUBECONFIG"; do
+	[ -r "$kc" ] || { echo "kubeconfig not found: $kc (set CLUSTERS_DIR?)" >&2; exit 1; }
+done
+
+mce() { kubectl --kubeconfig "$MCE_KUBECONFIG" "$@"; }
+kv() { kubectl --kubeconfig "$KV_KUBECONFIG" "$@"; }
 
 if [ -z "${LOGFILE:-}" ]; then
 	: "${RF_NS:?}" "${RF_DEPLOY:?}"
@@ -67,7 +73,7 @@ timeline() { # "VM ns/name" -> "JOB LABEL ON DEFER UNLBL"
 
 bmhs=$(mce get bmh -n "$BMH_NS" -o jsonpath='{range .items[*]}{.metadata.name}{" "}{.spec.bmc.address}{" "}{.status.provisioning.state}{"\n"}{end}') || exit 1
 if [ -z "$bmhs" ]; then
-	echo "no BMHs in namespace $BMH_NS on the MCE cluster (check MCE_CONTEXT / MCE_KUBECONFIG)" >&2
+	echo "no BMHs in namespace $BMH_NS on the MCE cluster (check MCE_CLUSTER)" >&2
 	exit 1
 fi
 
