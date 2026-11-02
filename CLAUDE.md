@@ -625,8 +625,11 @@ defaults may render fine while ours does not.
   (`cluster-upgrade-worker`, `upgrade-agent-worker` per MCE, `upgrade-gitops-worker` on the
   hub, added 2026-11-02) are here too, with no `gitops/services/` entry yet: CI bumps their
   tags, Argo CD deploys nothing from them. The two per-MCE upgrade charts are copies of the
-  workflows repo's `deploy/charts/<name>/` (change both in one go); `upgrade-gitops-worker`
-  lives only here. That repo now ships no chart of its own: the
+  workflows repo's `deploy/charts/<name>/`, kept equal by that repo's CI (`sync-upgrade-charts`:
+  on every workflows `main` push that changes them it replaces the folder here, keeping
+  `image.repository`/`image.tag` and Chart.yaml `version`/`appVersion`, which the build jobs own).
+  Edit them in the workflows repo, never here: a hand edit here is overwritten by the next sync.
+  `upgrade-gitops-worker` lives only here and is edited here. That repo now ships no chart of its own: the
   `helm/mock-segment-connectivity` chart this repo used to Helmfile-pull (`git::`) stood
   in for a firewall service the orchestrator no longer calls, and both are gone.
 - `team-redbull/dhcp_scope_manager` — the DHCP scope API's code repo; its chart is
