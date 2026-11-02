@@ -7,30 +7,26 @@
 # REQUIRED. The MCE this worker serves: names the queue it polls
 # (upgrade-agent-activity-<mceCluster>). The `ocp4-` prefix is added when left out.
 mceCluster: ""
-
 # Two, as the domain's other limbs: the agent call is the one activity with a
 # schedule-to-start timeout (5 min, dispatch.SCHEDULE_TO_START_TIMEOUT), so a
 # lone pod being restarted turns a gate's diagnosis into needs_human. The
 # invocation id makes a retry on the other pod join the first attempt's run.
 replicaCount: 2
-
 image:
   # Disconnected production: the mirror of ghcr.io/team-redbull/upgrade-agent-worker.
   repository: ghcr.io/team-redbull/upgrade-agent-worker
-  tag: ""            # defaults to the chart's appVersion
+  tag: "v1.0.0" # defaults to the chart's appVersion
   pullPolicy: IfNotPresent
 imagePullSecrets: []
-
 # The hub's Temporal frontend, as reachable FROM THIS MCE (as in the
 # server-lifecycle-worker chart; see its README for the Route and TLS shape).
 temporal:
-  host: ""           # REQUIRED, host:port
+  host: "" # REQUIRED, host:port
   namespace: default # the TEMPORAL namespace; must match the hub
   tls:
     enabled: false
-    serverName: ""   # defaults to the host part of `host`
-    caCert: ""       # the PUBLIC CA that signed the frontend's certificate
-
+    serverName: "" # defaults to the host part of `host`
+    caCert: "" # the PUBLIC CA that signed the frontend's certificate
 # The upgrade agent service.
 upgradeAgent:
   # REQUIRED. Its Service URL, e.g. http://upgrade-agent.upgrade-agent.svc:8080.
@@ -40,22 +36,18 @@ upgradeAgent:
   tokenSecret:
     name: ""
     key: token
-
 serviceAccount:
   create: true
-  name: ""           # defaults to the release's full name
-
+  name: "" # defaults to the release's full name
 resources:
   requests:
     cpu: 20m
     memory: 96Mi
   limits:
     memory: 256Mi
-
 # In-flight activities get 20s to finish after SIGTERM (worker_init.py); keep
 # the pod's grace period above it.
 terminationGracePeriodSeconds: 30
-
 nodeSelector: {}
 tolerations: []
 affinity: {}
