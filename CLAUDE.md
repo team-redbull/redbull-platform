@@ -618,9 +618,15 @@ defaults may render fine while ours does not.
   `REDBULL_WRITE_TOKEN` now target this repo; see the monorepo caveats above.
   `segments-manager`, `workflows` and `dhcp_scope_manager` call it. Other service repos
   (`segment_manager`, `BareMetalHostUCS`, `ServerScanner`) still have inline copies.
-- `team-redbull/workflows` — Temporal worker code. Its three Argo charts are
-  `gitops/charts/workflows-orchestrator`, `gitops/charts/segment-lifecycle-worker` and
-  `gitops/charts/workflows-docs`, all here. That repo now ships no chart of its own: the
+- `team-redbull/workflows` — Temporal worker code. Its Argo charts are
+  `gitops/charts/workflows-orchestrator`, `gitops/charts/segment-lifecycle-worker`,
+  `gitops/charts/server-lifecycle-worker` and `gitops/charts/workflows-docs`, all here.
+  `gitops/charts/server-provisioning-worker` and cluster-upgrade's three
+  (`cluster-upgrade-worker`, `upgrade-agent-worker` per MCE, `upgrade-gitops-worker` on the
+  hub, added 2026-11-02) are here too, with no `gitops/services/` entry yet: CI bumps their
+  tags, Argo CD deploys nothing from them. The two per-MCE upgrade charts are copies of the
+  workflows repo's `deploy/charts/<name>/` (change both in one go); `upgrade-gitops-worker`
+  lives only here. That repo now ships no chart of its own: the
   `helm/mock-segment-connectivity` chart this repo used to Helmfile-pull (`git::`) stood
   in for a firewall service the orchestrator no longer calls, and both are gone.
 - `team-redbull/dhcp_scope_manager` — the DHCP scope API's code repo; its chart is
