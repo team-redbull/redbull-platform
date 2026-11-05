@@ -3,5 +3,5 @@ name: vm-lifecycle-worker
 description: >-
   The vm-lifecycle domain's activity worker — create-vm's limb: lists a zone's KubeVirt clusters from the day1 repo, reads each cluster's capacity through its kv-capacity agent, creates ONE Halted VirtualMachine with a fixed MAC through its kv-vm-api agent, and waits for its root disk. Named for the process, not the domain: it polls the domain-scoped vm-lifecycle-activity queue. One release on the hub for every zone — it holds no Kubernetes credential, only the agents' fleet tokens and the day1 git token. Deploys alongside the shared workflows-orchestrator chart, which runs the workflow brain.
 type: application
-version: 0.1.0
-appVersion: "v0.1.0"
+version: 1.0.0
+appVersion: "v1.0.0"
