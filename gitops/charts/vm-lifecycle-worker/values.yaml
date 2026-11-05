@@ -1,0 +1,63 @@
+# vm-lifecycle-worker — create-vm's hub limb (redbull-workflows: activities/vm_lifecycle/).
+#
+# ONE release for every zone: the worker reaches each KubeVirt cluster through
+# that cluster's two agents behind Routes (kv-capacity, kv-vm-api — the
+# kv-agents repo, charts gitops/charts/kv-capacity and gitops/charts/kv-vm-api,
+# deployed on every KubeVirt cluster by day2 sigs) and holds no Kubernetes
+# credential. The agents must be up on a zone's clusters BEFORE a create-vm
+# run there can place anything: until then every cluster is `no-agent` and
+# the run waits (RUNNING, retried).
+config:
+  # The day1 values repo, read at main only: the zone's KubeVirt clusters are
+  # the files of sites/<site>/mces/ocp4-seed-<site>-<zone>/hostedClusters/.
+  # The same repo the segment-lifecycle-worker chart names.
+  day1RepoUrl: "https://github.com/team-redbull/gitops-day1-platform-config.git"
+  # The agents' URLs, rendered per cluster: {cluster} = the day1 clusterName
+  # (kubevirt-bat-yam-a1), {name} = the day1 file's stem (ocp4-kubevirt-bat-yam-a1),
+  # {hosted_cluster} = openshift-<clusterName>, {site}, {zone}. Whether a
+  # cluster's apps domain is apps.<clusterName>.<base> or
+  # apps.openshift-<clusterName>.<base> is this template's to say.
+  kvCapacityUrlTemplate: "https://kv-capacity.apps.{cluster}.example.net"
+  kvVmApiUrlTemplate: "https://kv-vm-api.apps.{cluster}.example.net"
+  # Our placement policy (docs/design/kubevirt-vm-placement.md): the share of
+  # every cluster's schedulable allocatable that stays free AFTER placing the
+  # VM, on CPU and on memory, per cluster. 0..90.
+  headroomBufferPercent: 30
+  # The first three octets of every VM's MAC; the run draws the other three.
+  # Locally administered + unicast: the first octet's low bits are `10`.
+  vmMacPrefix: "02:a1:b2"
+# The agents' Route certificates: a PEM CA to verify them against. EMPTY = NOT
+# VERIFIED (decided 2026-11-04: the Routes carry the ingress wildcard
+# certificate, whose CA the image cannot carry). Set to verify.
+kvAgentCa: ""
+secrets:
+  # DAY1_GIT_TOKEN: the SAME `day1-git-token` Secret the segment-lifecycle-worker
+  # chart renders (one Secret, three consumers: segment-lifecycle, upgrade-gitops
+  # and this worker). NOT rendered again here — only named. Set to another
+  # Secret holding DAY1_GIT_TOKEN to use a read-only token for this worker.
+  existingDay1Secret: "day1-git-token"
+  # KV_CAPACITY_TOKEN / KV_VM_API_TOKEN: the agents' fleet bearer tokens — the
+  # values the kv-capacity and kv-vm-api charts hold as `apiToken`. Created out
+  # of band in redbull-workflows (the value stays out of this public repo):
+  #   oc create secret generic kv-capacity-token -n redbull-workflows \
+  #     --from-literal=KV_CAPACITY_TOKEN="<the fleet token>"
+  #   oc create secret generic kv-vm-api-token -n redbull-workflows \
+  #     --from-literal=KV_VM_API_TOKEN="<the fleet token>"
+  # ROTATE EACH WITH ITS AGENTS: a stale copy fails every run with KvAgentAuthError.
+  # The placeholders below are rendered only when the existing* name is emptied
+  # (standalone/kind installs).
+  existingKvCapacitySecret: "kv-capacity-token"
+  kvCapacityToken: "dev-token"
+  existingKvVmApiSecret: "kv-vm-api-token"
+  kvVmApiToken: "dev-token"
+activityWorker:
+  image:
+    repository: ghcr.io/team-redbull/vm-lifecycle-worker
+    # Bumped by redbull-workflows' CI (build-vm-lifecycle-worker) on every
+    # push that touches the limb; the first push after this chart lands sets
+    # the first real tag.
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  # Two: a run's activities are short and idempotent; a second pod covers a
+  # rollout. The ready wait resumes its clock from its heartbeat on the other.
+  replicas: 2

@@ -1,0 +1,30 @@
+# Read-only, derived call by call from kv_agents/kube.py's reads: nodes, pods (cluster-wide, the
+# scheduler's view), VirtualMachines (cluster-wide, every MAC) and VirtualMachineInstances.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kvcap.fullname" . }}-role
+  labels:
+    {{- include "kvcap.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes", "pods"]
+    verbs: ["get", "list"]
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines", "virtualmachineinstances"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kvcap.fullname" . }}-binding
+  labels:
+    {{- include "kvcap.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kvcap.fullname" . }}-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kvcap.fullname" . }}
+    namespace: {{ .Release.Namespace }}

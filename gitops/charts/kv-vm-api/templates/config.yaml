@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kvvm.fullname" . }}-config
+  labels:
+    {{- include "kvvm.labels" . | nindent 4 }}
+data:
+  VM_TEMPLATE_PATH: "/app/templates/vm.yaml.j2"
+  VM_LABEL: {{ .Values.config.vmLabel | quote }}
+  STORAGE_CLASS_NAME: {{ required "vm.storageClassName must be set — the root disk's class, binding Immediately" .Values.vm.storageClassName | quote }}
+  NETWORK: {{ .Values.vm.network | toJson | quote }}
+  NODE_SELECTOR: {{ .Values.vm.nodeSelector | toJson | quote }}
+{{- if not .Values.config.existingSecret }}
+---
+# DEV ONLY: rendered when existingSecret is "". On a real cluster create the Secret out of band.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kv-vm-api-token
+  labels:
+    {{- include "kvvm.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  API_TOKEN: {{ .Values.config.apiToken | quote }}
+{{- end }}

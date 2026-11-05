@@ -1,0 +1,13 @@
+# Argo config for `vm-lifecycle-worker` — create-vm's activity-worker limb, ONE release
+# on the hub for every zone. Chart: gitops/charts/vm-lifecycle-worker. The folder name
+# drives the app name, the chart path and the release name, so the -worker suffix here
+# is what makes the workload read as a process rather than a peer service; the
+# domain-scoped names it consumes (vm-lifecycle-config, the vm-lifecycle-activity
+# queue) deliberately stay bare.
+#
+# Same redbull-workflows namespace as the orchestrator; it gets the Temporal connection
+# from the shared workflows-orchestrator-config ConfigMap at runtime, and the day1 git
+# token from the `day1-git-token` Secret the segment-lifecycle-worker chart renders. It
+# crash-loops until both exist, then connects. The kv-capacity-token and
+# kv-vm-api-token Secrets are created out of band (the chart's values say how).
+namespace: redbull-workflows

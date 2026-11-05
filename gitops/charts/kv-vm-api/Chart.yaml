@@ -1,0 +1,7 @@
+apiVersion: v2
+name: kv-vm-api
+description: >-
+  kv-vm-api — the VM agent create-vm (redbull-workflows) writes through on every KubeVirt hosted cluster: PUT/GET/DELETE of ONE VirtualMachine by name, idempotent by identity (namespace, MAC, size, labels), rendering this chart's vm.yaml.j2 — the platform's vm.yaml with a fixed macAddress — so the platform owns the VM's shape. Behind a Route, one fleet bearer token, RBAC limited to VMs, DataVolumes and PVC reads. Deployed on each KubeVirt cluster of a zone by day2; its sibling kv-capacity reads. Code: github.com/team-redbull/kv-agents.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

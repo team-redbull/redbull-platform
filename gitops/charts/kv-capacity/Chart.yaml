@@ -1,0 +1,7 @@
+apiVersion: v2
+name: kv-capacity
+description: >-
+  kv-capacity — the read-only capacity agent create-vm (redbull-workflows) reads on every KubeVirt hosted cluster: schedulable nodes with their allocatable and the requests of their Pending|Running pods, our Halted not-yet-started VMs as reservations, every VM's MAC. Behind a Route, one fleet bearer token, RBAC limited to get/list. Deployed on each KubeVirt cluster of a zone by day2; its sibling kv-vm-api makes the VM. Code: github.com/team-redbull/kv-agents.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

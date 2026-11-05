@@ -1,0 +1,37 @@
+# Derived call by call from kv_agents/kube.py's writes and reads: the VM (get/create/delete), its
+# DataVolume (get/delete), the PVC phase (get) and whether the namespace exists (get). Cluster-scoped
+# because the chassis namespaces are the platform's to name, not this chart's.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "kvvm.fullname" . }}-role
+  labels:
+    {{- include "kvvm.labels" . | nindent 4 }}
+rules:
+  - apiGroups: ["kubevirt.io"]
+    resources: ["virtualmachines"]
+    verbs: ["get", "list", "create", "delete"]
+  - apiGroups: ["cdi.kubevirt.io"]
+    resources: ["datavolumes"]
+    verbs: ["get", "delete"]
+  - apiGroups: [""]
+    resources: ["persistentvolumeclaims"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["namespaces"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "kvvm.fullname" . }}-binding
+  labels:
+    {{- include "kvvm.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "kvvm.fullname" . }}-role
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "kvvm.fullname" . }}
+    namespace: {{ .Release.Namespace }}

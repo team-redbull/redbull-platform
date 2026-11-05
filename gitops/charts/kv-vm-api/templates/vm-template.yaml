@@ -1,0 +1,91 @@
+# The VM's shape, owned by the platform: redbull-platform/vm.yaml in Jinja2, mounted into
+# kv-vm-api at VM_TEMPLATE_PATH. Two changes from vm.yaml: the fixed `macAddress` (create-vm
+# draws it; KubeVirt re-randomises an unset MAC on restart and the BareMetalHost needs a stable
+# boot MAC) and the CPU request floored at one core (the bare `cpu × 15 / 16` makes a 1-vCPU VM
+# request 0; redbull-workflows' placement floors the same way). Variables: name, cpu, memory ("<n>Gi"), mac, labels (extra ones
+# from the request), vm_label, storage_class_name, network, node_selector.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kvvm.fullname" . }}-template
+  labels:
+    {{- include "kvvm.labels" . | nindent 4 }}
+data:
+  vm.yaml.j2: |
+    apiVersion: kubevirt.io/v1
+    kind: VirtualMachine
+    metadata:
+      name: {{ "{{ name }}" }}
+      labels:
+    {{ "{%- for key, value in vm_label.items() %}" }}
+        {{ "{{ key }}" }}: "{{ "{{ value }}" }}"
+    {{ "{%- endfor %}" }}
+    {{ "{%- for key, value in labels.items() %}" }}
+        {{ "{{ key }}" }}: "{{ "{{ value }}" }}"
+    {{ "{%- endfor %}" }}
+    spec:
+      runStrategy: Halted
+      dataVolumeTemplates:
+        - metadata:
+            name: {{ "{{ name }}" }}-root
+          spec:
+            source:
+              blank: {}
+            storage:
+              storageClassName: {{ "{{ storage_class_name }}" }}
+              accessModes:
+                - ReadWriteMany
+              volumeMode: Filesystem
+              resources:
+                requests:
+                  storage: 120Gi
+      template:
+        metadata:
+          labels:
+            kubevirt.io/vm: {{ "{{ name }}" }}
+        spec:
+          evictionStrategy: LiveMigrate
+    {{ "{%- if node_selector %}" }}
+          nodeSelector:
+    {{ "{%- for key, value in node_selector.items() %}" }}
+            {{ "{{ key }}" }}: "{{ "{{ value }}" }}"
+    {{ "{%- endfor %}" }}
+    {{ "{%- endif %}" }}
+          domain:
+            cpu:
+              cores: {{ "{{ cpu }}" }}
+            memory:
+              guest: {{ "{{ memory }}" }}
+            resources:
+              requests:
+                cpu: "{{ "{{ [1, (cpu * 15) // 16] | max }}" }}"
+                memory: {{ "{{ memory }}" }}
+              limits:
+                cpu: "{{ "{{ cpu }}" }}"
+                memory: {{ "{{ memory }}" }}
+            firmware:
+              bootloader:
+                efi:
+                  secureBoot: false
+            devices:
+              blockMultiQueue: true
+              networkInterfaceMultiqueue: true
+              disks:
+                - name: rootdisk
+                  dedicatedIOThread: true
+                  disk:
+                    bus: virtio
+              interfaces:
+                - name: default
+                  macAddress: "{{ "{{ mac }}" }}"
+                  bridge: {}
+              rng: {}
+          networks:
+            - name: default
+    {{ "{%- for key, value in network.items() %}" }}
+              {{ "{{ key }}" }}: {{ "{{ value | tojson }}" }}
+    {{ "{%- endfor %}" }}
+          volumes:
+            - name: rootdisk
+              dataVolume:
+                name: {{ "{{ name }}" }}-root

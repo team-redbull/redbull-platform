@@ -1,0 +1,46 @@
+# kv-capacity — one release per KubeVirt hosted cluster (deployed by day2 sigs; in the lab,
+# several releases on one cluster with `nodeSelector` set simulate several clusters).
+#
+# ONE out-of-band Secret before the first sync: the fleet bearer token, the SAME value
+# redbull-workflows' vm-lifecycle-worker holds as KV_CAPACITY_TOKEN:
+#   oc create secret generic kv-capacity-token -n <namespace> --from-literal=API_TOKEN="<token>"
+# Set `existingSecret: ""` to render it from `apiToken` below instead — dev clusters only.
+#
+# NO `namespace` value: every object lands in the Application's destination namespace.
+# The namespace must exist; nothing here creates one.
+
+image:
+  repository: ghcr.io/team-redbull/kv-capacity
+  # Set by hand from the kv-agents repo's CI (`<branch-slug>-<short sha>`).
+  tag: main-000000
+  pullPolicy: IfNotPresent
+
+replicas: 1
+port: 8080
+
+config:
+  # What the report names — the cluster's chart clusterName (`kubevirt-bat-yam-a1`).
+  clusterName: ""
+  # Where our VMs live: kubevirt-redfish's chassis namespaces.
+  chassisNamespaces:
+    - inventory
+  # The label kubevirt-redfish exposes a VM by; a Halted VM counts only with it.
+  vmLabel: "redfish-enabled=true"
+  # Optional `k=v,...`: restricts the nodes reported and the Halted VMs counted. Empty in
+  # production; the lab sets `kubernetes.io/hostname=<node>` per release.
+  nodeSelector: ""
+  existingSecret: kv-capacity-token
+  apiToken: ""
+
+# The Route exists because this block does; set `route: null` in a higher layer to drop it.
+route:
+  host: ""      # empty → the ingress controller generates `kv-capacity-<ns>.apps.<cluster>.<domain>`
+  termination: edge
+  insecureEdgeTerminationPolicy: Redirect
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

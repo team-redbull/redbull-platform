@@ -1,0 +1,41 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vm-lifecycle-config
+data:
+  DAY1_REPO_URL: {{ .Values.config.day1RepoUrl | quote }}
+  KV_CAPACITY_URL_TEMPLATE: {{ .Values.config.kvCapacityUrlTemplate | quote }}
+  KV_VM_API_URL_TEMPLATE: {{ .Values.config.kvVmApiUrlTemplate | quote }}
+  HEADROOM_BUFFER_PERCENT: {{ .Values.config.headroomBufferPercent | quote }}
+  VM_MAC_PREFIX: {{ .Values.config.vmMacPrefix | quote }}
+{{- if .Values.kvAgentCa }}
+  KV_AGENT_CA: "/etc/kv-agent-ca/ca.crt"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vm-lifecycle-kv-agent-ca
+data:
+  ca.crt: |
+{{ .Values.kvAgentCa | indent 4 }}
+{{- end }}
+{{- if not .Values.secrets.existingKvCapacitySecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kv-capacity-token
+type: Opaque
+stringData:
+  KV_CAPACITY_TOKEN: {{ .Values.secrets.kvCapacityToken | quote }}
+{{- end }}
+{{- if not .Values.secrets.existingKvVmApiSecret }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kv-vm-api-token
+type: Opaque
+stringData:
+  KV_VM_API_TOKEN: {{ .Values.secrets.kvVmApiToken | quote }}
+{{- end }}

@@ -1,0 +1,51 @@
+# kv-vm-api — one release per KubeVirt hosted cluster (deployed by day2 sigs; in the lab, several
+# releases on one cluster with `vm.nodeSelector` set simulate several clusters).
+#
+# ONE out-of-band Secret before the first sync: the fleet bearer token, the SAME value
+# redbull-workflows' vm-lifecycle-worker holds as KV_VM_API_TOKEN:
+#   oc create secret generic kv-vm-api-token -n <namespace> --from-literal=API_TOKEN="<token>"
+# Set `existingSecret: ""` to render it from `apiToken` below instead — dev clusters only.
+#
+# NO `namespace` value: every object lands in the Application's destination namespace. The
+# chassis namespaces the VMs go into must exist (kubevirt-redfish's); nothing here creates one.
+
+image:
+  repository: ghcr.io/team-redbull/kv-vm-api
+  # Set by hand from the kv-agents repo's CI (`<branch-slug>-<short sha>`).
+  tag: main-000000
+  pullPolicy: IfNotPresent
+
+replicas: 1
+port: 8080
+
+config:
+  existingSecret: kv-vm-api-token
+  apiToken: ""
+  # The label kubevirt-redfish exposes a VM by: on every VM created, and part of its identity.
+  vmLabel: "redfish-enabled=true"
+
+# The VM's shape: vm.yaml.j2 (templates/vm-template.yaml, the platform's vm.yaml in Jinja2 with
+# a fixed macAddress) rendered per PUT with these per-cluster values. vm.yaml's own values are
+# the defaults.
+vm:
+  # The root disk's class. It MUST bind Immediately: a WaitForFirstConsumer class never binds a
+  # Halted VM's disk, and create-vm rolls such a VM back after 10 min.
+  storageClassName: basic
+  # The VM's `networks[0]` body: the bridge network the zone's VMs boot on.
+  network:
+    multus:
+      networkName: openshift-cnv/vm-external-network
+  # Template nodeSelector, `{}` for none; the lab pins each release to one node.
+  nodeSelector: {}
+
+route:
+  host: ""
+  termination: edge
+  insecureEdgeTerminationPolicy: Redirect
+
+resources:
+  requests:
+    cpu: 20m
+    memory: 64Mi
+  limits:
+    memory: 256Mi

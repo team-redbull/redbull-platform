@@ -1,0 +1,24 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "kvcap.fullname" . }}-config
+  labels:
+    {{- include "kvcap.labels" . | nindent 4 }}
+data:
+  CLUSTER_NAME: {{ required "config.clusterName must be set — what the capacity report names" .Values.config.clusterName | quote }}
+  CHASSIS_NAMESPACES: {{ join "," .Values.config.chassisNamespaces | quote }}
+  VM_LABEL: {{ .Values.config.vmLabel | quote }}
+  NODE_SELECTOR: {{ .Values.config.nodeSelector | quote }}
+{{- if not .Values.config.existingSecret }}
+---
+# DEV ONLY: rendered when existingSecret is "". On a real cluster create the Secret out of band.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kv-capacity-token
+  labels:
+    {{- include "kvcap.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  API_TOKEN: {{ .Values.config.apiToken | quote }}
+{{- end }}
