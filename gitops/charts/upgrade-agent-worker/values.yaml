@@ -15,7 +15,7 @@ replicaCount: 2
 image:
   # Disconnected production: the mirror of ghcr.io/team-redbull/upgrade-agent-worker.
   repository: ghcr.io/team-redbull/upgrade-agent-worker
-  tag: "v1.0.2" # defaults to the chart's appVersion
+  tag: "v1.0.3" # defaults to the chart's appVersion
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 # The hub's Temporal frontend, as reachable FROM THIS MCE (as in the
