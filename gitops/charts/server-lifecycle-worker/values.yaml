@@ -60,6 +60,6 @@ rbac:
 activityWorker:
   image:
     repository: ghcr.io/team-redbull/server-lifecycle-worker
-    tag: v1.0.52
+    tag: v1.0.53
     pullPolicy: IfNotPresent
   replicas: 2
