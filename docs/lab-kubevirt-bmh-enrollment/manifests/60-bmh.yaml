@@ -1,0 +1,28 @@
+# The VM as a "bare metal" host. Created once, never re-applied: BMAC writes spec.image
+# and other fields at runtime, and re-applying this file would strip them and make BMO
+# deprovision the host.
+apiVersion: metal3.io/v1alpha1
+kind: BareMetalHost
+metadata:
+  name: kv-worker-1
+  namespace: lab-hosts
+  labels:
+    # Hands the host to BMAC for this InfraEnv.
+    infraenvs.agent-install.openshift.io: lab
+  annotations:
+    inspect.metal3.io: disabled
+    # Becomes the Agent's requested hostname. With static IPs and no DHCP hostname,
+    # the host would otherwise call itself after its MAC.
+    bmac.agent-install.openshift.io/hostname: kv-worker-1
+spec:
+  online: true
+  # == the VM's macAddress (10-nodes-values.yaml).
+  bootMACAddress: "02:00:00:6b:76:0a"
+  automatedCleaningMode: disabled
+  bmc:
+    # The kubevirt-redfish Route + system id <vm-name> (systemIdConvention: legacy, decided
+    # 2026-11-05; it was <vm-namespace>.<vm-name> under `enhanced` before).
+    address: redfish-virtualmedia+https://@@REDFISH_HOST@@/redfish/v1/Systems/kv-worker-1
+    credentialsName: kv-worker-1-bmc
+    # The edge Route serves the ingress certificate, which Ironic does not trust.
+    disableCertificateVerification: true

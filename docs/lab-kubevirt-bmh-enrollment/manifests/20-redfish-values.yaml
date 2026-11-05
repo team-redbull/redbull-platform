@@ -1,0 +1,26 @@
+# Lab values for gitops/charts/kubevirt-redfish. The rendered copy holds the BMC password,
+# so setup.sh writes it under $STATE_DIR (outside the repo), never next to this file.
+image:
+  # team-redbull/kubevirt-redfish main (upstream main + PRs #29-#33), built by that repo's
+  # scalefix-image workflow. Pin the immutable sha-<commit> tag, not :main-scalefix.
+  repository: @@REDFISH_IMAGE@@
+  tag: @@REDFISH_TAG@@
+config:
+  # Dev-only path of the chart: it renders the config Secret itself.
+  existingSecret: ""
+  chassis:
+    - name: vms
+      namespace: kv-lab
+      vmSelector:
+        labels:
+          redfish-enabled: "true"
+  users:
+    - username: admin
+      password: "@@REDFISH_PASSWORD@@"
+      chassis:
+        - vms
+  datavolume:
+    storageClass: @@STORAGE_CLASS@@
+    # Ironic hands kubevirt-redfish its own re-served copy of the ISO,
+    # https://<master-ip>:6183/redfish/boot-<uuid>.iso, behind a self-signed cert.
+    allowInsecureTls: true

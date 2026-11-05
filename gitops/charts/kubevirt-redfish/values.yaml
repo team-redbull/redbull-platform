@@ -129,9 +129,16 @@ config:
   # Kept here as the documented shape of config.yaml even when the Secret is
   # out-of-band: copy this block into the file you feed `oc create secret`.
   secretName: kubevirt-redfish-secret
-  # `enhanced` → Redfish system IDs are <namespace>.<vm-name>. `legacy` → <vm-name>.
-  # BMC addresses embed this, so changing it later invalidates every consumer.
-  systemIdConvention: enhanced
+  # `legacy` → Redfish system IDs are the bare <vm-name>; `enhanced` → <namespace>.<vm-name>.
+  # BMC addresses embed this, so changing it later invalidates every consumer. DECIDED
+  # `legacy` on 2026-11-05 (with redbull-workflows' create-vm, before any production VM
+  # exists): the Redfish id, the VirtualMachine name and the server name server-scan lists
+  # are then ONE string, `ocp-<infraenv>-<suffix>`, which add-server-to-mce's pool match
+  # (`^ocp-<infraEnv>`) needs. Under `legacy` the server resolves a name across every
+  # chassis the Redfish user may see, so VM names must be unique across them — create-vm's
+  # are (the suffix is the MAC's, unique zone-wide). Was `enhanced` until then; the lab
+  # manifests (docs/lab-kubevirt-bmh-enrollment) were changed with it.
+  systemIdConvention: legacy
   chassis:
     - name: vms
       # The namespace your VMs live in.

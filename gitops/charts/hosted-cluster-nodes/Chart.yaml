@@ -1,0 +1,16 @@
+apiVersion: v2
+name: hosted-cluster-nodes
+description: >-
+  KubeVirt VirtualMachines that serve as compute nodes in hosted clusters, plus the
+  cluster-scoped VM classes (instancetypes and a preference) that size and shape them.
+  Each VM is paired with a BareMetalHost on the management cluster, driven over
+  Redfish by kubevirt-redfish, and installed by the assisted installer.
+type: application
+# Hand-maintained. Unlike the service charts in this repo, no CI job rewrites this —
+# the chart renders no image, so there is no build to bump it from.
+version: 0.2.0
+keywords:
+  - kubevirt
+  - hosted-clusters
+  - baremetal
+  - assisted-installer

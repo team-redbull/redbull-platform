@@ -1,0 +1,215 @@
+{{- /*
+One VirtualMachine per entry in .Values.nodes, each rendered from .Values.defaults
+with that node's own keys merged over the top.
+
+NO metadata.namespace anywhere, deliberately: objects land in the Application's
+destination.namespace, so the namespace is stated in one place rather than two that
+must agree. Same convention as every other chart in this repo.
+
+Optional tuning values are TRI-STATE: unset (null) renders nothing, so the preference
+or KubeVirt's own default decides; true/false render explicitly and win over the
+preference. That is why they are tested with `kindIs "invalid"` and not `if`, which
+would treat an explicit `false` as unset.
+*/}}
+
+{{- /* Fail the render on duplicate identities. Both are silent in the cluster:
+       two VMs with one MAC break DHCP and make the BareMetalHosts ambiguous, and
+       two VMs with one name simply overwrite each other in the manifest stream. */}}
+{{- $names := list }}
+{{- $macs := list }}
+{{- range $i, $node := .Values.nodes }}
+  {{- $names = append $names (required (printf "nodes[%d].name is required" $i) $node.name) }}
+  {{- $macs = append $macs (required (printf "nodes[%d].macAddress is required — it must equal that node's BareMetalHost bootMACAddress" $i) $node.macAddress) }}
+{{- end }}
+{{- if ne (len $names) (len (uniq $names)) }}
+  {{- fail "nodes[].name must be unique across the list" }}
+{{- end }}
+{{- if ne (len $macs) (len (uniq $macs)) }}
+  {{- fail "nodes[].macAddress must be unique across the list — duplicate MACs break DHCP and leave the BareMetalHosts unable to identify their own node" }}
+{{- end }}
+
+{{- /* Classes this chart lists but has switched off. A VM pointing at one would
+       reference an object that does not exist and never start. */}}
+{{- $disabledClasses := list }}
+{{- range $i, $class := .Values.instancetypes }}
+  {{- $class = $class | default dict }}
+  {{- if and (hasKey $class "enabled") (not $class.enabled) }}
+    {{- $disabledClasses = append $disabledClasses (required (printf "instancetypes[%d].name is required" $i) $class.name) }}
+  {{- end }}
+{{- end }}
+
+{{- range $node := .Values.nodes }}
+{{- $cfg := mergeOverwrite (deepCopy $.Values.defaults) $node }}
+{{- $io := $cfg.io | default dict }}
+{{- $disk := $cfg.rootDisk | default dict }}
+
+{{- /* Sizing comes ONLY from the instancetype. KubeVirt rejects a VM that sets cpu or
+       memory next to an instancetype ("conflicts with selected instance type"), and
+       silently ignoring the keys would be worse — so a leftover `cpu:`/`memory:` from
+       an older values file fails here, with the fix in the message. */}}
+{{- if or (hasKey $cfg "cpu") (hasKey $cfg "memory") }}
+  {{- fail (printf "node %s: cpu/memory are not set per VM — size comes from the instancetype. Pick a class with `instancetype.name` (see `instancetypes` in values), or add a new class there" $cfg.name) }}
+{{- end }}
+{{- $it := $cfg.instancetype | default dict }}
+{{- $itName := required (printf "node %s: instancetype.name is required — it sets the node's vCPU and memory" $cfg.name) $it.name }}
+{{- if not (has $it.kind (list "VirtualMachineClusterInstancetype" "VirtualMachineInstancetype")) }}
+  {{- fail (printf "node %s: instancetype.kind must be VirtualMachineClusterInstancetype or VirtualMachineInstancetype, got %q" $cfg.name $it.kind) }}
+{{- end }}
+{{- if and (eq $it.kind "VirtualMachineClusterInstancetype") (has $itName $disabledClasses) }}
+  {{- fail (printf "node %s: instancetype %s is listed in `instancetypes` with enabled: false, so it is not rendered and the VM could never start. Enable the class first (and check its host prerequisites), or pick another" $cfg.name $itName) }}
+{{- end }}
+{{- $pref := $cfg.preference | default dict }}
+{{- if and $pref.name (not (has $pref.kind (list "VirtualMachineClusterPreference" "VirtualMachinePreference"))) }}
+  {{- fail (printf "node %s: preference.kind must be VirtualMachineClusterPreference or VirtualMachinePreference, got %q" $cfg.name $pref.kind) }}
+{{- end }}
+
+{{- /* The mode MUST be one the storage class offers; the chart cannot see the class,
+       but it can refuse a typo before it becomes a PVC that never binds. */}}
+{{- if not (has $disk.volumeMode (list "Block" "Filesystem")) }}
+  {{- fail (printf "node %s: rootDisk.volumeMode must be Block or Filesystem, got %q" $cfg.name $disk.volumeMode) }}
+{{- end }}
+
+{{- /* Strict LiveMigrate against an unshared disk is a deadlock waiting for a drain:
+       KubeVirt will never migrate the VM, and the eviction never completes. */}}
+{{- if and (eq $cfg.evictionStrategy "LiveMigrate") (not (has "ReadWriteMany" $disk.accessModes)) }}
+  {{- fail (printf "node %s: evictionStrategy LiveMigrate requires rootDisk.accessModes to include ReadWriteMany — KubeVirt cannot migrate a VM with an unshared PVC, so a node drain would block indefinitely" $cfg.name) }}
+{{- end }}
+
+{{- /* I/O tuning: enum checks, and the one coupling KubeVirt enforces — a pool size
+       only means something with the supplementalPool policy, and that policy needs one. */}}
+{{- if and $io.ioThreadsPolicy (not (has $io.ioThreadsPolicy (list "shared" "auto" "supplementalPool"))) }}
+  {{- fail (printf "node %s: io.ioThreadsPolicy must be shared, auto or supplementalPool, got %q" $cfg.name $io.ioThreadsPolicy) }}
+{{- end }}
+{{- if and (eq (toString $io.ioThreadsPolicy) "supplementalPool") (not $io.supplementalPoolThreadCount) }}
+  {{- fail (printf "node %s: io.ioThreadsPolicy supplementalPool needs io.supplementalPoolThreadCount (the number of I/O threads in the pool)" $cfg.name) }}
+{{- end }}
+{{- if and $io.supplementalPoolThreadCount (ne (toString $io.ioThreadsPolicy) "supplementalPool") }}
+  {{- fail (printf "node %s: io.supplementalPoolThreadCount is only used with io.ioThreadsPolicy supplementalPool" $cfg.name) }}
+{{- end }}
+{{- if and $disk.io (not (has $disk.io (list "native" "threads" "default"))) }}
+  {{- fail (printf "node %s: rootDisk.io must be native, threads or default, got %q" $cfg.name $disk.io) }}
+{{- end }}
+{{- if and $disk.cache (not (has $disk.cache (list "none" "writethrough" "writeback"))) }}
+  {{- fail (printf "node %s: rootDisk.cache must be none, writethrough or writeback, got %q" $cfg.name $disk.cache) }}
+{{- end }}
+---
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ $cfg.name }}
+  labels:
+    {{- include "nodes.labels" $ | nindent 4 }}
+    {{- /* Without this label the VM is invisible over Redfish. */}}
+    {{ $.Values.redfishLabel.key }}: {{ $.Values.redfishLabel.value | quote }}
+    {{- with $cfg.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+  {{- with $cfg.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  runStrategy: {{ $cfg.runStrategy }}
+
+  {{- /* vCPU and memory. Nothing under domain.cpu / domain.memory below. */}}
+  instancetype:
+    kind: {{ $it.kind }}
+    name: {{ $itName }}
+  {{- if $pref.name }}
+  preference:
+    kind: {{ $pref.kind }}
+    name: {{ $pref.name }}
+  {{- end }}
+
+  {{- /* The disk is owned by the VM: deleting the VM cascades
+         VirtualMachine -> DataVolume -> PersistentVolumeClaim, so a decommissioned
+         node takes its storage with it instead of orphaning a volume. The flip side
+         is that deleting the VM object destroys the node's OS disk, so treat VM
+         deletion as decommissioning the machine. */}}
+  dataVolumeTemplates:
+    - metadata:
+        name: {{ $cfg.name }}-root
+      spec:
+        source:
+          blank: {}
+        {{- if not (kindIs "invalid" $disk.preallocation) }}
+        preallocation: {{ $disk.preallocation }}
+        {{- end }}
+        storage:
+          storageClassName: {{ required (printf "node %s: rootDisk.storageClassName must be set" $cfg.name) $disk.storageClassName | quote }}
+          accessModes:
+            {{- toYaml $disk.accessModes | nindent 12 }}
+          volumeMode: {{ $disk.volumeMode }}
+          resources:
+            requests:
+              storage: {{ $disk.size | quote }}
+
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: {{ $cfg.name }}
+        {{- include "nodes.labels" $ | nindent 8 }}
+    spec:
+      evictionStrategy: {{ $cfg.evictionStrategy }}
+      domain:
+        {{- with $cfg.rebootPolicy }}
+        rebootPolicy: {{ . }}
+        {{- end }}
+        {{- with $io.ioThreadsPolicy }}
+        ioThreadsPolicy: {{ . }}
+        {{- end }}
+        {{- with $io.supplementalPoolThreadCount }}
+        ioThreads:
+          supplementalPoolThreadCount: {{ . }}
+        {{- end }}
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: {{ $cfg.firmware.secureBoot }}
+        devices:
+          {{- if not (kindIs "invalid" $io.blockMultiQueue) }}
+          blockMultiQueue: {{ $io.blockMultiQueue }}
+          {{- end }}
+          {{- if not (kindIs "invalid" $io.networkInterfaceMultiqueue) }}
+          networkInterfaceMultiqueue: {{ $io.networkInterfaceMultiqueue }}
+          {{- end }}
+          {{- /* Root disk ONLY, and no bootOrder. kubevirt-redfish appends `cdrom0`
+                 and sets boot order itself during provisioning. */}}
+          disks:
+            - name: rootdisk
+              disk:
+                bus: virtio
+              {{- if not (kindIs "invalid" $disk.dedicatedIOThread) }}
+              dedicatedIOThread: {{ $disk.dedicatedIOThread }}
+              {{- end }}
+              {{- with $disk.io }}
+              io: {{ . }}
+              {{- end }}
+              {{- with $disk.cache }}
+              cache: {{ . }}
+              {{- end }}
+          interfaces:
+            - name: default
+              {{- /* Must equal the BareMetalHost's bootMACAddress. */}}
+              macAddress: {{ $cfg.macAddress | quote }}
+              {{- if eq $cfg.network.binding "bridge" }}
+              bridge: {}
+              {{- else if eq $cfg.network.binding "masquerade" }}
+              masquerade: {}
+              {{- else }}
+              {{- fail (printf "node %s: network.binding must be \"bridge\" or \"masquerade\", got %q" $cfg.name $cfg.network.binding) }}
+              {{- end }}
+          rng: {}
+      networks:
+        - name: default
+          {{- if eq $cfg.network.binding "masquerade" }}
+          pod: {}
+          {{- else }}
+          multus:
+            networkName: {{ required (printf "node %s: network.attachmentName must be set when network.binding is \"bridge\"" $cfg.name) $cfg.network.attachmentName | quote }}
+          {{- end }}
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: {{ $cfg.name }}-root
+{{- end }}

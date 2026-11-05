@@ -1,0 +1,43 @@
+# Assisted service for MCE. Cluster-scoped in effect: it serves every InfraEnv.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: assisted-service-config
+  namespace: multicluster-engine
+data:
+  # The VMs sit behind the vmnet NAT, so Ironic can never call back into IPA in the
+  # discovery ISO. With the converged flow off, BMAC just boots the discovery ISO
+  # over virtual media, and the agent only ever makes outbound calls.
+  ALLOW_CONVERGED_FLOW: "false"
+---
+apiVersion: agent-install.openshift.io/v1beta1
+kind: AgentServiceConfig
+metadata:
+  name: agent
+  annotations:
+    # Merges the ConfigMap above into assisted-service's environment.
+    unsupported.agent-install.openshift.io/assisted-service-configmap: assisted-service-config
+spec:
+  databaseStorage:
+    accessModes: [ReadWriteOnce]
+    resources:
+      requests:
+        storage: 10Gi
+  filesystemStorage:
+    accessModes: [ReadWriteOnce]
+    resources:
+      requests:
+        storage: 20Gi
+  imageStorage:
+    accessModes: [ReadWriteOnce]
+    resources:
+      requests:
+        storage: 20Gi
+  # ONE image, copied by setup.sh from the infrastructure-operator's OS_IMAGES default.
+  # Without osImages, image-service fetches every version x architecture at startup,
+  # which does not fit in 20Gi.
+  osImages:
+    - openshiftVersion: "@@OS_VERSION@@"
+      cpuArchitecture: x86_64
+      url: @@OS_URL@@
+      version: "@@OS_RELEASE@@"

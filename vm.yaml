@@ -1,0 +1,67 @@
+apiVersion: kubevirt.io/v1
+kind: VirtualMachine
+metadata:
+  name: {{ .name }}
+  labels:
+    redfish-enabled: "true"
+spec:
+  runStrategy: Halted
+  dataVolumeTemplates:
+    - metadata:
+        name: {{ .name }}-root
+      spec:
+        source:
+          blank: {}
+        storage:
+          storageClassName: basic
+          accessModes:
+            - ReadWriteMany
+          volumeMode: Filesystem
+          resources:
+            requests:
+              storage: 120Gi
+  template:
+    metadata:
+      labels:
+        kubevirt.io/vm: {{ .name }}
+    spec:
+      evictionStrategy: LiveMigrate
+      {{- if not (regexMatch "^[0-9]+(Mi|Gi|Ti)$" (toString .spec.memory)) }}
+      {{- fail (printf "%s: memory must be a number with a unit (e.g. 128Gi), got %v" .name .spec.memory) }}
+      {{- end }}
+      domain:
+        cpu:
+          cores: {{ .spec.cpu }}
+        memory:
+          guest: {{ .spec.memory }}
+        resources:
+          requests:
+            cpu: "{{ div (mul (int .spec.cpu) 15) 16 }}"
+            memory: {{ .spec.memory }}
+          limits:
+            cpu: "{{ .spec.cpu }}"
+            memory: {{ .spec.memory }}
+        firmware:
+          bootloader:
+            efi:
+              secureBoot: false
+        devices:
+          blockMultiQueue: true
+          networkInterfaceMultiqueue: true
+          disks:
+            - name: rootdisk
+              dedicatedIOThread: true
+              disk:
+                bus: virtio
+          interfaces:
+            - name: default
+              bridge: {}
+          rng: {}
+      networks:
+        - name: default
+          multus:
+            networkName: openshift-cnv/vm-external-network
+      volumes:
+        - name: rootdisk
+          dataVolume:
+            name: {{ .name }}-root

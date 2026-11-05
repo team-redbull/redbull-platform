@@ -1,0 +1,266 @@
+# KubeVirt VirtualMachines that serve as COMPUTE NODES in hosted clusters.
+#
+# Each VM behaves like a physical server: it is paired with a BareMetalHost, driven
+# over Redfish by `kubevirt-redfish`, installed by the assisted installer, and then
+# joins a hosted cluster as a compute node for the rest of its life.
+#
+# The reasoning behind every disk setting below is written up in
+# docs/vm-disk-configuration.md. Read that before changing defaults.
+#
+# ── The BareMetalHost is NOT rendered here ───────────────────────────────────
+# It lives on the MANAGEMENT cluster, which is not the cluster these VMs run on, so
+# it cannot be part of this chart. The only coupling between the two is
+# `nodes[].macAddress`, which MUST equal that BareMetalHost's `bootMACAddress`.
+# Get it wrong and the host boots but is never matched to its BMH.
+#
+# ── ROOT DISK ONLY ───────────────────────────────────────────────────────────
+# No CD-ROM is templated, and no `bootOrder` is set. `kubevirt-redfish` adds a SATA
+# CD-ROM named `cdrom0` itself when Ironic calls InsertMedia, and rewrites boot order
+# as part of that handshake. Templating either one here fights the controller for
+# ownership of the same fields.
+
+# The label that makes a VM visible over Redfish. It MUST match the chassis
+# `vm_selector` in the kubevirt-redfish chart's config — a VM without it is invisible
+# to Ironic, which surfaces as a BareMetalHost that can never find its system.
+redfishLabel:
+  key: redfish-enabled
+  value: "true"
+
+# ── VM CLASSES ───────────────────────────────────────────────────────────────
+# Node sizes, as cluster-scoped VirtualMachineClusterInstancetypes. Every node picks
+# one by name (`defaults.instancetype.name`, overridable per node); the instancetype
+# alone sets its vCPU and memory — the chart renders no cpu/memory on the VM.
+#
+# `spec` is the KubeVirt API verbatim (compare: oc get vmclusterinstancetype u1.large
+# -o yaml). CPU fields here use the INSTANCETYPE casing, `dedicatedCPUPlacement`; the
+# VM spec spells the same field `dedicatedCpuPlacement`, and the wrong casing is
+# silently dropped.
+#
+# Editing a class in place does NOT resize the VMs already using it: each VM keeps a
+# copy of the class it was created with. To resize a node, point it at another class.
+#
+# Cluster-scoped, so exactly ONE release of this chart per cluster may render them.
+# Any further release on the same cluster sets `instancetypes: []` and
+# `preference.enabled: false` and references these by name.
+instancetypes:
+  # General-purpose compute nodes. Memory is regular (4Ki) pages and the vCPUs are
+  # shared, so these schedule on any host with free capacity and live-migrate freely.
+  # Deliberately NOT the shipped `m1.8xlarge`: same 32/256Gi, but m1 backs memory with
+  # 2Mi hugepages, which would force every host to pre-reserve hugepages for them.
+  - name: worker-32
+    spec:
+      cpu:
+        guest: 32
+      memory:
+        guest: 256Gi
+  - name: worker-64
+    spec:
+      cpu:
+        guest: 64
+      memory:
+        guest: 512Gi
+
+  # Latency-sensitive compute nodes: whole physical cores reserved for the VM, the
+  # QEMU emulator thread kept off them, the host's NUMA layout passed through to the
+  # guest, and memory backed by 1Gi hugepages (KubeVirt requires dedicated CPUs AND
+  # hugepages whenever NUMA passthrough is set).
+  #
+  # Leave disabled until the KubeVirt cluster's hosts are prepared: CPU Manager
+  # static policy and pre-allocated 1Gi hugepages, applied through that cluster's
+  # NodePool (PerformanceProfile). Without them the VM never schedules. The chart
+  # refuses to render a node that references this class while it is disabled.
+  #
+  # Such a VM still live-migrates, but only to a host with enough free dedicated
+  # cores and hugepages, so keep spare capacity for it.
+  - name: worker-64-rt
+    enabled: false
+    spec:
+      cpu:
+        guest: 64
+        dedicatedCPUPlacement: true
+        isolateEmulatorThread: true
+        numa:
+          guestMappingPassthrough: {}
+      memory:
+        guest: 512Gi
+        hugepages:
+          pageSize: 1Gi
+
+# House style for every compute node, as one VirtualMachineClusterPreference. A
+# preference only fills in what the VM leaves unset; anything set on the VM, or per
+# node below, wins. `spec` is the KubeVirt API verbatim.
+preference:
+  enabled: true
+  name: worker-node
+  spec:
+    cpu:
+      # Present the vCPUs as cores of one socket. KubeVirt's default spreads them as
+      # one-core sockets, so a 32-vCPU node would boot with 32 sockets. (`preferCores`
+      # is the same thing under a deprecated name.)
+      preferredCPUTopology: cores
+    devices:
+      # Disk and NIC queues per vCPU, so I/O is not funnelled through one queue on a
+      # 32- or 64-vCPU guest.
+      preferredBlockMultiQueue: true
+      preferredNetworkInterfaceMultiQueue: true
+      # The root disk's I/O runs on its own QEMU thread instead of QEMU's main loop.
+      # Applies to virtio disks only; the controller's SATA CD-ROM is untouched.
+      preferredDiskDedicatedIoThread: true
+      # NO preferredDiskIO / preferredDiskCache, on purpose. KubeVirt already picks
+      # the fastest safe combination per disk: cache none when the storage supports
+      # direct I/O, and io native for block devices and preallocated image files. It
+      # deliberately leaves sparse image files, the default on a Filesystem PVC, on
+      # QEMU's default mode. Forcing `native` here would override that on every node.
+    # Refuse to start anything smaller than a real compute node, so a mistyped class
+    # (a shipped `u1.small`, say) fails admission instead of joining a hosted cluster.
+    requirements:
+      cpu:
+        guest: 8
+      memory:
+        guest: 32Gi
+
+# Applied to every entry in `nodes` below. Any key here can be overridden per node.
+defaults:
+  # runStrategy IS the power switch, and the BMC owns it: kubevirt-redfish implements
+  # every Redfish power action by patching this exact field, Always for on and Halted
+  # for off. So the value here is only the machine's state before anything touches it.
+  #
+  # Halted is correct because the BareMetalHost's `online: true` is what powers the VM
+  # on, and it does so only after Ironic has attached boot media and set the boot
+  # override. `Always` would assert in git that the machine is permanently on, which
+  # contradicts the BMC being in charge of its power.
+  #
+  # The field cannot be omitted — KubeVirt rejects a VM without it
+  # ("spec.running: RunStrategy must be specified").
+  #
+  # !! GITOPS: git declares this field and the BMC changes it at runtime, so a sync that
+  # re-applies it SHUTS THE NODE DOWN. It is not the only such field: during
+  # provisioning kubevirt-redfish also adds a `cdrom0` disk and volume and rewrites
+  # `bootOrder`, and removes them again on eject. The VirtualMachine CRD declares no
+  # merge keys on its disk and volume lists, so any sync that re-applies these VMs
+  # replaces those lists whole and strips the CD-ROM from a node that is booting it.
+  #
+  # So the Application deploying this chart must not self-heal these VMs, and must
+  # ignore /spec/runStrategy AND the controller's CD-ROM entries, with the
+  # RespectIgnoreDifferences=true sync option so a sync keeps their live values.
+  # Ignoring runStrategy alone is not enough.
+  runStrategy: Halted
+
+  # What happens when the guest reboots itself. Terminate ends the VMI and lets
+  # KubeVirt start a fresh one from the VM spec; the default reboots inside the same
+  # VMI, keeping whatever that VMI was started with.
+  #
+  # That matters exactly once, and badly: at the end of installation the node
+  # reboots, and the running VMI still carries the discovery CD-ROM with CD-first boot
+  # order. Without Terminate it boots the discovery ISO again instead of its freshly
+  # installed disk. The Redfish controller does not set this itself, so it is set
+  # here. Needs the `RebootPolicy` feature gate on the KubeVirt cluster.
+  rebootPolicy: Terminate
+
+  # The node's size. Must name a class above (or a shipped one, e.g. u1.2xlarge).
+  instancetype:
+    kind: VirtualMachineClusterInstancetype
+    name: worker-32
+  preference:
+    kind: VirtualMachineClusterPreference
+    name: worker-node
+
+  rootDisk:
+    # Required. The storage class backing the node's disk.
+    storageClassName: ""
+
+    # Must clear the assisted installer's minimum, which defaults to 100 GB for a
+    # worker and is evaluated in GB rather than GiB — so a volume of exactly 100
+    # leaves no margin at all. 120Gi is 128.8 GB and also leaves room for container
+    # images and ephemeral storage once the node is actually in service.
+    size: 120Gi
+
+    # RWX, not RWO. KubeVirt refuses to live-migrate a VM if ANY attached PVC is
+    # unshared ("live migration requires that all PVCs must be shared"). These VMs
+    # are long-lived cluster nodes, and live migration is what lets a KubeVirt host
+    # be drained for maintenance without disrupting the hosted cluster on top of it.
+    accessModes:
+      - ReadWriteMany
+
+    # Block or Filesystem. It follows the storage class, because RWX above is the
+    # requirement that cannot bend and each backend offers RWX in only one mode:
+    #   - NFS-backed classes (e.g. NetApp ontap-nas) share a filesystem: Filesystem.
+    #   - Block-backed classes (e.g. NetApp ontap-san, Ceph RBD) share a device: Block.
+    # Check before changing, and change it together with storageClassName:
+    #   oc get storageprofile <class> -o jsonpath='{.status.claimPropertySets}'
+    # Requesting a mode the class does not offer leaves the PVC unbound. The mode is
+    # fixed when the disk is created; changing it later means re-creating the node.
+    #
+    # In Filesystem mode the disk is a file inside the PVC and CDI reserves ~6% for
+    # overhead, so do NOT reduce `size` below 120Gi: a 100Gi volume yields ~94Gi, which
+    # clears the installer's 100 GB minimum by under a gigabyte.
+    volumeMode: Filesystem
+
+    # ── Disk tuning. All optional: unset (null) leaves the choice to the preference
+    # or to KubeVirt; a value set here wins. These exist to be measured, so leave
+    # them unset unless a measurement says otherwise.
+    #
+    # Allocate the whole disk when it is created instead of leaving a sparse file.
+    # Meant for Filesystem mode, where a preallocated image file is what lets KubeVirt
+    # use io native on it. CDI uses fallocate where the filesystem supports it and
+    # otherwise writes the full 120Gi at creation. On Block, CDI zero-fills the whole
+    # device, and KubeVirt already uses io native on block, so the only effect there is
+    # forcing a thin volume to allocate up front.
+    preallocation: null
+    # true/false: own QEMU I/O thread for this disk. The preference sets true.
+    dedicatedIOThread: null
+    # native | threads | default. Unset lets KubeVirt choose (see the preference).
+    # native needs cache none.
+    io: null
+    # none | writethrough | writeback. Unset lets KubeVirt choose (none where direct
+    # I/O works). writeback caches the node's writes in host memory, where a host
+    # crash loses them: not for a node's root disk.
+    cache: null
+
+  # ── VM-wide I/O tuning. Same rules: optional, unset means preference or KubeVirt
+  # default, a value here wins.
+  io:
+    # shared | auto | supplementalPool. How QEMU I/O threads are laid out across
+    # disks. There is no preference field for it, so it is set here or not at all.
+    ioThreadsPolicy: null
+    # Number of I/O threads in the pool. Required with supplementalPool, rejected
+    # without it.
+    supplementalPoolThreadCount: null
+    # true/false. The preference sets both to true.
+    blockMultiQueue: null
+    networkInterfaceMultiqueue: null
+
+  network:
+    # bridge     -> Multus, attaching to `attachmentName` below. The real case.
+    # masquerade -> the pod network, no NAD needed. Lab and testing only; every VM
+    #               sees the same address, so multi-node validations fail.
+    binding: bridge
+    attachmentName: ""
+
+  firmware:
+    secureBoot: false
+
+  # LiveMigrateIfPossible, deliberately NOT LiveMigrate.
+  #
+  # While the discovery ISO is attached the VM carries the controller's CD-ROM PVC,
+  # which is ReadWriteOnce and therefore makes the VM non-migratable for the whole
+  # provisioning window. Strict `LiveMigrate` would leave a node drain blocked for
+  # that entire period with no way forward. `LiveMigrateIfPossible` migrates whenever
+  # the VM can be migrated and falls back to the RunStrategy otherwise, so it behaves
+  # identically once the media is ejected and the VM is RWX-only.
+  evictionStrategy: LiveMigrateIfPossible
+
+  # Merged onto every VM.
+  labels: {}
+  annotations: {}
+
+# The nodes themselves. `name` and `macAddress` are required, and both must be unique
+# across the list — the chart fails the render otherwise, because duplicates are
+# silent in the cluster and painful to diagnose.
+nodes: []
+#  - name: compute-0
+#    macAddress: "02:00:00:6b:76:01"   # == this node's BareMetalHost bootMACAddress
+#  - name: compute-1
+#    macAddress: "02:00:00:6b:76:02"
+#    instancetype:
+#      name: worker-64                 # per-node override of any `defaults` key

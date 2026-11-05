@@ -1,0 +1,44 @@
+{{- /*
+The node sizes, as cluster-scoped VirtualMachineClusterInstancetypes. A VM picks one
+by name (`instancetype.name` in values); the instancetype owns its vCPU and memory.
+
+`spec` is passed through verbatim, so it reads exactly like the KubeVirt API and the
+shipped Red Hat classes (`oc get vmclusterinstancetype <name> -o yaml`). KubeVirt's own
+admission validates it; nothing is translated here.
+
+NO metadata.namespace: cluster-scoped.
+*/}}
+{{- $names := list }}
+{{- range $i, $it := .Values.instancetypes }}
+  {{- $names = append $names (required (printf "instancetypes[%d].name is required" $i) ($it | default dict).name) }}
+{{- end }}
+{{- if ne (len $names) (len (uniq $names)) }}
+  {{- fail "instancetypes[].name must be unique across the list" }}
+{{- end }}
+
+{{- range $it := .Values.instancetypes }}
+{{- if or (not (hasKey $it "enabled")) $it.enabled }}
+{{- $spec := required (printf "instancetype %s: spec is required" $it.name) $it.spec }}
+{{- /* The chart sets these per VM (defaults.io). KubeVirt rejects a VM that sets a
+       field its instancetype also sets, so an instancetype carrying them would make
+       every VM using it fail admission the moment a node overrides the value. */}}
+{{- if or (hasKey $spec "ioThreadsPolicy") (hasKey $spec "ioThreads") }}
+  {{- fail (printf "instancetype %s: do not set ioThreadsPolicy/ioThreads here — they are per-VM settings (defaults.io), and KubeVirt rejects a VM that sets a field its instancetype also sets" $it.name) }}
+{{- end }}
+{{- /* The VM spec spells it dedicatedCpuPlacement, the instancetype dedicatedCPUPlacement.
+       The VM spelling here is an unknown field, which the API server may silently drop,
+       leaving a "dedicated" class with shared CPUs. */}}
+{{- if hasKey ($spec.cpu | default dict) "dedicatedCpuPlacement" }}
+  {{- fail (printf "instancetype %s: spec.cpu.dedicatedCpuPlacement is the VM spelling — an instancetype uses dedicatedCPUPlacement" $it.name) }}
+{{- end }}
+---
+apiVersion: instancetype.kubevirt.io/v1beta1
+kind: VirtualMachineClusterInstancetype
+metadata:
+  name: {{ $it.name }}
+  labels:
+    {{- include "nodes.classLabels" $ | nindent 4 }}
+spec:
+  {{- toYaml $spec | nindent 2 }}
+{{- end }}
+{{- end }}

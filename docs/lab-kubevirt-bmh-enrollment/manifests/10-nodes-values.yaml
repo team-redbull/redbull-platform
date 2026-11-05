@@ -1,0 +1,31 @@
+# Lab values for gitops/charts/hosted-cluster-nodes. setup.sh renders the chart with
+# them (helm template -n kv-lab) and applies the result.
+instancetypes:
+  # The chart's worker-32 / worker-64 do not fit on 24 vCPU / 64Gi lab workers.
+  # 8 / 32Gi is the smallest size the chart's preference accepts.
+  - name: worker-lab
+    spec:
+      cpu:
+        guest: 8
+      memory:
+        guest: 32Gi
+defaults:
+  # CNV 4.19 has no rebootPolicy field. Left in, `oc apply` (strict validation) rejects
+  # the VM outright. Null makes the chart omit it. On CNV >= 4.22, remove this override.
+  rebootPolicy: null
+  instancetype:
+    kind: VirtualMachineClusterInstancetype
+    name: worker-lab
+  rootDisk:
+    storageClassName: @@STORAGE_CLASS@@
+    # Ceph RBD offers ReadWriteMany only in Block mode. The chart's default
+    # Filesystem would leave the PVC unbound.
+    volumeMode: Block
+  network:
+    binding: bridge
+    attachmentName: vmnet
+nodes:
+  # The MAC is the only link to the BareMetalHost (60-bmh.yaml) and the
+  # NMStateConfig (50-infraenv.yaml). Change all three together.
+  - name: kv-worker-1
+    macAddress: "02:00:00:6b:76:0a"

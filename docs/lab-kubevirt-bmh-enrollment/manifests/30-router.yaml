@@ -1,0 +1,59 @@
+# NAT gateway for the vmnet overlay: 192.168.100.1 on net1, masquerading out of the
+# pod network (eth0). eth0 egresses through the node because the cluster runs OVN-K with
+# routingViaHost: true; that is the only working internet path on this lab.
+#
+# A BARE Pod, created by a cluster-admin user, for two reasons:
+#  - SCC admission accepts the privileged securityContext on the creating USER's rights,
+#    so no ServiceAccount needs an SCC grant (a Deployment would need one).
+#  - It is lab scaffolding, not a service. It is NOT recreated if deleted or evicted:
+#    rerun `setup.sh apply`.
+#
+# The SCC is pinned to `privileged`. CNV 4.22 adds a `linux-bridge` SCC that also allows
+# privileged containers but forces readOnlyRootFilesystem, and admission prefers it as the
+# more restrictive match: the pod then crash-loops on `dnf install` (Read-only file system).
+#
+# Created once, never re-applied (Pod specs are immutable). To change it, delete it and rerun.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: vmnet-router
+  namespace: kv-lab
+  labels:
+    app: vmnet-router
+  annotations:
+    openshift.io/required-scc: privileged
+    k8s.v1.cni.cncf.io/networks: '[{"name":"vmnet","namespace":"kv-lab","interface":"net1"}]'
+spec:
+  terminationGracePeriodSeconds: 5
+  containers:
+    - name: router
+      image: quay.io/fedora/fedora:41
+      securityContext:
+        privileged: true
+      command: ["/bin/bash", "-c"]
+      args:
+        - |
+          set -ex
+          # openssh-clients: the only way into a VM is ssh from here (ssh core@<vm-ip>).
+          dnf -y -q install nftables iproute procps-ng openssh-clients iputils tcpdump bind-utils >/dev/null
+          ip link set net1 mtu @@MTU@@
+          ip addr replace 192.168.100.1/24 dev net1
+          sysctl -w net.ipv4.ip_forward=1
+          nft -f - <<'NFT'
+          table ip vmnet {
+            chain post {
+              type nat hook postrouting priority srcnat;
+              ip saddr 192.168.100.0/24 oifname "eth0" masquerade
+            }
+          }
+          NFT
+          touch /tmp/ready
+          exec sleep infinity
+      readinessProbe:
+        exec:
+          command: ["test", "-f", "/tmp/ready"]
+        periodSeconds: 5
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi

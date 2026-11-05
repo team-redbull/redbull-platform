@@ -1,0 +1,57 @@
+# The InfraEnv and the VM's network config, on the MCE side. Secrets `pull-secret` and
+# `kv-worker-1-bmc` are created by setup.sh from the cluster and $STATE_DIR.
+apiVersion: agent-install.openshift.io/v1beta1
+kind: InfraEnv
+metadata:
+  name: lab
+  namespace: lab-hosts
+spec:
+  cpuArchitecture: x86_64
+  pullSecretRef:
+    name: pull-secret
+  # $STATE_DIR/ssh_ed25519. Use it from the router: oc cp the key in, then ssh core@<vm-ip>.
+  sshAuthorizedKey: "@@SSH_PUB@@"
+  nmStateConfigLabelSelector:
+    matchLabels:
+      infraenv: lab
+---
+# Static IP on the vmnet overlay. The gateway is the router pod. DNS is the cluster's
+# dns-default Service, reached through that NAT. It resolves api/api-int and *.apps
+# to the internal VIPs; public DNS would return an address the VM cannot reach.
+apiVersion: agent-install.openshift.io/v1beta1
+kind: NMStateConfig
+metadata:
+  name: kv-worker-1
+  namespace: lab-hosts
+  labels:
+    infraenv: lab
+spec:
+  interfaces:
+    # Logical name -> MAC. RHCOS names the NIC enp1s0; the MAC is what matches.
+    - name: eth0
+      macAddress: "02:00:00:6b:76:0a"
+  config:
+    interfaces:
+      - name: eth0
+        type: ethernet
+        state: up
+        mtu: @@MTU@@
+        mac-address: "02:00:00:6b:76:0a"
+        ipv4:
+          enabled: true
+          dhcp: false
+          address:
+            - ip: 192.168.100.10
+              prefix-length: 24
+        ipv6:
+          enabled: false
+    dns-resolver:
+      config:
+        server:
+          - @@DNS_IP@@
+    routes:
+      config:
+        - destination: 0.0.0.0/0
+          next-hop-address: 192.168.100.1
+          next-hop-interface: eth0
+          table-id: 254

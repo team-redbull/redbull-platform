@@ -1,0 +1,22 @@
+{{- /*
+The house style for every compute node, as one cluster-scoped
+VirtualMachineClusterPreference. A preference only fills fields the VM leaves unset,
+so anything set explicitly on a VM (or per node in values) wins over it.
+
+`spec` is passed through verbatim, like the instancetypes.
+
+NO metadata.namespace: cluster-scoped.
+*/}}
+{{- with .Values.preference }}
+{{- if .enabled }}
+---
+apiVersion: instancetype.kubevirt.io/v1beta1
+kind: VirtualMachineClusterPreference
+metadata:
+  name: {{ required "preference.name is required when preference.enabled is true" .name }}
+  labels:
+    {{- include "nodes.classLabels" $ | nindent 4 }}
+spec:
+  {{- toYaml (required "preference.spec is required when preference.enabled is true" .spec) | nindent 2 }}
+{{- end }}
+{{- end }}

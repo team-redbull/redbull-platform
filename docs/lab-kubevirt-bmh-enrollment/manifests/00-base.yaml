@@ -1,0 +1,49 @@
+# Namespaces and the VM network. The @@-delimited placeholders are filled in by
+# `setup.sh render`; apply the rendered copy, never this file.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kv-lab
+  labels:
+    # The NAT router (30-router.yaml) is a privileged bare Pod. Without these labels
+    # Pod Security admission rejects it, and the label syncer would reset them.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/audit: privileged
+    pod-security.kubernetes.io/warn: privileged
+    security.openshift.io/scc.podSecurityLabelSync: "false"
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: kubevirt-redfish
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab-hosts
+---
+# The VMs' only network: an OVN layer2 overlay carried in Geneve between node IPs.
+# The parent cluster therefore only ever sees the nodes' own MACs, which is the one
+# thing it lets through (see README, "Why it is built this way").
+#
+# No `subnets`, on purpose. Without them OVN-K does no IPAM and checks only the MAC on
+# each port, so the static IPs from the NMStateConfig are accepted. With subnets it would
+# also check IPs and drop them.
+#
+# MTU must match the cluster network MTU, because this overlay rides the same underlay.
+# `netAttachDefName` must be exactly <namespace>/<name>, or OVN-K ignores the NAD.
+apiVersion: k8s.cni.cncf.io/v1
+kind: NetworkAttachmentDefinition
+metadata:
+  name: vmnet
+  namespace: kv-lab
+spec:
+  config: |-
+    {
+      "cniVersion": "0.4.0",
+      "name": "kv-lab-vmnet",
+      "type": "ovn-k8s-cni-overlay",
+      "topology": "layer2",
+      "mtu": @@MTU@@,
+      "netAttachDefName": "kv-lab/vmnet"
+    }
