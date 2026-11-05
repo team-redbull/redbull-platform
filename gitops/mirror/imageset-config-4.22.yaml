@@ -1,0 +1,13 @@
+apiVersion: mirror.openshift.io/v2alpha1
+kind: ImageSetConfiguration
+archiveSize: 4
+mirror:
+  operators:
+    - catalog: registry.redhat.io/redhat/redhat-operator-index:v4.22
+      packages:
+        - name: kubevirt-hyperconverged
+          channels:
+            - name: stable
+        - name: cluster-kube-descheduler-operator
+          channels:
+            - name: stable
