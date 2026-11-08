@@ -87,15 +87,17 @@
 # See templates/_helpers.tpl — and do NOT set day2's `oldConvention: true` for this chart.
 
 image:
-  # AIR-GAPPED: verify this image is actually in your mirror. It ships in the CNV
-  # bundle's relatedImages on a connected cluster, but if `oc mirror` did not pull
-  # it, add it to ImageSetConfiguration.mirror.additionalImages.
-  # Note it is referenced BY TAG: an ImageDigestMirrorSet does not redirect tag
-  # pulls. You need an ImageTagMirrorSet covering registry.redhat.io, or point
-  # `repository` straight at the mirror host below.
-  repository: registry.redhat.io/container-native-virtualization/kubevirt-redfish-rhel9
-  tag: v4.22
-  pullPolicy: Always
+  # The team fork (team-redbull/kubevirt-redfish `main`: upstream main plus open upstream PRs
+  # #25 and #29-#39, plus SerialNumber/UUID/Manufacturer/Model on ComputerSystem; its
+  # SCALEFIX-CHANGES.md lists each). Not the stock CNV image (registry.redhat.io/
+  # container-native-virtualization/kubevirt-redfish-rhel9:v4.22, used until 2026-11-08): that
+  # one serves no per-System Memory, Storage, EthernetInterfaces or serial, which server-scan's
+  # KUBEVIRT collector (its ADR-0058) reads, and lacks the fork's scale fixes. The fork's
+  # `scalefix image` workflow publishes `sha-<commit>` on every push to its main; bump `tag`
+  # to one of those. Immutable tag, so IfNotPresent. AIR-GAPPED: mirror this tag explicitly.
+  repository: ghcr.io/team-redbull/kubevirt-redfish
+  tag: sha-ebbd2711ce1d48573821081d19a03cc7ae28669b
+  pullPolicy: IfNotPresent
 
 replicas: 1
 port: 8443
@@ -150,8 +152,8 @@ config:
           redfish-enabled: "true"
   users:
     - username: admin
-      # Plaintext, min 6 characters — the only shape the v4.22 image decodes, and it
-      # compares the value verbatim. NOT a bcrypt hash, see the header. Never commit a
+      # Plaintext, min 6 characters. The fork image also decodes `{hash: <bcrypt>}`, but the
+      # stock v4.22 one does not (see the header), so the template keeps emitting plaintext. Never commit a
       # real one to this repo (public); on a private mirror it is your call.
       password: ""
       chassis:
