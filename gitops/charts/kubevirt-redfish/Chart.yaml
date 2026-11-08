@@ -9,4 +9,4 @@ type: application
 version: 0.1.0
 # The team-redbull/kubevirt-redfish fork commit whose image this deploys (image.tag in
 # values.yaml is `sha-<this commit>`); keep the two in step.
-appVersion: "ebbd271"
+appVersion: "139404d"

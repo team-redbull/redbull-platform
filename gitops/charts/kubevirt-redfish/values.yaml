@@ -88,7 +88,7 @@
 
 image:
   # The team fork (team-redbull/kubevirt-redfish `main`: upstream main plus open upstream PRs
-  # #25 and #29-#39, plus SerialNumber/UUID/Manufacturer/Model on ComputerSystem; its
+  # #25 and #29-#39, plus SerialNumber/UUID/Manufacturer/Model and the VM's NodeName on ComputerSystem; its
   # SCALEFIX-CHANGES.md lists each). Not the stock CNV image (registry.redhat.io/
   # container-native-virtualization/kubevirt-redfish-rhel9:v4.22, used until 2026-11-08): that
   # one serves no per-System Memory, Storage, EthernetInterfaces or serial, which server-scan's
@@ -96,7 +96,7 @@ image:
   # `scalefix image` workflow publishes `sha-<commit>` on every push to its main; bump `tag`
   # to one of those. Immutable tag, so IfNotPresent. AIR-GAPPED: mirror this tag explicitly.
   repository: ghcr.io/team-redbull/kubevirt-redfish
-  tag: sha-ebbd2711ce1d48573821081d19a03cc7ae28669b
+  tag: sha-139404d74d4be9afafb59d80c062506da6f2a9e7
   pullPolicy: IfNotPresent
 
 replicas: 1
