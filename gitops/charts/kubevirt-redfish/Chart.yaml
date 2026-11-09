@@ -7,6 +7,6 @@ description: >-
   same way it drives physical servers.
 type: application
 version: 0.1.0
-# The team-redbull/kubevirt-redfish fork commit whose image this deploys (image.tag in
-# values.yaml is `sha-<this commit>`); keep the two in step.
-appVersion: "139404d"
+# The team-redbull/kubevirt-redfish fork release this deploys; keep it equal to image.tag in
+# values.yaml.
+appVersion: "1.0.1"

@@ -92,11 +92,13 @@ image:
   # SCALEFIX-CHANGES.md lists each). Not the stock CNV image (registry.redhat.io/
   # container-native-virtualization/kubevirt-redfish-rhel9:v4.22, used until 2026-11-08): that
   # one serves no per-System Memory, Storage, EthernetInterfaces or serial, which server-scan's
-  # KUBEVIRT collector (its ADR-0058) reads, and lacks the fork's scale fixes. The fork's
-  # `scalefix image` workflow publishes `sha-<commit>` on every push to its main; bump `tag`
-  # to one of those. Immutable tag, so IfNotPresent. AIR-GAPPED: mirror this tag explicitly.
+  # KUBEVIRT collector (its ADR-0058) reads, and lacks the fork's scale fixes. Every push to the
+  # fork's main is a release vX.Y.Z (GitHub release notes list what changed; its
+  # SCALEFIX-CHANGES.md, "Versioning"); bump `tag` here, and appVersion in Chart.yaml, to its
+  # X.Y.Z by hand. Never `latest` or `main-scalefix`, which float. IfNotPresent, as X.Y.Z is
+  # never re-pushed. AIR-GAPPED: mirror this tag explicitly.
   repository: ghcr.io/team-redbull/kubevirt-redfish
-  tag: sha-139404d74d4be9afafb59d80c062506da6f2a9e7
+  tag: "1.0.1"
   pullPolicy: IfNotPresent
 
 replicas: 1
