@@ -469,18 +469,6 @@ collectors:
       limits:
         memory: 512Mi
 
-  # TRANSITIONAL. The 4.52.1 templates in this folder dereference each
-  # collector block and fail to render without it, so each stays here, off.
-  # The two timeouts keep the API's recheck env unchanged. Delete these once
-  # upstream CI has synced the server-scan#18 templates here.
-  fake: { enabled: false }
-  ucsManager: { username: "", password: "" }
-  ucsCentral: { enabled: false, ip: "", username: "", password: "", timeoutSeconds: 240 }
-  redfishStandalone: { enabled: false }
-  oneview: { enabled: false, ip: "", username: "", password: "" }
-  ome: { enabled: false, ip: "", username: "", password: "", bmcUsername: "", bmcPassword: "" }
-  intersight: { enabled: false, ip: "", connectTimeoutSeconds: 10, readTimeoutSeconds: 60 }
-
 # AD login (docs/adr/0034): every request is open (auth.enabled: false,
 # the default) until this points at a real AD/LDAP + the operator's own
 # "AD API" REST service. There is no AD reachable from this chart's own

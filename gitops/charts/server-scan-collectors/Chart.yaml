@@ -8,4 +8,4 @@ version: 0.1.0
 # release's tag: bump `image.tag` by hand per release, and always AFTER the
 # server-scan release has been upgraded, since both write the same MongoDB
 # documents and a collector must never be newer than the API reading them.
-appVersion: "1.0.0"
+appVersion: "5.0.0"

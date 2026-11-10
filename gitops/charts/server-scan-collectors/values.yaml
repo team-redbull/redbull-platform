@@ -36,11 +36,10 @@ image:
   # Blank means the chart's appVersion. Never `latest` (the server-scan
   # chart's backend.image says why). Pinned by hand per release, and always
   # upgraded AFTER the server-scan release: both write the same documents.
-  # OVERRIDE: never blank here, appVersion "1.0.0" is not a published image.
-  # Bumped by hand after gitops/charts/server-scan's own tag. 4.52.1 is the
-  # release server-scan ran when this app was added; the first bump after
-  # team-redbull/server-scan#18 merges sets it to the release containing it.
-  tag: "4.52.1"
+  # OVERRIDE: bumped by hand, never by CI, and only after
+  # gitops/charts/server-scan's own tag (and appVersion in Chart.yaml with it).
+  # 5.0.0 is the first release with this chart (team-redbull/server-scan#18).
+  tag: "5.0.0"
   pullPolicy: IfNotPresent
 
 # Labels every CronJob `server-scan.io/triggerable: "true"`, which is what
