@@ -1,0 +1,120 @@
+{{- $c := .Values.collectors | default dict }}
+{{- $rf := $c.redfishStandalone | default dict }}
+{{- $tls := $rf.tls | default dict }}
+{{- if $rf.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-collector-redfish-standalone
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-collector-redfish-standalone
+    {{- include "collectors.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $rf.schedule | quote }}
+  {{- with $c.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  suspend: {{ $rf.suspend }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      {{- if $c.jobTtlSeconds }}
+      ttlSecondsAfterFinished: {{ $c.jobTtlSeconds }}
+      {{- end }}
+      backoffLimit: {{ $rf.backoffLimit }}
+      activeDeadlineSeconds: {{ $rf.activeDeadlineSeconds }}
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: collector
+              image: {{ include "collectors.image" . | quote }}
+              imagePullPolicy: {{ include "collectors.pullPolicy" . }}
+              command:
+                - python3
+                - -m
+                - tools.run_collector
+                - --manager-type
+                - REDFISH_STANDALONE
+              env:
+                {{- include "collectors.commonEnv" . | nindent 16 }}
+                - name: INVENTORY_REDFISH_INVENTORY_FILE
+                  value: /etc/redfish/inventory.toml
+                {{- if hasKey $rf "namePattern" }}
+                - name: INVENTORY_REDFISH_NAME_PATTERN
+                  value: {{ $rf.namePattern | quote }}
+                {{- end }}
+                {{- if or $rf.credentialsSecret $rf.credentialsFile }}
+                - name: INVENTORY_REDFISH_CREDENTIALS_FILE
+                  value: /etc/redfish-credentials/credentials.toml
+                {{- end }}
+                {{- if $tls.caBundleConfigMap }}
+                - name: INVENTORY_REDFISH_CA_BUNDLE
+                  value: /etc/redfish-ca/ca-bundle.crt
+                {{- end }}
+                - name: INVENTORY_REDFISH_TLS_MIN_VERSION
+                  value: {{ $tls.minVersion | quote }}
+                - name: INVENTORY_REDFISH_FLEET_CONCURRENCY
+                  value: {{ $rf.fleetConcurrency | quote }}
+                - name: INVENTORY_REDFISH_CONNECT_TIMEOUT_SECONDS
+                  value: {{ $rf.connectTimeoutSeconds | quote }}
+                - name: INVENTORY_REDFISH_READ_TIMEOUT_SECONDS
+                  value: {{ $rf.readTimeoutSeconds | quote }}
+                - name: INVENTORY_REDFISH_HOST_BUDGET_SECONDS
+                  value: {{ $rf.hostBudgetSeconds | quote }}
+                - name: INVENTORY_REDFISH_RUN_BUDGET_SECONDS
+                  value: {{ $rf.runBudgetSeconds | quote }}
+                - name: INVENTORY_REDFISH_PCIE_GPU_DETECTION
+                  value: {{ $rf.pcieGpuDetection | quote }}
+                - name: INVENTORY_REDFISH_PCIE_GPU_MAX_DEVICES
+                  value: {{ $rf.pcieGpuMaxDevices | quote }}
+                - name: INVENTORY_REDFISH_PCIE_GPU_MAX_GPUS
+                  value: {{ $rf.pcieGpuMaxGpus | quote }}
+                - name: INVENTORY_REDFISH_PCIE_GPU_MODELS
+                  value: {{ $rf.pcieGpuModels | quote }}
+                {{- include "collectors.dbEnv" . | nindent 16 }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "collectors.configMapName" . }}
+                - secretRef:
+                    name: {{ include "collectors.credentialsSecretName" . }}
+              volumeMounts:
+                - name: inventory
+                  mountPath: /etc/redfish
+                  readOnly: true
+                {{- if or $rf.credentialsSecret $rf.credentialsFile }}
+                - name: host-credentials
+                  mountPath: /etc/redfish-credentials
+                  readOnly: true
+                {{- end }}
+                {{- if $tls.caBundleConfigMap }}
+                - name: ca-bundle
+                  mountPath: /etc/redfish-ca
+                  readOnly: true
+                {{- end }}
+              resources:
+                {{- toYaml $rf.resources | nindent 16 }}
+              securityContext:
+                {{- include "collectors.securityContext" . | nindent 16 }}
+          volumes:
+            - name: inventory
+              configMap:
+                name: {{ $rf.inventoryConfigMap | default (printf "%s-redfish-inventory" .Release.Name) }}
+            {{- if or $rf.credentialsSecret $rf.credentialsFile }}
+            - name: host-credentials
+              secret:
+                # An externally provisioned Secret always wins; the
+                # chart's own files/redfish/credentials.toml is the
+                # opt-in fallback. See redfish-credentials-secret.yaml.
+                secretName: {{ $rf.credentialsSecret | default (printf "%s-redfish-credentials" .Release.Name) }}
+                defaultMode: 0400
+            {{- end }}
+            {{- if $tls.caBundleConfigMap }}
+            - name: ca-bundle
+              configMap:
+                name: {{ $tls.caBundleConfigMap }}
+            {{- end }}
+{{- end }}

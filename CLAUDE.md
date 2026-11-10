@@ -28,7 +28,7 @@ deploy it.
 **Argo CD** owns the stateless service layer via **one generic ApplicationSet**
 (`gitops/appset.yaml`) over `gitops/services/<service>/app.yaml`: `temporal`,
 `segments-manager`, `workflows-orchestrator`, `segment-lifecycle-worker`,
-`workflows-docs`, `dhcp-scope-manager`, `server-scan`, `cluster-navigator`,
+`workflows-docs`, `dhcp-scope-manager`, `server-scan`, `server-scan-collectors`, `cluster-navigator`,
 `cluster-navigator-collector`. Each service's chart is a folder in
 **this** repo at `gitops/charts/<service>/` — the sole, hand-edited copy; no code repo
 carries a `helm/` chart folder any more, and neither do the retired `helm-charts-*` repos.
@@ -593,7 +593,10 @@ a habit here rather than a CI step. When a chart comes from another repo
 every release, which also pins the image tags — only this repo's
 `values.yaml` is hand-maintained), the values file that matters is **this
 repo's** — the upstream chart's
-defaults may render fine while ours does not.
+defaults may render fine while ours does not. `server-scan-collectors` (its
+collector CronJobs, same namespace) is a copy of that repo's
+`deploy/helm/server-scan-collectors` that CI does **not** touch: its chart and
+`image.tag` are bumped by hand, always after `server-scan`'s tag.
 
 ## Related repos
 

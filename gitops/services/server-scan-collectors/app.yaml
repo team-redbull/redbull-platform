@@ -1,0 +1,23 @@
+# Argo config for `server-scan-collectors` — the collector CronJobs that write
+# server-scan's inventory (team-redbull/server-scan, its ADR-0060). Chart:
+# gitops/charts/server-scan-collectors, a copy of that repo's own
+# deploy/helm/server-scan-collectors with this cluster's values on top.
+#
+# Its own app, split out of `server-scan`, so a collector upgrade is not a
+# platform upgrade and the other way round. Unlike `server-scan`, upstream CI
+# writes NOTHING here: the chart copy and `image.tag` are bumped by hand, and
+# always AFTER server-scan's own tag (both write the same MongoDB documents,
+# and an older API cannot read what a newer collector writes).
+#
+# The hub shape: it deploys into server-scan's namespace and renders nothing
+# server-scan already owns. Its CronJobs read server-scan's
+# `server-scan-api-config` ConfigMap and the out-of-band `server-scan-db`
+# Secret, so that Secret must exist before the first sync here too. The only
+# collector on is `fake`, exactly as on `server-scan` before the split. The
+# dependency on `server-scan` is soft: until its ConfigMap exists a Job sits
+# in CreateContainerConfigError and the next schedule recovers.
+#
+# NO CreateNamespace: the `server-scan` app creates and owns the `server-scan`
+# namespace (its own `overrides:`), and two owners for a namespace is a race.
+# It is also deliberately absent from charts/namespaces/values.yaml.
+namespace: server-scan
