@@ -55,7 +55,8 @@ One `Application` per row, generated from `gitops/services/<service>/app.yaml` b
 | `dhcp-scope-manager` | `dhcp-scope-manager` | `gitops/charts/dhcp-scope-manager` | Linux API driving a remote Windows DHCP server over PSRP/WinRM |
 | `cluster-navigator` | `cluster-navigator` | `gitops/charts/cluster-navigator` | every OpenShift cluster, its segments and details (team-redbull/cluster-navigator); uses the Helmfile-managed `cluster-navigator-mongodb` |
 | `cluster-navigator-collector` | `cluster-navigator` | `gitops/charts/cluster-navigator-collector` | CronJob reporting THIS cluster to `cluster-navigator`; reads the server's Secret for its token |
-| `server-scan` | `server-scan` | `gitops/charts/server-scan` | bare-metal inventory platform; **combined** API + UI + MongoDB/Redis subcharts, fake-data collector only |
+| `server-scan` | `server-scan` | `gitops/charts/server-scan` | bare-metal inventory platform; **combined** API + UI + MongoDB/Redis subcharts; image tags and templates pinned by upstream CI |
+| `server-scan-collectors` | `server-scan` | `gitops/charts/server-scan-collectors` | server-scan's collector CronJobs (fake-data collector only); reads server-scan's ConfigMap and `server-scan-db`; image tag bumped by hand, after `server-scan` |
 | `external-secrets` | `external-secrets` | `gitops/charts/external-secrets` | ESO + the `vault` ClusterSecretStore (hub Vault). Remote clusters run the same chart; `ocp-64spr` installs it with plain helm (gitops/SECRETS.md §4) |
 
 The app name, the chart path and the Helm release name are all the folder name, so a
@@ -265,7 +266,7 @@ Helmfile release names (bootstrap layer): `namespaces`, `htpasswd-idp`, `crosspl
 `bmh-generator-operator`, `server-scanner-dashboard`,
 `hosted-cluster-integration`. (`temporal`, `segments-manager`, `workflows-orchestrator`,
 `segment-lifecycle-worker`, `workflows-docs`, `dhcp-scope-manager`, `server-scan`,
-`cluster-navigator` and `cluster-navigator-collector` are Argo CD apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
+`server-scan-collectors`, `cluster-navigator` and `cluster-navigator-collector` are Argo CD apps now — select them with `argocd app`/`kubectl get applications -n openshift-gitops`, not
 `helmfile -l`.)
 
 > **Dependencies aren't pulled in automatically.** With a selector, Helmfile acts

@@ -11,17 +11,17 @@
 # probe fails until Mongo answers and Argo's own retry handles the rest, and
 # Redis is cache-aside so its absence is never a correctness problem.
 #
-# There is no vendor hardware on this cluster — no UCS Central, OneView,
-# OpenManage, Intersight or reachable BMC — so the five vendor collector
-# CronJobs stay disabled and the only one enabled is `fake`, which seeds a
-# deterministic fleet through the real ingest pipeline. Turning a vendor
-# collector on means turning that one off first: servers correlate on
-# (vendor, serial), so two sources fight over the same documents.
+# The collector CronJobs are NOT here: they are the separate
+# `server-scan-collectors` app (gitops/services/server-scan-collectors), in
+# this same namespace, bumped by hand after this one. There is no vendor
+# hardware on this cluster, so its only collector is `fake`, which seeds a
+# deterministic fleet through the real ingest pipeline.
 #
 # ONE out-of-band Secret, `server-scan-db`, holds every credential — both
 # database passwords, the cursor-signing HMAC, and the two connection URIs.
 # Nothing secret is committed. It must exist BEFORE the first sync or the API
-# and both CronJobs stay in CreateContainerConfigError; the exact
+# and every CronJob (here and in server-scan-collectors) stays in
+# CreateContainerConfigError; the exact
 # `oc create secret` line is at the top of the chart's values.yaml. Same shape
 # as segments-manager-token today, and the ExternalSecret target
 # gitops/SECRETS.md already plans for.
@@ -48,7 +48,8 @@ namespace: server-scan
 #
 # The cost is the one the appset warns about generally: two owners for a
 # namespace is a race, so `server-scan` is deliberately absent from
-# charts/namespaces/values.yaml. Do not add it back.
+# charts/namespaces/values.yaml. Do not add it back. `server-scan-collectors`
+# deploys into it too, without CreateNamespace.
 overrides:
   spec:
     syncPolicy:

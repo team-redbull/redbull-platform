@@ -1,0 +1,87 @@
+{{- /* KubeVirt VMs through kubevirt-redfish (docs/adr/0058). Every key is read through `$kv`: the platform repo's values.yaml may not have this block. */ -}}
+{{- $c := .Values.collectors | default dict }}
+{{- $kv := $c.kubevirt | default dict }}
+{{- if $kv.enabled }}
+{{- $_ := required "collectors.kubevirt.clusterName is required when collectors.kubevirt.enabled: it names the cluster whose nodes a VM's host resolves against (ADR-0059)." $kv.clusterName }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ .Release.Name }}-collector-kubevirt
+  labels:
+    app.kubernetes.io/name: {{ .Release.Name }}-collector-kubevirt
+    {{- include "collectors.labels" . | nindent 4 }}
+spec:
+  schedule: {{ $kv.schedule | default "0 */3 * * *" | quote }}
+  {{- with $c.timeZone }}
+  timeZone: {{ . | quote }}
+  {{- end }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  jobTemplate:
+    spec:
+      {{- if $c.jobTtlSeconds }}
+      ttlSecondsAfterFinished: {{ $c.jobTtlSeconds }}
+      {{- end }}
+      backoffLimit: {{ $kv.backoffLimit | default 1 }}
+      activeDeadlineSeconds: {{ $kv.activeDeadlineSeconds | default 2400 }}
+      template:
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          containers:
+            - name: collector
+              image: {{ include "collectors.image" . | quote }}
+              imagePullPolicy: {{ include "collectors.pullPolicy" . }}
+              command: ["python3", "-m", "tools.run_collector", "--manager-type", "KUBEVIRT"]
+              env:
+                {{- include "collectors.commonEnv" . | nindent 16 }}
+                {{- if hasKey $kv "connectTimeoutSeconds" }}
+                - name: INVENTORY_COLLECTOR_CONNECT_TIMEOUT_SECONDS
+                  value: {{ $kv.connectTimeoutSeconds | quote }}
+                {{- end }}
+                - name: INVENTORY_COLLECTOR_NAME_PATTERN
+                  value: {{ $c.namePattern | quote }}
+                {{- if hasKey $kv "namePattern" }}
+                - name: INVENTORY_KUBEVIRT_NAME_PATTERN
+                  value: {{ $kv.namePattern | quote }}
+                {{- end }}
+                - name: INVENTORY_KUBEVIRT_VERIFY_TLS
+                  value: {{ ternary $kv.verifyTls true (hasKey $kv "verifyTls") | quote }}
+                {{- if $kv.caBundleConfigMap }}
+                - name: INVENTORY_KUBEVIRT_CA_BUNDLE
+                  value: /etc/kubevirt-ca/ca-bundle.crt
+                {{- end }}
+                - name: INVENTORY_KUBEVIRT_CLUSTER_NAME
+                  value: {{ $kv.clusterName | quote }}
+                - name: INVENTORY_KUBEVIRT_CONCURRENCY
+                  value: {{ $kv.concurrency | default 4 | quote }}
+                - name: INVENTORY_KUBEVIRT_READ_TIMEOUT_SECONDS
+                  value: {{ $kv.readTimeoutSeconds | default 35 | quote }}
+                - name: INVENTORY_KUBEVIRT_VM_BUDGET_SECONDS
+                  value: {{ $kv.vmBudgetSeconds | default 60 | quote }}
+                - name: INVENTORY_KUBEVIRT_RUN_BUDGET_SECONDS
+                  value: {{ $kv.runBudgetSeconds | default 1800 | quote }}
+                {{- include "collectors.dbEnv" . | nindent 16 }}
+              envFrom:
+                - configMapRef:
+                    name: {{ include "collectors.configMapName" . }}
+                - secretRef:
+                    name: {{ include "collectors.credentialsSecretName" . }}
+              {{- if $kv.caBundleConfigMap }}
+              volumeMounts:
+                - name: ca-bundle
+                  mountPath: /etc/kubevirt-ca
+                  readOnly: true
+              {{- end }}
+              resources:
+                {{- toYaml ($kv.resources | default (dict "requests" (dict "cpu" "50m" "memory" "128Mi") "limits" (dict "memory" "256Mi"))) | nindent 16 }}
+              securityContext:
+                {{- include "collectors.securityContext" . | nindent 16 }}
+          {{- if $kv.caBundleConfigMap }}
+          volumes:
+            - name: ca-bundle
+              configMap:
+                name: {{ $kv.caBundleConfigMap }}
+          {{- end }}
+{{- end }}

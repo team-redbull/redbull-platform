@@ -7,7 +7,8 @@ namespaces:
   - server-scanner        # Helmfile `server-scanner-dashboard` (team-redbull/ServerScanner).
                           # NOT the `server-scan` Argo app (team-redbull/server-scan) —
                           # a different project, in a `server-scan` namespace it creates
-                          # itself with CreateNamespace=true. Deliberately not listed here:
+                          # itself with CreateNamespace=true (`server-scan-collectors`
+                          # deploys there too, without it). Deliberately not listed here:
                           # two owners for one namespace is a race.
   - redbull-workflows     # Argo workflows-orchestrator + segment-lifecycle-worker + workflows-docs apps
   - dhcp-scope-manager    # Argo-managed: the `dhcp-scope-manager` app deploys here
