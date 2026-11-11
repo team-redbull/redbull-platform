@@ -41,10 +41,3 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.gitTokenSecret.name }}
                   key: {{ .Values.secrets.gitTokenSecret.key }}
-{{- if .Values.secrets.day2GitTokenSecret.name }}
-            - name: DAY2_GIT_TOKEN
-              valueFrom:
-                secretKeyRef:
-                  name: {{ .Values.secrets.day2GitTokenSecret.name }}
-                  key: {{ .Values.secrets.day2GitTokenSecret.key }}
-{{- end }}

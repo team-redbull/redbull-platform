@@ -29,22 +29,18 @@ config:
   day2SigRepoUrlTemplate: "https://github.com/team-redbull/gitops-day2-prod.git"
   day2SigPathTemplate: "sigs/{sig}"
 secrets:
-  # The git token. NOT rendered here, only named, and it must exist before this worker
-  # starts. The pod gets it as REDBULL_GIT_TOKEN, the name the limb reads (the air-gap
-  # Secret's own key). For
-  # provision-cluster it must also reach the provider's API (GitLab: `api` +
-  # `write_repository`; GitHub: `repo`) and push the day2 sig repos.
+  # The git token: ONE token for day1 AND every day2 sig repo — the redbull group token,
+  # so there is no second Secret for the sigs. NOT rendered here, only named, and it must
+  # exist before this worker starts. The pod gets it as REDBULL_GIT_TOKEN, the name the
+  # limb reads (the air-gap Secret's own key). For provision-cluster it must reach the
+  # provider's API (GitLab: `api` + `write_repository`; GitHub: `repo`), push the day1
+  # repo's branches and push each sig repo's default branch.
   # This cluster has no `redbull-git-token` yet, so it names `day1-git-token`, the Secret
   # the other git limbs on main read here. The air-gap names
   # `redbull-git-token` / `REDBULL_GIT_TOKEN` (APPLY-PROVISION-CLUSTER.md in redbull-workflows).
   gitTokenSecret:
     name: day1-git-token
     key: DAY1_GIT_TOKEN
-  # A different token for the day2 sig repos (DAY2_GIT_TOKEN), when the day1 one
-  # cannot push them. Empty name = the day1 token is used for both.
-  day2GitTokenSecret:
-    name: ""
-    key: ""
 activityWorker:
   image:
     repository: ghcr.io/team-redbull/cluster-lifecycle-worker
