@@ -1,0 +1,12 @@
+# Argo config for `cluster-lifecycle-worker` — provision-cluster's activity-worker limb,
+# ONE release on the hub. Chart: gitops/charts/cluster-lifecycle-worker. The folder name
+# drives the app name, the chart path and the release name, so the -worker suffix here
+# is what makes the workload read as a process rather than a peer service; the
+# domain-scoped names it consumes (cluster-lifecycle-config, the
+# cluster-lifecycle-activity queue) deliberately stay bare.
+#
+# Same redbull-workflows namespace as the orchestrator; it gets the Temporal connection
+# from the shared workflows-orchestrator-config ConfigMap at runtime, and the git token
+# from the Secret its chart's values name (`day1-git-token` here). It crash-loops until
+# both exist, then connects.
+namespace: redbull-workflows

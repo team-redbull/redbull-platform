@@ -1,0 +1,57 @@
+# cluster-lifecycle-worker — provision-cluster's hub limb (redbull-workflows: activities/cluster_lifecycle/).
+#
+# ONE release: the worker reaches the day1 values repo (a clone of main, a push
+# of provision-cluster/<cluster>, the merge request through the repo's git
+# provider API) and the day2 sig repos (a push to each sig's default branch)
+# with git tokens only — no Kubernetes credential. The segment comes from the
+# segment-lifecycle limb, through allocate-segment as an awaited child.
+config:
+  # The day1 values repo (the same the segment-lifecycle, upgrade-gitops and
+  # vm-lifecycle charts name). Read at main; pushed on provision-cluster/<cluster>.
+  day1RepoUrl: "https://github.com/team-redbull/gitops-day1-platform-config.git"
+  # Which API opens the merge request from that branch to main: `github` here
+  # (a pull request; delete-on-merge is the repository's setting), `gitlab` in
+  # the air-gap (a merge request with remove_source_branch).
+  day1GitProvider: "github"
+  # The DHCP exclusion policy written into every cluster file's dhcp_values
+  # block, per segment type: last-octet ranges NOT distributed. HC is required.
+  # Was segment-lifecycle-worker's until provision-cluster took over the cluster
+  # file (2026-11-11); that chart still renders its copy until its image stops
+  # reading it.
+  dhcpExclusionOctetRanges:
+    HC:
+      - [1, 10]
+      - [241, 254]
+  # The day2 sig repos: the URL with {sig} filled in, and the path prefix before
+  # sites/ ("" when the tree is at the repo root). Here: one GitHub repo holding
+  # every sig under sigs/<sig>. In the air-gap: one GitLab project per sig,
+  # "https://<gitlab>/redbull/gitops-day2-prod/sigs/{sig}.git" and "".
+  day2SigRepoUrlTemplate: "https://github.com/team-redbull/gitops-day2-prod.git"
+  day2SigPathTemplate: "sigs/{sig}"
+secrets:
+  # The git token. NOT rendered here, only named, and it must exist before this worker
+  # starts. The pod gets it as DAY1_GIT_TOKEN, the name the limb reads. For
+  # provision-cluster it must also reach the provider's API (GitLab: `api` +
+  # `write_repository`; GitHub: `repo`) and push the day2 sig repos.
+  # This cluster has no `redbull-git-token` yet, so it names `day1-git-token`, the Secret
+  # the other git limbs on main read here. The air-gap names
+  # `redbull-git-token` / `REDBULL_GIT_TOKEN` (APPLY-PROVISION-CLUSTER.md in redbull-workflows).
+  gitTokenSecret:
+    name: day1-git-token
+    key: DAY1_GIT_TOKEN
+  # A different token for the day2 sig repos (DAY2_GIT_TOKEN), when the day1 one
+  # cannot push them. Empty name = the day1 token is used for both.
+  day2GitTokenSecret:
+    name: ""
+    key: ""
+activityWorker:
+  image:
+    repository: ghcr.io/team-redbull/cluster-lifecycle-worker
+    # Bumped by redbull-workflows' CI (build-cluster-lifecycle-worker) on every
+    # push that touches the limb; the first push after this chart lands sets
+    # the first real tag.
+    tag: v0.1.0
+    pullPolicy: IfNotPresent
+  # Two: a run's activities are short and idempotent (a re-clone, a find-before-
+  # create), and a second pod covers a rollout while a run waits for its merge.
+  replicas: 2

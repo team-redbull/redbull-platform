@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: cluster-lifecycle-worker
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cluster-lifecycle-worker
+  labels:
+    app: cluster-lifecycle-worker
+spec:
+  replicas: {{ .Values.activityWorker.replicas }}
+  selector:
+    matchLabels:
+      app: cluster-lifecycle-worker
+  template:
+    metadata:
+      labels:
+        app: cluster-lifecycle-worker
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: cluster-lifecycle-worker
+      # No Kubernetes API call from this pod: git and the git provider's API only.
+      automountServiceAccountToken: false
+      # In-flight activities get 20s to finish after SIGTERM (worker_init.py).
+      terminationGracePeriodSeconds: 30
+      containers:
+        - name: cluster-lifecycle-worker
+          image: "{{ .Values.activityWorker.image.repository }}:{{ .Values.activityWorker.image.tag }}"
+          imagePullPolicy: {{ .Values.activityWorker.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: workflows-orchestrator-config
+            - configMapRef:
+                name: cluster-lifecycle-config
+          env:
+            - name: DAY1_GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.gitTokenSecret.name }}
+                  key: {{ .Values.secrets.gitTokenSecret.key }}
+{{- if .Values.secrets.day2GitTokenSecret.name }}
+            - name: DAY2_GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.secrets.day2GitTokenSecret.name }}
+                  key: {{ .Values.secrets.day2GitTokenSecret.key }}
+{{- end }}

@@ -1,0 +1,7 @@
+apiVersion: v2
+name: cluster-lifecycle-worker
+description: >-
+  The cluster-lifecycle domain's activity worker — provision-cluster's limb: reads day1 main for where a hosted cluster goes, pushes the cluster file (with the segment allocate-segment reserved) to its own branch, opens the merge request on the day1 repo's git provider, reads it back until a person merges, and registers the cluster in the day2 sig repos. Named for the process, not the domain: it polls the domain-scoped cluster-lifecycle-activity queue. One release on the hub — it holds no Kubernetes credential, only the day1 git token (push + the provider's API) and the day2 token. Deploys alongside the shared workflows-orchestrator chart, which runs the workflow brain.
+type: application
+version: 0.1.0
+appVersion: "v0.1.0"
