@@ -36,7 +36,7 @@ spec:
             - configMapRef:
                 name: cluster-lifecycle-config
           env:
-            - name: DAY1_GIT_TOKEN
+            - name: REDBULL_GIT_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: {{ .Values.secrets.gitTokenSecret.name }}

@@ -30,7 +30,8 @@ config:
   day2SigPathTemplate: "sigs/{sig}"
 secrets:
   # The git token. NOT rendered here, only named, and it must exist before this worker
-  # starts. The pod gets it as DAY1_GIT_TOKEN, the name the limb reads. For
+  # starts. The pod gets it as REDBULL_GIT_TOKEN, the name the limb reads (the air-gap
+  # Secret's own key). For
   # provision-cluster it must also reach the provider's API (GitLab: `api` +
   # `write_repository`; GitHub: `repo`) and push the day2 sig repos.
   # This cluster has no `redbull-git-token` yet, so it names `day1-git-token`, the Secret
