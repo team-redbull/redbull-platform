@@ -50,7 +50,8 @@ One `Application` per row, generated from `gitops/services/<service>/app.yaml` b
 | `temporal` | `temporal` | `gitops/charts/temporal` | **combined** temporal-stack + PostgreSQL subchart (sync waves) |
 | `segments-manager` | `segments-manager` | `gitops/charts/segments-manager` | uses the Helmfile-managed `segments-manager-mongodb` |
 | `workflows-orchestrator` | `redbull-workflows` | `gitops/charts/workflows-orchestrator` | the shared workflow "brain"; owns `workflows-orchestrator-config` |
-| `segment-lifecycle-worker` | `redbull-workflows` | `gitops/charts/segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; talks to segments-manager, the day1 repo and the DHCP API |
+| `segment-lifecycle-worker` | `redbull-workflows` | `gitops/charts/segment-lifecycle-worker` | the segment-lifecycle domain's activity limb; talks to segments-manager and the DHCP API (the day1 repo is cluster-lifecycle-worker's since 2026-11-11; this chart's day1 keys go once its image stops reading them) |
+| `cluster-lifecycle-worker` | `redbull-workflows` | `gitops/charts/cluster-lifecycle-worker` | the cluster-lifecycle domain's activity limb (provision-cluster): day1 main + a branch per cluster, the merge request through the repo's git provider API, the day2 sig repos; reads `day1-git-token` |
 | `workflows-docs` | `redbull-workflows` | `gitops/charts/workflows-docs` | static docs site for the workflow layer; depends on nothing |
 | `dhcp-scope-manager` | `dhcp-scope-manager` | `gitops/charts/dhcp-scope-manager` | Linux API driving a remote Windows DHCP server over PSRP/WinRM |
 | `cluster-navigator` | `cluster-navigator` | `gitops/charts/cluster-navigator` | every OpenShift cluster, its segments and details (team-redbull/cluster-navigator); uses the Helmfile-managed `cluster-navigator-mongodb` |
@@ -320,9 +321,14 @@ Tip: to make custom groupings (e.g. all apps vs. the platform layer), add a
     carries a copy.
   - `gitops/charts/segments-manager/values.yaml` → `mongodb.url` (in-cluster Mongo, with
     the password inline — see `SECRETS.md`) and `siteNetworks`.
-  - `gitops/charts/segment-lifecycle-worker/values.yaml` → `config.day1RepoUrl` /
-    `day1Branch`, `config.dhcpApiUrl`, `config.dhcpExclusionOctetRanges` (the one DHCP
-    policy knob) and the two `secrets.existing*` references.
+  - `gitops/charts/segment-lifecycle-worker/values.yaml` → `config.dhcpApiUrl` and the
+    `secrets.existing*` references (its `config.day1RepoUrl` / `day1Branch` /
+    `dhcpExclusionOctetRanges` are leftovers the limb no longer reads).
+  - `gitops/charts/cluster-lifecycle-worker/values.yaml` → `config.day1RepoUrl`,
+    `config.day1GitProvider` (`gitlab` | `github`), `config.dhcpExclusionOctetRanges` (the one
+    DHCP policy knob, written into every cluster file), `config.day2SigRepoUrlTemplate` /
+    `day2SigPathTemplate` (one of them names `{sig}`) and `secrets.gitTokenSecret`
+    (`day1-git-token` here).
   - `gitops/charts/temporal/values.yaml` → `ui.auth.allowedUsers`.
 - **`image.repository`/`image.tag` in those files are CI-owned.** The service's code repo
   commits the bump here on every push to its main. Hand-editing them is transient: the
