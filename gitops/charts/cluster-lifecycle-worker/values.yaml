@@ -50,7 +50,7 @@ activityWorker:
     # Bumped by redbull-workflows' CI (build-cluster-lifecycle-worker) on every
     # push that touches the limb; the first push after this chart lands sets
     # the first real tag.
-    tag: v1.0.1
+    tag: v1.0.2
     pullPolicy: IfNotPresent
   # Two: a run's activities are short and idempotent (a re-clone, a find-before-
   # create), and a second pod covers a rollout while a run waits for its merge.
