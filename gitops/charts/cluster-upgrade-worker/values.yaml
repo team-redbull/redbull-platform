@@ -22,7 +22,7 @@ replicaCount: 2
 image:
   # Disconnected production: the mirror of ghcr.io/team-redbull/cluster-upgrade-worker.
   repository: ghcr.io/team-redbull/cluster-upgrade-worker
-  tag: "v1.0.5" # defaults to the chart's appVersion
+  tag: "v1.0.6" # defaults to the chart's appVersion
   pullPolicy: IfNotPresent
 imagePullSecrets: []
 # The hub's Temporal frontend, as reachable FROM THIS MCE. On the hub itself
