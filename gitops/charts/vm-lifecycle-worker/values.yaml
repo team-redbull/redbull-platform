@@ -56,7 +56,7 @@ activityWorker:
     # Bumped by redbull-workflows' CI (build-vm-lifecycle-worker) on every
     # push that touches the limb; the first push after this chart lands sets
     # the first real tag.
-    tag: v1.0.3
+    tag: v1.0.4
     pullPolicy: IfNotPresent
   # Two: a run's activities are short and idempotent; a second pod covers a
   # rollout. The ready wait resumes its clock from its heartbeat on the other.
