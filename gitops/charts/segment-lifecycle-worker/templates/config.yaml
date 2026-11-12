@@ -3,9 +3,6 @@ kind: ConfigMap
 metadata:
   name: segment-lifecycle-config
 data:
-  DAY1_REPO_URL: {{ .Values.config.day1RepoUrl | quote }}
-  DAY1_BRANCH: {{ .Values.config.day1Branch | quote }}
-  DHCP_EXCLUSION_OCTET_RANGES: {{ .Values.config.dhcpExclusionOctetRanges | toJson | quote }}
   DHCP_API_URL: {{ .Values.config.dhcpApiUrl | quote }}
 {{- if not .Values.secrets.existingSecret }}
 ---
@@ -16,16 +13,6 @@ metadata:
 type: Opaque
 stringData:
   SEGMENTS_MANAGER_API_TOKEN: {{ .Values.secrets.segmentsManagerApiToken | quote }}
-{{- end }}
-{{- if not .Values.secrets.existingDay1Secret }}
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: day1-git-token
-type: Opaque
-stringData:
-  DAY1_GIT_TOKEN: {{ .Values.secrets.day1GitToken | quote }}
 {{- end }}
 {{- if not .Values.secrets.existingDhcpSecret }}
 ---
