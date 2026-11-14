@@ -4,7 +4,5 @@ metadata:
   name: cluster-lifecycle-config
 data:
   DAY1_REPO_URL: {{ .Values.config.day1RepoUrl | quote }}
-  DAY1_GIT_PROVIDER: {{ .Values.config.day1GitProvider | quote }}
   DHCP_EXCLUSION_OCTET_RANGES: {{ .Values.config.dhcpExclusionOctetRanges | toJson | quote }}
   DAY2_SIG_REPO_URL_TEMPLATE: {{ .Values.config.day2SigRepoUrlTemplate | quote }}
-  DAY2_SIG_PATH_TEMPLATE: {{ .Values.config.day2SigPathTemplate | quote }}

@@ -15,9 +15,6 @@ config:
   # day1 this cluster's Argo CD and the other git limbs read: a cluster file
   # merged there is deployed by nothing here.
   day1RepoUrl: "https://gitlab.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com/redbull/gitops-day1/platform-config.git"
-  # RETIRED key, read only by images up to v1.0.2 (which need it): later images
-  # ignore it. Dropped from this chart once a later image is deployed.
-  day1GitProvider: "gitlab"
   # The DHCP exclusion policy written into every cluster file's dhcp_values
   # block, per segment type: last-octet ranges NOT distributed. HC is required.
   # Was segment-lifecycle-worker's until provision-cluster took over the cluster
@@ -30,8 +27,6 @@ config:
   # The day2 sig repos: one GitLab project per sig, the tree at its root; the URL
   # with {sig} filled in, as in the air-gap.
   day2SigRepoUrlTemplate: "https://gitlab.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com/redbull/gitops-day2-prod/sigs/{sig}.git"
-  # RETIRED key, like day1GitProvider above: "" is what images up to v1.0.2 need.
-  day2SigPathTemplate: ""
 secrets:
   # The git token: ONE token for day1 AND every day2 sig repo — the redbull group token,
   # so there is no second Secret for the sigs. NOT rendered here, only named, and it must
