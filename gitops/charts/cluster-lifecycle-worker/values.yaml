@@ -1,18 +1,23 @@
 # cluster-lifecycle-worker — provision-cluster's hub limb (redbull-workflows: activities/cluster_lifecycle/).
 #
 # ONE release: the worker reaches the day1 values repo (a clone of main, a push
-# of provision-cluster/<cluster>, the merge request through the repo's git
-# provider API) and the day2 sig repos (a push to each sig's default branch)
+# of provision-cluster/<cluster>, the merge request through GitLab's API on the
+# repo's host) and the day2 sig repos (a push to each sig's default branch)
 # with git tokens only — no Kubernetes credential. The segment comes from the
 # segment-lifecycle limb, through allocate-segment as an awaited child.
 config:
-  # The day1 values repo (the same the segment-lifecycle, upgrade-gitops and
-  # vm-lifecycle charts name). Read at main; pushed on provision-cluster/<cluster>.
-  day1RepoUrl: "https://github.com/team-redbull/gitops-day1-platform-config.git"
-  # Which API opens the merge request from that branch to main: `github` here
-  # (a pull request; delete-on-merge is the repository's setting), `gitlab` in
-  # the air-gap (a merge request with remove_source_branch).
-  day1GitProvider: "github"
+  # The day1 values repo. Read at main; pushed on provision-cluster/<cluster>; the
+  # merge request (remove_source_branch) is opened through GitLab's API on this
+  # URL's host, the project being the URL's path, subgroups included.
+  # GitLab is the ONLY provider the limb knows (redbull-workflows CLAUDE.md §4,
+  # 2026-11-14). On this cluster it is the GitLab in namespace `gitlab`, whose
+  # `redbull` group mocks the air-gap's repos in their subgroups — NOT the GitHub
+  # day1 this cluster's Argo CD and the other git limbs read: a cluster file
+  # merged there is deployed by nothing here.
+  day1RepoUrl: "https://gitlab.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com/redbull/gitops-day1/platform-config.git"
+  # RETIRED key, read only by images up to v1.0.2 (which need it): later images
+  # ignore it. Dropped from this chart once a later image is deployed.
+  day1GitProvider: "gitlab"
   # The DHCP exclusion policy written into every cluster file's dhcp_values
   # block, per segment type: last-octet ranges NOT distributed. HC is required.
   # Was segment-lifecycle-worker's until provision-cluster took over the cluster
@@ -22,25 +27,25 @@ config:
     HC:
       - [1, 10]
       - [241, 254]
-  # The day2 sig repos: the URL with {sig} filled in, and the path prefix before
-  # sites/ ("" when the tree is at the repo root). Here: one GitHub repo holding
-  # every sig under sigs/<sig>. In the air-gap: one GitLab project per sig,
-  # "https://<gitlab>/redbull/gitops-day2-prod/sigs/{sig}.git" and "".
-  day2SigRepoUrlTemplate: "https://github.com/team-redbull/gitops-day2-prod.git"
-  day2SigPathTemplate: "sigs/{sig}"
+  # The day2 sig repos: one GitLab project per sig, the tree at its root; the URL
+  # with {sig} filled in, as in the air-gap.
+  day2SigRepoUrlTemplate: "https://gitlab.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com/redbull/gitops-day2-prod/sigs/{sig}.git"
+  # RETIRED key, like day1GitProvider above: "" is what images up to v1.0.2 need.
+  day2SigPathTemplate: ""
 secrets:
   # The git token: ONE token for day1 AND every day2 sig repo — the redbull group token,
   # so there is no second Secret for the sigs. NOT rendered here, only named, and it must
   # exist before this worker starts. The pod gets it as REDBULL_GIT_TOKEN, the name the
-  # limb reads (the air-gap Secret's own key). For provision-cluster it must reach the
-  # provider's API (GitLab: `api` + `write_repository`; GitHub: `repo`), push the day1
-  # repo's branches and push each sig repo's default branch.
-  # This cluster has no `redbull-git-token` yet, so it names `day1-git-token`, the Secret
-  # the other git limbs on main read here. The air-gap names
-  # `redbull-git-token` / `REDBULL_GIT_TOKEN` (APPLY-PROVISION-CLUSTER.md in redbull-workflows).
+  # limb reads (the air-gap Secret's own key). It must reach GitLab's API (`api` +
+  # `write_repository`), push the day1 repo's branches and push each sig project's
+  # protected default branch (Maintainer).
+  # On this cluster: a GROUP access token of the GitLab `redbull` group (named
+  # `redbull-git-token` there, Maintainer, expires 2027-02-01), created out of band
+  # as Secret `redbull-git-token` — the air-gap's name and key. NOT `day1-git-token`,
+  # which is the GitHub token the other git limbs read here.
   gitTokenSecret:
-    name: day1-git-token
-    key: DAY1_GIT_TOKEN
+    name: redbull-git-token
+    key: REDBULL_GIT_TOKEN
 activityWorker:
   image:
     repository: ghcr.io/team-redbull/cluster-lifecycle-worker
