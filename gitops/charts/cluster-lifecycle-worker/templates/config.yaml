@@ -6,3 +6,6 @@ data:
   DAY1_REPO_URL: {{ .Values.config.day1RepoUrl | quote }}
   DHCP_EXCLUSION_OCTET_RANGES: {{ .Values.config.dhcpExclusionOctetRanges | toJson | quote }}
   DAY2_SIG_REPO_URL_TEMPLATE: {{ .Values.config.day2SigRepoUrlTemplate | quote }}
+  SHORTCUTS_API_URL: {{ required "config.shortcutsApiUrl is required" .Values.config.shortcutsApiUrl | quote }}
+  SHORTCUT_OWNER: {{ required "config.shortcutOwner is required" .Values.config.shortcutOwner | quote }}
+  CLUSTER_CONSOLE_URL_TEMPLATE: {{ required "config.clusterConsoleUrlTemplate is required" .Values.config.clusterConsoleUrlTemplate | quote }}

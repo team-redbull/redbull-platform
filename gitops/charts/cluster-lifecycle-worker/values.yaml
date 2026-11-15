@@ -27,6 +27,16 @@ config:
   # The day2 sig repos: one GitLab project per sig, the tree at its root; the URL
   # with {sig} filled in, as in the air-gap.
   day2SigRepoUrlTemplate: "https://gitlab.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com/redbull/gitops-day2-prod/sigs/{sig}.git"
+  # provision-cluster's LAST step, the console shortcut (go-link): the shortcuts
+  # service's base URL (GET <url>/check/<name>, POST <url>/create), the
+  # `username` every shortcut is created with (the service reports it back as the
+  # owner — a name another owner holds fails the run), and the console URL,
+  # {cluster} = the day1 file stem (ocp4-prod-herz1-site1-a).
+  # On this cluster: PLACEHOLDERS — there is no shortcuts service here, so a run
+  # waits at creating-shortcut (retried) until a real or mock one is set.
+  shortcutsApiUrl: "https://redbull-shorts.example.internal"
+  shortcutOwner: "redbull-workflows"
+  clusterConsoleUrlTemplate: "https://console-openshift-console.apps.{cluster}.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com"
 secrets:
   # The git token: ONE token for day1 AND every day2 sig repo — the redbull group token,
   # so there is no second Secret for the sigs. NOT rendered here, only named, and it must
@@ -41,6 +51,12 @@ secrets:
   gitTokenSecret:
     name: redbull-git-token
     key: REDBULL_GIT_TOKEN
+  # The shortcuts service's bearer token, the pod's SHORTCUTS_API_TOKEN. NOT rendered
+  # here, only named: created out of band and it must exist before this worker starts.
+  # On this cluster: a placeholder value (no service to authenticate to).
+  shortcutsApiTokenSecret:
+    name: shortcuts-api-token
+    key: SHORTCUTS_API_TOKEN
 activityWorker:
   image:
     repository: ghcr.io/team-redbull/cluster-lifecycle-worker

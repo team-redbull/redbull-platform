@@ -41,3 +41,8 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.secrets.gitTokenSecret.name }}
                   key: {{ .Values.secrets.gitTokenSecret.key }}
+            - name: SHORTCUTS_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ required "secrets.shortcutsApiTokenSecret.name is required" (dig "shortcutsApiTokenSecret" "name" "" .Values.secrets) }}
+                  key: {{ required "secrets.shortcutsApiTokenSecret.key is required" (dig "shortcutsApiTokenSecret" "key" "" .Values.secrets) }}
