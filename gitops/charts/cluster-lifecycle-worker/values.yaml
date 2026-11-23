@@ -10,11 +10,11 @@ config:
   # merge request (remove_source_branch) is opened through GitLab's API on this
   # URL's host, the project being the URL's path, subgroups included.
   # GitLab is the ONLY provider the limb knows (redbull-workflows CLAUDE.md §4,
-  # 2026-11-14). On this cluster it is the GitLab in namespace `gitlab`, whose
-  # `redbull` group mocks the air-gap's repos in their subgroups — NOT the GitHub
-  # day1 this cluster's Argo CD and the other git limbs read: a cluster file
-  # merged there is deployed by nothing here.
-  day1RepoUrl: "https://gitlab.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com/redbull/gitops-day1/platform-config.git"
+  # 2026-11-14). On this cluster it is the GitLab in namespace `gitlab`, the
+  # day1 project Wingman reads and writes (`gitops-day1/platform-config`; no
+  # `redbull` group there yet) — NOT the GitHub day1 this cluster's Argo CD and
+  # the other git limbs read: a cluster file merged there is deployed by nothing here.
+  day1RepoUrl: "https://gitlab-gitlab.apps.cluster-qcl8n.dyn.redhatworkshops.io/gitops-day1/platform-config.git"
   # The DHCP exclusion policy written into every cluster file's dhcp_values
   # block, per segment type: last-octet ranges NOT distributed. HC is required.
   # Was segment-lifecycle-worker's until provision-cluster took over the cluster
@@ -36,7 +36,7 @@ config:
   # waits at creating-shortcut (retried) until a real or mock one is set.
   shortcutsApiUrl: "https://redbull-shorts.example.internal"
   shortcutOwner: "redbull-workflows"
-  clusterConsoleUrlTemplate: "https://console-openshift-console.apps.{cluster}.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com"
+  clusterConsoleUrlTemplate: "https://console-openshift-console.apps.{cluster}.apps.cluster-qcl8n.dyn.redhatworkshops.io"
 secrets:
   # The git token: ONE token for day1 AND every day2 sig repo — the redbull group token,
   # so there is no second Secret for the sigs. NOT rendered here, only named, and it must
