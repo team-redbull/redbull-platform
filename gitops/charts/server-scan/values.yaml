@@ -418,7 +418,7 @@ route:
   # changes with the cluster — on a sandbox rebuild this is the one value to
   # re-check, and a stale one makes the UI unreachable while every pod stays
   # green. Optional; kept so the URL is stable across syncs.
-  host: "server-scan.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com"
+  host: "server-scan.apps.cluster-qcl8n.dyn.redhatworkshops.io"
 
 # Shared by this chart's two prune CronJobs (prune-servers, prune-events).
 # Every collector CronJob, its logins (`existingSecret`) and the shared
