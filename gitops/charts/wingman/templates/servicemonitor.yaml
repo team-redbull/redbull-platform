@@ -1,0 +1,28 @@
+{{- /* Prometheus Operator ServiceMonitor for day1 and day2 /metrics (ADR-0010).
+       Off by default: it needs the monitoring.coreos.com CRDs, and on OpenShift
+       user-workload monitoring must be enabled. */}}
+{{- if .Values.monitoring.serviceMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: wingman
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/part-of: wingman
+    matchExpressions:
+      - key: app.kubernetes.io/component
+        operator: In
+        values: [day1, day2]
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: {{ .Values.monitoring.serviceMonitor.interval }}
+      scrapeTimeout: {{ .Values.monitoring.serviceMonitor.scrapeTimeout }}
+{{- end }}

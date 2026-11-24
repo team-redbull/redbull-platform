@@ -1,0 +1,146 @@
+{{- /* nginx is Wingman's one entry point (ADR-0058): the Route or the Ingress sends
+       everything here, and nginx splits it by path between day1, day2 and the web.
+       Mounted over the image's own /etc/nginx/nginx.conf (Red Hat's UBI nginx). */}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wingman-nginx
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+data:
+  nginx.conf: |
+    # Any UID, read-only root (OpenShift's restricted-v2): nginx writes only /tmp
+    # (the pod's emptyDir) and logs to the container, errors to stderr.
+    pid /tmp/nginx.pid;
+    error_log /dev/stderr;
+
+    events {
+      worker_connections 1024;
+    }
+
+    http {
+      access_log /dev/stdout;
+      # No nginx version in the Server header or on its error pages.
+      server_tokens off;
+
+      client_body_temp_path /tmp/client_temp;
+      proxy_temp_path        /tmp/proxy_temp;
+      fastcgi_temp_path      /tmp/fastcgi_temp;
+      uwsgi_temp_path        /tmp/uwsgi_temp;
+      scgi_temp_path         /tmp/scgi_temp;
+
+      # Compress the APIs' JSON (the cluster list is about 0.6 KiB per cluster)
+      # and static text. Never text/event-stream: live status is a stream.
+      gzip on;
+      gzip_proxied any;
+      gzip_comp_level 5;
+      gzip_min_length 1024;
+      gzip_vary on;
+      gzip_types application/json application/problem+json application/javascript text/css text/plain image/svg+xml;
+
+      # Increase buffer sizes for large YAML payloads
+      client_max_body_size 10m;
+      proxy_buffer_size 16k;
+      proxy_buffers 8 16k;
+
+      # The service an /api/ path belongs to, and what nginx met, for its own
+      # problem below (@api_unavailable).
+      map $uri $wingman_api_service {
+        ~^/api/day2/ day2;
+        default      day1;
+      }
+      map $status $wingman_api_failure {
+        504     "did not answer in time";
+        503     "is unavailable";
+        default "could not be reached";
+      }
+
+      upstream day1 {
+        server wingman-day1:8001;
+      }
+
+      upstream day2 {
+        server wingman-day2:8002;
+      }
+
+      upstream web {
+        server wingman-web:3000;
+      }
+
+      server {
+        listen 8080;
+        server_name _;
+
+        # Increase timeout for long GitLab API calls
+        proxy_read_timeout 60s;
+        proxy_connect_timeout 10s;
+
+        # Forward real client IP
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # nginx's own health, for its liveness and readiness probes: answered
+        # here, never proxied, so a web that is down does not restart nginx.
+        location = /healthz {
+          access_log off;
+          default_type text/plain;
+          return 200 "ok\n";
+        }
+
+        # Each /api/ location answers nginx's own 502, 503 and 504 (day1 or day2
+        # not reached, or too slow) as a problem (ADR-0004). A service's own
+        # answers, errors included, pass through: proxy_intercept_errors is off.
+
+        # Auth and Day1 API
+        location /api/auth/ {
+          proxy_pass http://day1;
+          error_page 502 503 504 @api_unavailable;
+        }
+
+        location /api/day1/ {
+          proxy_pass http://day1;
+          error_page 502 503 504 @api_unavailable;
+        }
+
+        # An upgrade's targets: the orchestrator waits up to 60 s for a short run,
+        # day1 up to WORKFLOWS_TARGETS_TIMEOUT_SECONDS (ADR-0055)
+        location ~ ^/api/day1/clusters/[^/]+/upgrade-targets$ {
+          proxy_read_timeout 130s;
+          proxy_pass http://day1;
+          error_page 502 503 504 @api_unavailable;
+        }
+
+        # GitLab webhook receiver
+        location /api/webhooks/ {
+          proxy_pass http://day1;
+          error_page 502 503 504 @api_unavailable;
+        }
+
+        # Day2 API
+        location /api/day2/ {
+          proxy_pass http://day2;
+          error_page 502 503 504 @api_unavailable;
+        }
+
+        # The status stays the one nginx met (error_page has no "="): the 502
+        # below is never sent as such. The code is DEPENDENCY_UNAVAILABLE, a
+        # service nginx depends on (wingman_core.web.errors).
+        location @api_unavailable {
+          default_type application/problem+json;
+          add_header Cache-Control "no-store" always;
+          return 502 '{"type":"/problems/dependency-unavailable","title":"Dependency Unavailable","status":$status,"detail":"Wingman\'s $wingman_api_service service $wingman_api_failure. Try again in a minute; if it keeps failing, check the wingman-$wingman_api_service pods.","code":"DEPENDENCY_UNAVAILABLE","details":{}}';
+        }
+
+        # Frontend — catch-all
+        location / {
+          proxy_pass http://web;
+          # Support Next.js hot reload in dev (not needed in prod but harmless)
+          proxy_http_version 1.1;
+          proxy_set_header Upgrade $http_upgrade;
+          proxy_set_header Connection "upgrade";
+        }
+      }
+    }

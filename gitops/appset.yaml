@@ -104,8 +104,8 @@ spec:
   # -patched onto the generated Application. That is the one place a variable-length list
   # (valueFiles) can actually be built.
   #
-  # It emits `{}` for the common case — every service today — and JSON merge patch merges
-  # nested objects, so it only ever needs to name the keys it actually changes.
+  # It emits `{}` for the common case — every service but `wingman` today — and JSON merge
+  # patch merges nested objects, so it only ever needs to name the keys it actually changes.
   #
   # 1) `valueFiles:` in app.yaml — the override hook. Paths are written repo-root
   #    relative (e.g. gitops/overrides/segments-manager.yaml) and prefixed here with

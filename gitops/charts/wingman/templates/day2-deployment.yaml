@@ -1,0 +1,75 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wingman-day2
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+    app.kubernetes.io/component: day2
+spec:
+  replicas: {{ .Values.replicaCount.day2 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wingman
+      app.kubernetes.io/component: day2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wingman
+        app.kubernetes.io/component: day2
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "wingman.serviceAccountName" . }}
+      # No pod reads the Kubernetes API with its own service-account token (day1
+      # reads the MCE hubs with the tokens Secret's): none is mounted.
+      automountServiceAccountToken: false
+      {{- if .Values.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      {{- end }}
+      securityContext:
+        {{- include "wingman.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: day2
+          image: {{ include "wingman.serviceImage" (list $ "day2") | quote }}
+          imagePullPolicy: {{ .Values.image.day2.pullPolicy }}
+          securityContext:
+            {{- include "wingman.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - containerPort: 8002
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: wingman-config
+            {{- /* The chart's wingman-secrets, or secrets.existingSecret (ADR-0070) */}}
+            - secretRef:
+                name: {{ include "wingman.secretName" . }}
+          {{- if .Values.tls.caBundle }}
+          volumeMounts:
+            - name: ca-bundle
+              mountPath: {{ .Values.tls.caBundleMountPath }}
+              subPath: ca-bundle.crt
+              readOnly: true
+          {{- end }}
+          resources:
+            {{- toYaml .Values.resources.day2 | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8002
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8002
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      {{- if .Values.tls.caBundle }}
+      volumes:
+        - name: ca-bundle
+          configMap:
+            name: wingman-ca-bundle
+      {{- end }}

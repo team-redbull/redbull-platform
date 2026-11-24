@@ -1,0 +1,16 @@
+{{- /* The Grafana dashboard as a ConfigMap, for Grafana's dashboard sidecar
+       (it picks up ConfigMaps carrying the label below). Off by default; the
+       same JSON can be imported by hand from dashboards/wingman.json. */}}
+{{- if .Values.monitoring.grafanaDashboard.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wingman-grafana-dashboard
+  namespace: {{ .Values.monitoring.grafanaDashboard.namespace | default (include "wingman.namespace" .) }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+    {{ .Values.monitoring.grafanaDashboard.label }}: {{ .Values.monitoring.grafanaDashboard.labelValue | quote }}
+data:
+  wingman.json: |-
+    {{- .Files.Get "dashboards/wingman.json" | nindent 4 }}
+{{- end }}

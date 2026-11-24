@@ -1,0 +1,28 @@
+{{- if .Values.openshiftRoute.enabled }}
+# OpenShift Route — exposes wingman via the cluster's ingress controller
+# This is an OpenShift-specific resource (not available on plain Kubernetes)
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: wingman
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+  {{- if and .Values.day1.upgrades .Values.day1.upgrades.enabled }}
+  annotations:
+    # An upgrade's targets can take a minute (ADR-0055); the router's default is 30 s
+    haproxy.router.openshift.io/timeout: 130s
+  {{- end }}
+spec:
+  host: {{ .Values.route.host }}
+  to:
+    kind: Service
+    name: wingman-nginx
+    weight: 100
+  port:
+    targetPort: http
+  tls:
+    termination: {{ .Values.openshiftRoute.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshiftRoute.tls.insecureEdgeTerminationPolicy }}
+  wildcardPolicy: None
+{{- end }}

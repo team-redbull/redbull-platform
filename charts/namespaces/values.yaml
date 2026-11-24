@@ -19,6 +19,9 @@ namespaces:
                           # + Helmfile cluster-navigator-mongodb release
   - vault                 # Helmfile `vault` release (hub only) — see gitops/SECRETS.md
   - external-secrets      # Argo `external-secrets` app (ESO + the `vault` ClusterSecretStore)
+  - wingman               # Argo `wingman` app (team-redbull/wingman). On a cluster where
+                          # Wingman was installed by Helm first, the namespace exists:
+                          # adopt it before syncing this release (gitops/services/wingman/app.yaml)
 
 # OpenShift GitOps (Argo CD) instance that OWNS the app namespaces below. A
 # namespace-scoped instance only gets RBAC in namespaces labeled
@@ -42,3 +45,4 @@ argocd:
     - kubevirt-redfish
     - cluster-navigator
     - external-secrets
+    - wingman

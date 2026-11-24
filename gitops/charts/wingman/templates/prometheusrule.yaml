@@ -1,0 +1,16 @@
+{{- /* The alert rules, from files/alerts.rules.yaml (unit-tested with promtool;
+       runbook in docs/ops/runbook.md). Off by default, like the ServiceMonitor. */}}
+{{- if .Values.monitoring.prometheusRule.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: wingman
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.prometheusRule.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- .Files.Get "files/alerts.rules.yaml" | fromYaml | toYaml | nindent 2 }}
+{{- end }}

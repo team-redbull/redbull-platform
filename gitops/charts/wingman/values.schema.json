@@ -1,0 +1,792 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Wingman chart values",
+  "description": "Every key the chart reads (values.yaml has the comments). A key not here fails the render with its name.",
+  "type": "object",
+  "properties": {
+    "image": {
+      "type": "object",
+      "properties": {
+        "registry": {
+          "description": "Prefix of every image, nginx's included: <registry>/<repository>.",
+          "type": "string",
+          "pattern": "^([^\\s/]+(/[^\\s/]+)*)?$"
+        },
+        "day1": {
+          "$ref": "#/definitions/wingmanImage"
+        },
+        "day2": {
+          "$ref": "#/definitions/wingmanImage"
+        },
+        "web": {
+          "$ref": "#/definitions/wingmanImage"
+        },
+        "nginx": {
+          "$ref": "#/definitions/nginxImage"
+        }
+      },
+      "additionalProperties": false
+    },
+    "gitlab": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "$ref": "#/definitions/httpUrl"
+        },
+        "accessToken": {
+          "type": "string"
+        },
+        "day1ProjectId": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "day2SigsGroupPath": {
+          "type": "string"
+        },
+        "specsProjectId": {
+          "type": [
+            "string",
+            "integer"
+          ]
+        },
+        "specsRoot": {
+          "type": "string"
+        },
+        "day2GitopsBranch": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S+$"
+        },
+        "verifyTls": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "enum": [
+            true,
+            false,
+            "true",
+            "false"
+          ]
+        },
+        "webhookSecret": {
+          "type": "string"
+        },
+        "defaultBranch": {
+          "description": "Deprecated: removed in 3.0.0 and ignored; delete it (docs/upgrade/legacy-to-ecosystem.md, step 5); it became gitlab.day2GitopsBranch"
+        },
+        "sslVerify": {
+          "description": "Deprecated: removed in 3.0.0 and ignored; delete it (docs/upgrade/legacy-to-ecosystem.md, step 5); it became gitlab.verifyTls"
+        }
+      },
+      "additionalProperties": false
+    },
+    "environment": {
+      "enum": [
+        "production",
+        "development",
+        "test"
+      ]
+    },
+    "day1": {
+      "type": "object",
+      "properties": {
+        "clusterNameStripPrefix": {
+          "description": "Empty, or a prefix ending in \"-\", like \"ocp4-\" (ADR-0015).",
+          "type": "string",
+          "pattern": "^([A-Za-z0-9-]*[A-Za-z0-9][A-Za-z0-9-]*-)?$"
+        },
+        "cacheTtlSeconds": {
+          "$ref": "#/definitions/seconds60"
+        },
+        "provisioner": {
+          "description": "Deprecated: removed in 3.56.0 and ignored; delete it (docs/upgrade/3.55-to-3.56.md): every create starts the provision-cluster workflow (ADR-0042)"
+        },
+        "placementMinFreePods": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100000
+        },
+        "upgrades": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "addServers": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "scaleNodepools": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Scale through update-nodepool (ADR-0062). true, the default since 3.53.0: on wherever workflows.url is set, off without it. false: off."
+            }
+          },
+          "additionalProperties": false
+        },
+        "multiInfraEnvNodepools": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "serverScanRefresh": {
+          "description": "Deprecated: removed in 3.52.1 and ignored; delete it (docs/upgrade/3.52.0-to-3.52.1.md): Fetch now, in the removed Server Scan area"
+        },
+        "segmentsArea": {
+          "description": "Deprecated: removed in 3.52.1 and ignored; delete it (docs/upgrade/3.52.0-to-3.52.1.md): the removed Segments area"
+        },
+        "serverScanArea": {
+          "description": "Deprecated: removed in 3.52.1 and ignored; delete it (docs/upgrade/3.52.0-to-3.52.1.md): the removed Server Scan area"
+        },
+        "excludedAgentLabels": {
+          "type": "array",
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 317,
+            "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$"
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "day2": {
+      "type": "object",
+      "properties": {
+        "cacheTtlSeconds": {
+          "$ref": "#/definitions/seconds60"
+        }
+      },
+      "additionalProperties": false
+    },
+    "auth": {
+      "type": "object",
+      "properties": {
+        "openshiftOAuthHost": {
+          "$ref": "#/definitions/hostPort"
+        },
+        "openshiftApiHost": {
+          "$ref": "#/definitions/hostPort"
+        },
+        "oauthClientId": {
+          "type": "string"
+        },
+        "oauthClient": {
+          "type": "object",
+          "properties": {
+            "create": {
+              "description": "Render the OAuthClient (with openshiftRoute.enabled and without devAuth.enabled); false: it is created by hand, as secrets.existingSecret needs (ADR-0070).",
+              "type": "boolean"
+            }
+          },
+          "additionalProperties": false
+        },
+        "sslVerify": {
+          "$ref": "#/definitions/tlsVerify"
+        },
+        "oauthClientSecret": {
+          "type": "string"
+        },
+        "oauthRedirectUri": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "jwtSecret": {
+          "type": "string"
+        },
+        "jwtExpiryHours": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 24
+        },
+        "adminGroups": {
+          "type": "string"
+        },
+        "viewerGroups": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "devAuth": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "secret": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
+    },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "existingSecret": {
+          "description": "An existing Secret day1 and day2 read (GITLAB_TOKEN, JWT_SECRET_KEY, OPENSHIFT_OAUTH_CLIENT_SECRET, and optionally GITLAB_WEBHOOK_SECRET and DEV_AUTH_SECRET); the chart then renders none. Empty: the chart renders wingman-secrets from the values (ADR-0070).",
+          "$ref": "#/definitions/k8sName"
+        }
+      },
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "properties": {
+        "host": {
+          "$ref": "#/definitions/host"
+        }
+      },
+      "additionalProperties": false
+    },
+    "openshiftRoute": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "tls": {
+          "type": "object",
+          "properties": {
+            "termination": {
+              "enum": [
+                "edge",
+                "passthrough",
+                "reencrypt"
+              ]
+            },
+            "insecureEdgeTerminationPolicy": {
+              "enum": [
+                "None",
+                "Allow",
+                "Redirect"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "ingress": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "className": {
+          "type": "string"
+        },
+        "annotations": {
+          "$ref": "#/definitions/stringMap"
+        },
+        "host": {
+          "$ref": "#/definitions/host"
+        }
+      },
+      "additionalProperties": false
+    },
+    "tls": {
+      "type": "object",
+      "properties": {
+        "caBundle": {
+          "type": "string"
+        },
+        "caBundleMountPath": {
+          "type": "string",
+          "pattern": "^/\\S*$"
+        }
+      },
+      "additionalProperties": false
+    },
+    "imagePullSecret": {
+      "$ref": "#/definitions/k8sName"
+    },
+    "serviceAccount": {
+      "type": "object",
+      "properties": {
+        "create": {
+          "type": "boolean"
+        },
+        "name": {
+          "$ref": "#/definitions/k8sName"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "day1": {
+          "$ref": "#/definitions/resources"
+        },
+        "day2": {
+          "$ref": "#/definitions/resources"
+        },
+        "web": {
+          "$ref": "#/definitions/resources"
+        },
+        "nginx": {
+          "$ref": "#/definitions/resources"
+        }
+      },
+      "additionalProperties": false
+    },
+    "replicaCount": {
+      "type": "object",
+      "properties": {
+        "day1": {
+          "$ref": "#/definitions/replicas"
+        },
+        "day2": {
+          "$ref": "#/definitions/replicas"
+        },
+        "web": {
+          "$ref": "#/definitions/replicas"
+        },
+        "nginx": {
+          "$ref": "#/definitions/replicas"
+        }
+      },
+      "additionalProperties": false
+    },
+    "clusterStatus": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mceDomain": {
+          "type": "string"
+        },
+        "tokensSecretName": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/k8sName"
+            },
+            {
+              "minLength": 1
+            }
+          ]
+        },
+        "sslVerify": {
+          "$ref": "#/definitions/tlsVerify"
+        },
+        "clusterNamePrefix": {
+          "description": "Deprecated: removed in 3.0.0 and ignored; delete it (docs/upgrade/legacy-to-ecosystem.md, step 5); it became day1.clusterNameStripPrefix"
+        }
+      },
+      "additionalProperties": false
+    },
+    "serverScan": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "uiUrl": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "sslVerify": {
+          "$ref": "#/definitions/tlsVerify"
+        },
+        "timeoutSeconds": {
+          "$ref": "#/definitions/seconds60"
+        },
+        "tokenSecret": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "$ref": "#/definitions/k8sName"
+            },
+            "key": {
+              "$ref": "#/definitions/secretKey"
+            },
+            "adminKey": {
+              "description": "Deprecated: removed in 3.52.1 and ignored; delete it (docs/upgrade/3.52.0-to-3.52.1.md): server-scan's admin token, for the removed Server Scan area's writes and Jobs"
+            },
+            "auditorKey": {
+              "description": "Deprecated: removed in 3.52.1 and ignored; delete it (docs/upgrade/3.52.0-to-3.52.1.md): server-scan's auditor token, for the removed Server Scan area's History and Events"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "workflows": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "sslVerify": {
+          "$ref": "#/definitions/tlsVerify"
+        },
+        "timeoutSeconds": {
+          "$ref": "#/definitions/seconds60"
+        },
+        "targetsTimeoutSeconds": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 120
+        }
+      },
+      "additionalProperties": false
+    },
+    "segmentsManager": {
+      "type": "object",
+      "properties": {
+        "url": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "uiUrl": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "sslVerify": {
+          "$ref": "#/definitions/tlsVerify"
+        },
+        "timeoutSeconds": {
+          "$ref": "#/definitions/seconds60"
+        }
+      },
+      "additionalProperties": false
+    },
+    "quickLinks": {
+      "type": "object",
+      "properties": {
+        "hubName": {
+          "type": "string"
+        },
+        "hubDomain": {
+          "type": "string"
+        },
+        "domain": {
+          "type": "string"
+        },
+        "argocdUrlTemplate": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "consoleUrlTemplate": {
+          "$ref": "#/definitions/httpUrlOrEmpty"
+        },
+        "clusters": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "argocd": {
+                "type": "string"
+              },
+              "console": {
+                "type": "string"
+              }
+            },
+            "additionalProperties": false
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/quickLinksSection"
+          }
+        },
+        "status": {
+          "description": "Deprecated: removed in 3.13.1 and ignored; delete it (docs/upgrade/3.8-to-3.9.md): the status dots"
+        },
+        "sslVerify": {
+          "description": "Deprecated: removed in 3.13.1 and ignored; delete it (docs/upgrade/3.8-to-3.9.md): the status checks' TLS"
+        },
+        "argocdTokensSecret": {
+          "description": "Deprecated: removed in 3.13.1 and ignored; delete it (docs/upgrade/3.8-to-3.9.md): the ArgoCD counts' tokens"
+        }
+      },
+      "additionalProperties": false
+    },
+    "namespace": {
+      "$ref": "#/definitions/k8sName"
+    },
+    "monitoring": {
+      "type": "object",
+      "properties": {
+        "serviceMonitor": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "interval": {
+              "$ref": "#/definitions/duration"
+            },
+            "scrapeTimeout": {
+              "$ref": "#/definitions/duration"
+            },
+            "labels": {
+              "$ref": "#/definitions/stringMap"
+            }
+          },
+          "additionalProperties": false
+        },
+        "prometheusRule": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "labels": {
+              "$ref": "#/definitions/stringMap"
+            }
+          },
+          "additionalProperties": false
+        },
+        "grafanaDashboard": {
+          "type": "object",
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "namespace": {
+              "$ref": "#/definitions/k8sName"
+            },
+            "label": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^\\S+$"
+            },
+            "labelValue": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "cache": {
+      "description": "Deprecated: removed in 3.0.0 and ignored; delete it (docs/upgrade/legacy-to-ecosystem.md, step 5); it became day1.cacheTtlSeconds and day2.cacheTtlSeconds"
+    },
+    "paths": {
+      "description": "Deprecated: removed in 3.0.0 and ignored; delete it (docs/upgrade/legacy-to-ecosystem.md, step 5); paths.specsRoot became gitlab.specsRoot"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "wingmanImage": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S+$"
+        },
+        "tag": {
+          "description": "The Wingman release, the same for day1, day2 and web (3.33.0). Empty fails the render.",
+          "type": "string",
+          "pattern": "^([A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?$"
+        },
+        "digest": {
+          "$ref": "#/definitions/digest"
+        },
+        "pullPolicy": {
+          "$ref": "#/definitions/pullPolicy"
+        }
+      },
+      "additionalProperties": false
+    },
+    "nginxImage": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^\\S+$"
+        },
+        "tag": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$"
+        },
+        "digest": {
+          "$ref": "#/definitions/digest"
+        },
+        "pullPolicy": {
+          "$ref": "#/definitions/pullPolicy"
+        }
+      },
+      "additionalProperties": false
+    },
+    "digest": {
+      "description": "The image's manifest (list) digest; what nodes pull when set.",
+      "type": "string",
+      "pattern": "^(sha256:[a-f0-9]{64})?$"
+    },
+    "pullPolicy": {
+      "enum": [
+        "Always",
+        "IfNotPresent",
+        "Never"
+      ]
+    },
+    "quantity": {
+      "type": [
+        "string",
+        "number"
+      ],
+      "pattern": "^\\S+$"
+    },
+    "resourceList": {
+      "type": "object",
+      "properties": {
+        "cpu": {
+          "$ref": "#/definitions/quantity"
+        },
+        "memory": {
+          "$ref": "#/definitions/quantity"
+        },
+        "ephemeral-storage": {
+          "$ref": "#/definitions/quantity"
+        }
+      },
+      "additionalProperties": false
+    },
+    "resources": {
+      "type": "object",
+      "properties": {
+        "requests": {
+          "$ref": "#/definitions/resourceList"
+        },
+        "limits": {
+          "$ref": "#/definitions/resourceList"
+        }
+      },
+      "additionalProperties": false
+    },
+    "replicas": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "httpUrl": {
+      "description": "An http(s) URL.",
+      "type": "string",
+      "pattern": "^https?://[^\\s/]+\\S*$"
+    },
+    "httpUrlOrEmpty": {
+      "description": "Empty, or an http(s) URL.",
+      "type": "string",
+      "pattern": "^(https?://[^\\s/]+\\S*)?$"
+    },
+    "tlsVerify": {
+      "description": "true, false, or the path of a CA bundle: a boolean or a non-empty string (wingman.tlsVerify renders it).",
+      "type": [
+        "boolean",
+        "string"
+      ],
+      "minLength": 1
+    },
+    "seconds60": {
+      "type": "number",
+      "exclusiveMinimum": 0,
+      "maximum": 60
+    },
+    "k8sName": {
+      "description": "A Kubernetes object name, or empty.",
+      "type": "string",
+      "maxLength": 253,
+      "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$"
+    },
+    "secretKey": {
+      "description": "A key of a Secret, or empty.",
+      "type": "string",
+      "pattern": "^[-._a-zA-Z0-9]*$"
+    },
+    "host": {
+      "description": "A DNS name, or empty.",
+      "type": "string",
+      "pattern": "^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*)?$"
+    },
+    "hostPort": {
+      "description": "host or host:port, without a scheme, or empty.",
+      "type": "string",
+      "pattern": "^[^\\s/]*$"
+    },
+    "duration": {
+      "description": "A Prometheus duration, e.g. 30s.",
+      "type": "string",
+      "pattern": "^(0|([0-9]+(ms|s|m|h|d|w|y))+)$"
+    },
+    "stringMap": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "quickLink": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "url": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "icon": {
+          "type": "string"
+        },
+        "ping": {
+          "description": "Deprecated: removed in 3.13.1 and ignored; delete it (docs/upgrade/3.8-to-3.9.md) (day1 names it on the page)"
+        },
+        "argocd": {
+          "description": "Deprecated: removed in 3.13.1 and ignored; delete it (docs/upgrade/3.8-to-3.9.md) (day1 names it on the page)"
+        }
+      },
+      "additionalProperties": false
+    },
+    "quickLinksSection": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "description": {
+          "type": "string"
+        },
+        "columns": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 6
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/quickLink"
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

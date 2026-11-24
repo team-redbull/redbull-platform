@@ -1,0 +1,39 @@
+# Argo config for `wingman` — the team's self-service portal for OpenShift hosted
+# clusters (team-redbull/wingman): day1 (create, edit, delete a hosted cluster) and
+# day2 (charts on clusters), every change a merge request into the day1 or a team's
+# day2 GitLab repo. Chart: gitops/charts/wingman, a copy of that repo's
+# deploy/helm/wingman written by its CI on every release (its `platform` job, ADR-0070
+# there): the chart exactly, with the three image tags and Chart.yaml at the release.
+# Never hand-edit the copy: the next release overwrites it.
+#
+# THE ONE SERVICE WITH AN OVERRIDE FILE (gitops/overrides/README.md). Wingman's chart is
+# Wingman's own, shared by every deployment (this cluster, the air-gap's Helm installs):
+# its values.yaml holds generic defaults that each release overwrites, and its
+# values.schema.json refuses any key it does not know. So this cluster's settings are
+# gitops/overrides/wingman.yaml, which no release touches, and the schema checks it: a
+# typo fails the render, and the sync, naming the key.
+#
+# NOTHING SECRET IS COMMITTED. Two objects are made out of band, once, BEFORE the first
+# sync (the exact commands are at the top of the chart's values.yaml, under SECRETS):
+#
+#   * the Secret `wingman-credentials` in namespace wingman, keys GITLAB_TOKEN,
+#     JWT_SECRET_KEY, OPENSHIFT_OAUTH_CLIENT_SECRET (and optionally
+#     GITLAB_WEBHOOK_SECRET), which day1 and day2 load with envFrom
+#     (secrets.existingSecret). Without it both stay in CreateContainerConfigError.
+#     After changing a key, restart them (oc rollout restart deploy/wingman-day1
+#     deploy/wingman-day2 -n wingman): they read it at start. An ExternalSecret that
+#     writes this Secret (gitops/SECRETS.md) works unchanged.
+#   * the cluster-scoped OAuthClient `wingman-app` (OpenShift login), whose secret is
+#     that OPENSHIFT_OAUTH_CLIENT_SECRET and whose redirect URI is
+#     https://<route.host>/login. The chart would render it with the secret inline, so
+#     it is off here (auth.oauthClient.create: false). Nothing cluster-scoped is
+#     rendered for Wingman (the AppProject would allow it).
+#
+# The namespace comes from the `namespaces` Helmfile release; CreateNamespace stays off
+# (see appset.yaml). On a cluster where Wingman was a Helm release first, Argo adopts
+# its objects: retire the release's record (`oc delete secret -n wingman -l
+# owner=helm,name=wingman`), never `helm uninstall`, which deletes what Argo runs
+# (Wingman's docs/upgrade/3.61-to-3.62.md).
+namespace: wingman
+valueFiles:
+  - gitops/overrides/wingman.yaml

@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: wingman-day2
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+    app.kubernetes.io/component: day2
+spec:
+  selector:
+    app.kubernetes.io/name: wingman
+    app.kubernetes.io/component: day2
+  ports:
+    - port: 8002
+      targetPort: 8002
+      protocol: TCP
+      name: http
