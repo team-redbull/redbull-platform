@@ -1,0 +1,145 @@
+# promtool unit tests for deploy/helm/wingman/files/alerts.rules.yaml:
+#   promtool test rules deploy/helm/wingman/tests/alerts.test.yaml
+# Each alert has a case where it fires and, where the threshold matters, one
+# just below it where it does not.
+rule_files:
+  - ../files/alerts.rules.yaml
+
+evaluation_interval: 1m
+
+tests:
+  - name: a target that stops answering fires after 5 minutes
+    interval: 1m
+    input_series:
+      - series: 'up{job="wingman-day1",instance="10.0.0.1:8001"}'
+        values: "1 1 0 0 0 0 0 0 0"
+      - series: 'up{job="wingman-day2",instance="10.0.0.2:8002"}'
+        values: "1 1 1 1 1 1 1 1 1"
+    alert_rule_test:
+      - eval_time: 5m
+        alertname: WingmanServiceDown
+        exp_alerts: []
+      - eval_time: 8m
+        alertname: WingmanServiceDown
+        exp_alerts:
+          - exp_labels: { severity: critical, job: wingman-day1, instance: "10.0.0.1:8001" }
+            exp_annotations:
+              summary: "wingman-day1 is not answering scrapes"
+              description: "Prometheus could not scrape wingman-day1 (10.0.0.1:8001) for 5 minutes."
+              runbook: docs/ops/runbook.md#wingmanservicedown
+
+  - name: one denied GitLab call is critical at once
+    interval: 1m
+    input_series:
+      - series: 'wingman_dependency_requests_total{job="wingman-day2",dependency="gitlab",operation="read_file",outcome="denied"}'
+        values: "0 0 0 1 1 1"
+    alert_rule_test:
+      - eval_time: 2m
+        alertname: WingmanGitLabTokenRejected
+        exp_alerts: []
+      - eval_time: 4m
+        alertname: WingmanGitLabTokenRejected
+        exp_alerts:
+          - exp_labels: { severity: critical, job: wingman-day2 }
+            exp_annotations:
+              summary: "GitLab refused Wingman's token (wingman-day2)"
+              description: "GitLab answered 401/403 to Wingman's own token. Every user is affected; the token expired, was revoked, or lost project access."
+              runbook: docs/ops/runbook.md#wingmangitlabtokenrejected
+
+  - name: GitLab unavailable above 20% for 10 minutes
+    interval: 1m
+    input_series:
+      # 30 calls a minute, 9 of them unavailable (30%)
+      - series: 'wingman_dependency_requests_total{job="wingman-day1",dependency="gitlab",operation="list_tree",outcome="ok"}'
+        values: "0+21x30"
+      - series: 'wingman_dependency_requests_total{job="wingman-day1",dependency="gitlab",operation="list_tree",outcome="unavailable"}'
+        values: "0+9x30"
+      # day2: 10% unavailable, below the threshold
+      - series: 'wingman_dependency_requests_total{job="wingman-day2",dependency="gitlab",operation="list_tree",outcome="ok"}'
+        values: "0+27x30"
+      - series: 'wingman_dependency_requests_total{job="wingman-day2",dependency="gitlab",operation="list_tree",outcome="unavailable"}'
+        values: "0+3x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: WingmanGitLabUnavailable
+        exp_alerts:
+          - exp_labels: { severity: warning, job: wingman-day1 }
+            exp_annotations:
+              summary: "More than 20% of wingman-day1's GitLab reads fail"
+              description: "GitLab is unreachable or answers 5xx after retries for 30% of calls."
+              runbook: docs/ops/runbook.md#wingmangitlabunavailable
+
+  - name: an ambiguous write is reported per operation
+    interval: 1m
+    input_series:
+      - series: 'wingman_dependency_requests_total{job="wingman-day1",dependency="gitlab",operation="commit",outcome="ambiguous"}'
+        values: "0 0 1 1 1"
+    alert_rule_test:
+      - eval_time: 3m
+        alertname: WingmanAmbiguousWrite
+        exp_alerts:
+          - exp_labels: { severity: warning, job: wingman-day1, operation: commit }
+            exp_annotations:
+              summary: "A GitLab commit from wingman-day1 has an unknown outcome"
+              description: "A write timed out or got a 5xx after it was sent. Writes are never retried (ADR-0006): someone must check whether it happened."
+              runbook: docs/ops/runbook.md#wingmanambiguouswrite
+
+  - name: more than 5% server errors for 10 minutes
+    interval: 1m
+    input_series:
+      - series: 'wingman_http_requests_total{job="wingman-day1",method="GET",route="/api/day1/clusters",status_class="2xx"}'
+        values: "0+90x30"
+      - series: 'wingman_http_requests_total{job="wingman-day1",method="GET",route="/api/day1/clusters",status_class="5xx"}'
+        values: "0+10x30"
+      - series: 'wingman_http_requests_total{job="wingman-day2",method="GET",route="/api/day2/addons",status_class="2xx"}'
+        values: "0+99x30"
+      - series: 'wingman_http_requests_total{job="wingman-day2",method="GET",route="/api/day2/addons",status_class="5xx"}'
+        values: "0+1x30"
+    alert_rule_test:
+      - eval_time: 25m
+        alertname: WingmanHighServerErrorRate
+        exp_alerts:
+          - exp_labels: { severity: warning, job: wingman-day1 }
+            exp_annotations:
+              summary: "wingman-day1 answers more than 5% of requests with a 5xx"
+              description: "10% of wingman-day1's requests failed with a server error over 10 minutes."
+              runbook: docs/ops/runbook.md#wingmanhighservererrorrate
+
+  - name: slow GitLab calls (p95 above 5s) for 15 minutes
+    interval: 1m
+    input_series:
+      - series: 'wingman_dependency_request_duration_seconds_bucket{job="wingman-day1",dependency="gitlab",operation="list_tree",le="5"}'
+        values: "0+1x40"
+      - series: 'wingman_dependency_request_duration_seconds_bucket{job="wingman-day1",dependency="gitlab",operation="list_tree",le="10"}'
+        values: "0+20x40"
+      - series: 'wingman_dependency_request_duration_seconds_bucket{job="wingman-day1",dependency="gitlab",operation="list_tree",le="+Inf"}'
+        values: "0+20x40"
+    alert_rule_test:
+      - eval_time: 35m
+        alertname: WingmanGitLabSlow
+        exp_alerts:
+          - exp_labels: { severity: warning, job: wingman-day1 }
+            exp_annotations:
+              summary: "wingman-day1's GitLab calls are slow (p95 above 5s)"
+              description: "The 95th percentile of GitLab call time is 9.737s."
+              runbook: docs/ops/runbook.md#wingmangitlabslow
+
+  - name: two versions for an hour is skew
+    interval: 5m
+    input_series:
+      - series: 'wingman_build_info{job="wingman-day1",component="day1",version="0.3.0",commit="a"}'
+        values: "1x20"
+      - series: 'wingman_build_info{job="wingman-day2",component="day2",version="0.2.9",commit="b"}'
+        values: "1x20"
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: WingmanVersionSkew
+        exp_alerts: []
+      - eval_time: 70m
+        alertname: WingmanVersionSkew
+        exp_alerts:
+          - exp_labels: { severity: info }
+            exp_annotations:
+              summary: "Wingman components run different versions"
+              description: "day1 and day2 report 2 different versions for an hour; images are moved by hand, so one was probably missed."
+              runbook: docs/ops/runbook.md#wingmanversionskew

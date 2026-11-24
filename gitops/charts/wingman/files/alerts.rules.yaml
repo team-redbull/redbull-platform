@@ -1,0 +1,87 @@
+# Wingman alert rules. A plain Prometheus rules file (as in herzi), loaded into
+# a PrometheusRule by templates/prometheusrule.yaml and unit-tested with
+# `promtool test rules deploy/helm/wingman/tests/alerts.test.yaml`. Every alert names its
+# runbook section in docs/ops/runbook.md; the metrics are documented in
+# docs/ops/metrics.md (ADR-0010).
+#
+# `job` is the scraped Service's name (wingman-day1, wingman-day2), set by the
+# ServiceMonitor.
+groups:
+  - name: wingman.availability
+    rules:
+      - alert: WingmanServiceDown
+        expr: up{job=~"wingman-day1|wingman-day2"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is not answering scrapes"
+          description: "Prometheus could not scrape {{ $labels.job }} ({{ $labels.instance }}) for 5 minutes."
+          runbook: docs/ops/runbook.md#wingmanservicedown
+
+      - alert: WingmanHighServerErrorRate
+        expr: |
+          sum by (job) (rate(wingman_http_requests_total{status_class="5xx"}[10m]))
+            / sum by (job) (rate(wingman_http_requests_total[10m])) > 0.05
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} answers more than 5% of requests with a 5xx"
+          description: "{{ $value | humanizePercentage }} of {{ $labels.job }}'s requests failed with a server error over 10 minutes."
+          runbook: docs/ops/runbook.md#wingmanhighservererrorrate
+
+      - alert: WingmanVersionSkew
+        expr: count(count by (version) (wingman_build_info)) > 1
+        for: 1h
+        labels:
+          severity: info
+        annotations:
+          summary: "Wingman components run different versions"
+          description: "day1 and day2 report {{ $value }} different versions for an hour; images are moved by hand, so one was probably missed."
+          runbook: docs/ops/runbook.md#wingmanversionskew
+
+  - name: wingman.gitlab
+    rules:
+      - alert: WingmanGitLabTokenRejected
+        expr: sum by (job) (increase(wingman_dependency_requests_total{dependency="gitlab",outcome="denied"}[10m])) > 0
+        labels:
+          severity: critical
+        annotations:
+          summary: "GitLab refused Wingman's token ({{ $labels.job }})"
+          description: "GitLab answered 401/403 to Wingman's own token. Every user is affected; the token expired, was revoked, or lost project access."
+          runbook: docs/ops/runbook.md#wingmangitlabtokenrejected
+
+      - alert: WingmanGitLabUnavailable
+        expr: |
+          sum by (job) (rate(wingman_dependency_requests_total{dependency="gitlab",outcome="unavailable"}[10m]))
+            / sum by (job) (rate(wingman_dependency_requests_total{dependency="gitlab"}[10m])) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "More than 20% of {{ $labels.job }}'s GitLab reads fail"
+          description: "GitLab is unreachable or answers 5xx after retries for {{ $value | humanizePercentage }} of calls."
+          runbook: docs/ops/runbook.md#wingmangitlabunavailable
+
+      - alert: WingmanGitLabSlow
+        expr: |
+          histogram_quantile(0.95,
+            sum by (job, le) (rate(wingman_dependency_request_duration_seconds_bucket{dependency="gitlab"}[15m]))
+          ) > 5
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }}'s GitLab calls are slow (p95 above 5s)"
+          description: "The 95th percentile of GitLab call time is {{ $value | humanizeDuration }}."
+          runbook: docs/ops/runbook.md#wingmangitlabslow
+
+      - alert: WingmanAmbiguousWrite
+        expr: sum by (job, operation) (increase(wingman_dependency_requests_total{dependency="gitlab",outcome="ambiguous"}[30m])) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "A GitLab {{ $labels.operation }} from {{ $labels.job }} has an unknown outcome"
+          description: "A write timed out or got a 5xx after it was sent. Writes are never retried (ADR-0006): someone must check whether it happened."
+          runbook: docs/ops/runbook.md#wingmanambiguouswrite

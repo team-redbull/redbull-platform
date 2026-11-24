@@ -1,0 +1,21 @@
+{{- if include "wingman.rendersOAuthClient" . }}
+# OAuthClient CR — registers wingman as an OAuth application in OpenShift
+# This is an OpenShift-specific resource.
+#
+# After deploying, verify it was created:
+#   oc get oauthclient wingman-app
+#
+# The secret here MUST match auth.oauthClientSecret in values.yaml.
+{{- /* auth.oauthClient.create: false renders none: it is then created by hand
+(values.yaml's SECRETS), as secrets.existingSecret needs (ADR-0070). */}}
+apiVersion: oauth.openshift.io/v1
+kind: OAuthClient
+metadata:
+  name: {{ .Values.auth.oauthClientId }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+secret: {{ .Values.auth.oauthClientSecret }}
+grantMethod: auto
+redirectURIs:
+  - {{ include "wingman.oauthRedirectUri" . }}
+{{- end }}

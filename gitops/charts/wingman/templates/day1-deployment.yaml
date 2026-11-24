@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wingman-day1
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+    app.kubernetes.io/component: day1
+spec:
+  replicas: {{ .Values.replicaCount.day1 }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: wingman
+      app.kubernetes.io/component: day1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: wingman
+        app.kubernetes.io/component: day1
+      annotations:
+        # Force pod restart when config/secret changes
+        checksum/config: {{ include (print $.Template.BasePath "/configmap.yaml") . | sha256sum }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "wingman.serviceAccountName" . }}
+      # No pod reads the Kubernetes API with its own service-account token (day1
+      # reads the MCE hubs with the tokens Secret's): none is mounted.
+      automountServiceAccountToken: false
+      {{- if .Values.imagePullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.imagePullSecret }}
+      {{- end }}
+      securityContext:
+        {{- include "wingman.podSecurityContext" . | nindent 8 }}
+      containers:
+        - name: day1
+          image: {{ include "wingman.serviceImage" (list $ "day1") | quote }}
+          imagePullPolicy: {{ .Values.image.day1.pullPolicy }}
+          securityContext:
+            {{- include "wingman.containerSecurityContext" . | nindent 12 }}
+          ports:
+            - containerPort: 8001
+              protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: wingman-config
+            {{- /* The chart's wingman-secrets, or secrets.existingSecret (ADR-0070) */}}
+            - secretRef:
+                name: {{ include "wingman.secretName" . }}
+          {{- if and .Values.serverScan .Values.serverScan.url .Values.serverScan.tokenSecret .Values.serverScan.tokenSecret.name }}
+          env:
+            # server-scan's viewer token, from an existing Secret (never from values)
+            - name: SERVER_SCAN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ .Values.serverScan.tokenSecret.name | quote }}
+                  key: {{ .Values.serverScan.tokenSecret.key | default "token" | quote }}
+          {{- end }}
+          volumeMounts:
+            # Quick Links' links file, as a directory so edits reach a running pod (ADR-0052)
+            - name: quick-links
+              mountPath: /etc/wingman/quick-links
+              readOnly: true
+            {{- if .Values.tls.caBundle }}
+            - name: ca-bundle
+              mountPath: {{ .Values.tls.caBundleMountPath }}
+              subPath: ca-bundle.crt
+              readOnly: true
+            {{- end }}
+            {{- if .Values.clusterStatus.enabled }}
+            - name: mce-tokens
+              mountPath: /etc/wingman/mce-tokens
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources.day1 | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: 8001
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: quick-links
+          configMap:
+            name: wingman-quick-links
+        {{- if .Values.tls.caBundle }}
+        - name: ca-bundle
+          configMap:
+            name: wingman-ca-bundle
+        {{- end }}
+        {{- if .Values.clusterStatus.enabled }}
+        - name: mce-tokens
+          secret:
+            secretName: {{ .Values.clusterStatus.tokensSecretName | quote }}
+        {{- end }}

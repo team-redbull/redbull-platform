@@ -1,0 +1,16 @@
+# helm template fixture: cluster nodes from server-scan, the uninstall workflow and
+# segments-manager (the EPG and the links) on.
+# Every fixture sets the Wingman tags: the chart has no default (ADR-0059).
+image:
+  day1: { tag: "3.33.0" }
+  day2: { tag: "3.33.0" }
+  web: { tag: "3.33.0" }
+serverScan:
+  url: http://server-scan-api.ns.svc:8000
+  uiUrl: https://server-scan.example
+  tokenSecret: { name: server-scan-viewer }
+workflows:
+  url: http://workflows-orchestrator-api.ns.svc:8080
+segmentsManager:
+  url: http://segments-manager.ns.svc:8000
+  uiUrl: https://segments-manager.example

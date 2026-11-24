@@ -1,0 +1,16 @@
+# Quick Links' links file (ADR-0052), mounted in day1 as a directory (never
+# subPath, which the kubelet does not update): day1 re-reads it on every page
+# load, so an edit shows within the kubelet's sync, without a restart. Its
+# shape: docs/notes/2026-11-12-quick-links-api.md §3. Not in day1's
+# checksum annotations on purpose: a change to it needs no restart.
+{{- $quickLinks := .Values.quickLinks | default dict }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wingman-quick-links
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+data:
+  links.yaml: |
+    {{- dict "sections" ($quickLinks.sections | default list) "clusters" ($quickLinks.clusters | default dict) | toYaml | nindent 4 }}

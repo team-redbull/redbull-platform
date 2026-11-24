@@ -1,0 +1,156 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wingman-config
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+data:
+  # Every variable here is read by wingman_core.settings or a service's
+  # settings.py (day1 and day2 share this ConfigMap); a name no service reads
+  # does not belong here. Secrets are in secret.yaml.
+
+  # ── Runtime ──────────────────────────────────────────────────────────────────
+  WINGMAN_ENVIRONMENT: {{ .Values.environment | quote }}
+
+  # ── GitLab ───────────────────────────────────────────────────────────────────
+  GITLAB_URL: {{ .Values.gitlab.url | quote }}
+  GITLAB_VERIFY_TLS: {{ .Values.gitlab.verifyTls | quote }}
+  DAY1_GITLAB_PROJECT_ID: {{ .Values.gitlab.day1ProjectId | quote }}
+  SPECS_GITLAB_PROJECT_ID: {{ .Values.gitlab.specsProjectId | quote }}
+  SPECS_ROOT_PATH: {{ .Values.gitlab.specsRoot | quote }}
+  DAY2_SIGS_GROUP_PATH: {{ .Values.gitlab.day2SigsGroupPath | quote }}
+  DAY2_GITOPS_BRANCH: {{ .Values.gitlab.day2GitopsBranch | quote }}
+
+  # ── day1 ─────────────────────────────────────────────────────────────────────
+  # How a cluster file's stem becomes the chart's clusterName (ADR-0015):
+  # production's ApplicationSet strips "ocp4-"; the GitHub sandbox keeps it ("").
+  DAY1_CLUSTER_NAME_STRIP_PREFIX: {{ .Values.day1.clusterNameStripPrefix | quote }}
+  DAY1_CACHE_TTL_SECONDS: {{ .Values.day1.cacheTtlSeconds | quote }}
+  # Every create starts the platform's provision-cluster workflow (ADR-0042,
+  # amended 2026-11-23), so workflows.url is required; only environment:
+  # development runs without it, on an in-memory stand-in that writes nothing.
+  # day1.provisioner, which chose Wingman's own merge request, renders nothing.
+  {{- if and (ne .Values.environment "development") (not (and .Values.workflows .Values.workflows.url)) }}
+  {{- fail "workflows.url is required: a create starts the platform's provision-cluster workflow there (ADR-0042); only environment: development runs without it" }}
+  {{- end }}
+  # MCE placement (ADR-0050): the free pods an MCE needs to be offered for a new
+  # cluster. 70 for values kept from a release before it (0 is kept as 0).
+  PLACEMENT_MIN_FREE_PODS: {{ if kindIs "invalid" .Values.day1.placementMinFreePods }}"70"{{ else }}{{ .Values.day1.placementMinFreePods | quote }}{{ end }}
+  # Upgrades through the upgrade-cluster workflow (ADR-0055); values kept from
+  # a release before it have no day1.upgrades map: off.
+  {{- if and .Values.day1.upgrades .Values.day1.upgrades.enabled (not (and .Values.workflows .Values.workflows.url)) }}
+  {{- fail "day1.upgrades.enabled needs workflows.url: upgrades start the upgrade-cluster workflow there" }}
+  {{- end }}
+  DAY1_UPGRADES: {{ if .Values.day1.upgrades }}{{ .Values.day1.upgrades.enabled | default false | quote }}{{ else }}"false"{{ end }}
+  # Inventory Management (ADR-0057): adding servers starts add-server-to-mce
+  # (needs workflows.url). Off for values kept from a release before it.
+  {{- if and .Values.day1.addServers .Values.day1.addServers.enabled (not (and .Values.workflows .Values.workflows.url)) }}
+  {{- fail "day1.addServers.enabled needs workflows.url: adding servers starts the add-server-to-mce workflow there" }}
+  {{- end }}
+  DAY1_ADD_SERVERS: {{ if and .Values.day1.addServers .Values.day1.addServers.enabled }}"true"{{ else }}"false"{{ end }}
+  # Scaling NodePools through update-nodepool (ADR-0062): on by default since
+  # 3.53.0 wherever workflows.url is set (values kept from a release before it
+  # included), and off without it (environment: development only), with no
+  # failure: there is nothing to start it on. day1.scaleNodepools.enabled false
+  # turns it off.
+  DAY1_SCALE_NODEPOOLS: {{ if and .Values.workflows .Values.workflows.url (or (not .Values.day1.scaleNodepools) (ne (toString .Values.day1.scaleNodepools.enabled) "false")) }}"true"{{ else }}"false"{{ end }}
+  # A nodepool may draw from several InfraEnvs (ADR-0064). Off for values kept
+  # from a release before it.
+  DAY1_MULTI_INFRAENV_NODEPOOLS: {{ if and .Values.day1.multiInfraEnvNodepools .Values.day1.multiInfraEnvNodepools.enabled }}"true"{{ else }}"false"{{ end }}
+  # Agent label keys every agent NodePool excludes (ADR-0065); empty for values
+  # kept from a release before it.
+  DAY1_EXCLUDED_AGENT_LABELS: {{ join "," (.Values.day1.excludedAgentLabels | default list) | quote }}
+  DAY2_SERVICE_URL: "http://wingman-day2:8002"
+
+  # ── day2 ─────────────────────────────────────────────────────────────────────
+  DAY2_CACHE_TTL_SECONDS: {{ .Values.day2.cacheTtlSeconds | quote }}
+
+  # ── OpenShift OAuth ──────────────────────────────────────────────────────────
+  OPENSHIFT_OAUTH_HOST: {{ .Values.auth.openshiftOAuthHost | quote }}
+  OPENSHIFT_API_HOST: {{ .Values.auth.openshiftApiHost | quote }}
+  OPENSHIFT_OAUTH_CLIENT_ID: {{ .Values.auth.oauthClientId | quote }}
+  OPENSHIFT_OAUTH_REDIRECT_URI: {{ include "wingman.oauthRedirectUri" . | quote }}
+  OPENSHIFT_SSL_VERIFY: {{ include "wingman.tlsVerify" .Values.auth.sslVerify | quote }}
+
+  # ── Sessions and roles ───────────────────────────────────────────────────────
+  JWT_EXPIRY_HOURS: {{ .Values.auth.jwtExpiryHours | quote }}
+  WINGMAN_ADMIN_GROUPS: {{ .Values.auth.adminGroups | quote }}
+  WINGMAN_VIEWER_GROUPS: {{ .Values.auth.viewerGroups | quote }}
+
+  # ── Dev auth (never in production) ───────────────────────────────────────────
+  DEV_AUTH_ENABLED: {{ .Values.devAuth.enabled | quote }}
+
+  # ── Live cluster status from the MCE hubs ────────────────────────────────────
+  CLUSTER_STATUS_ENABLED: {{ .Values.clusterStatus.enabled | quote }}
+  {{- if .Values.clusterStatus.enabled }}
+  MCE_API_DOMAIN: {{ .Values.clusterStatus.mceDomain | quote }}
+  MCE_SSL_VERIFY: {{ include "wingman.tlsVerify" .Values.clusterStatus.sslVerify | quote }}
+  MCE_TOKENS_FILE: "/etc/wingman/mce-tokens/tokens"
+  {{- end }}
+
+  # ── Cluster nodes from server-scan (the token: day1-deployment.yaml) ─────────
+  # Each guard checks the map first and each key has a default: values reused
+  # from a release before 3.4 (helm upgrade --reuse-values) have neither.
+  {{- if and .Values.serverScan .Values.serverScan.url }}
+  SERVER_SCAN_URL: {{ .Values.serverScan.url | quote }}
+  {{- if .Values.serverScan.uiUrl }}
+  SERVER_SCAN_UI_URL: {{ .Values.serverScan.uiUrl | quote }}
+  {{- end }}
+  SERVER_SCAN_SSL_VERIFY: {{ include "wingman.tlsVerify" .Values.serverScan.sslVerify | quote }}
+  SERVER_SCAN_TIMEOUT_SECONDS: {{ .Values.serverScan.timeoutSeconds | default 10 | quote }}
+  {{- end }}
+
+  # ── The workflows orchestrator: create, uninstall, upgrades, Scale, servers ──
+  {{- if and .Values.workflows .Values.workflows.url }}
+  {{- if not (and .Values.serverScan .Values.serverScan.url) }}
+  {{- fail "workflows.url needs serverScan.url: an uninstall checks the server in server-scan first" }}
+  {{- end }}
+  WORKFLOWS_API_URL: {{ .Values.workflows.url | quote }}
+  WORKFLOWS_SSL_VERIFY: {{ include "wingman.tlsVerify" .Values.workflows.sslVerify | quote }}
+  WORKFLOWS_TIMEOUT_SECONDS: {{ .Values.workflows.timeoutSeconds | default 10 | quote }}
+  WORKFLOWS_TARGETS_TIMEOUT_SECONDS: {{ .Values.workflows.targetsTimeoutSeconds | default 65 | quote }}
+  {{- end }}
+
+  # ── segments-manager: the cluster's EPG (read only) and the links ────────────
+  # Values reused from 3.4 have only segmentsManager.uiUrl: every other key has a default.
+  {{- if and .Values.segmentsManager .Values.segmentsManager.url }}
+  SEGMENTS_MANAGER_URL: {{ .Values.segmentsManager.url | quote }}
+  SEGMENTS_MANAGER_SSL_VERIFY: {{ include "wingman.tlsVerify" .Values.segmentsManager.sslVerify | quote }}
+  SEGMENTS_MANAGER_TIMEOUT_SECONDS: {{ .Values.segmentsManager.timeoutSeconds | default 5 | quote }}
+  {{- end }}
+  {{- if and .Values.segmentsManager .Values.segmentsManager.uiUrl }}
+  SEGMENTS_MANAGER_UI_URL: {{ .Values.segmentsManager.uiUrl | quote }}
+  {{- end }}
+
+  # ── Quick Links (ADR-0052): the links file is the ConfigMap wingman-quick-links ─
+  # Values reused from 3.8 (helm upgrade --reuse-values) have no quickLinks
+  # map: day1's own defaults, which are these, apply then.
+  {{- if .Values.quickLinks }}
+  QUICK_LINKS_FILE: "/etc/wingman/quick-links/links.yaml"
+  QUICK_LINKS_HUB_NAME: {{ .Values.quickLinks.hubName | default "" | quote }}
+  QUICK_LINKS_HUB_DOMAIN: {{ .Values.quickLinks.hubDomain | default "" | quote }}
+  QUICK_LINKS_DOMAIN: {{ .Values.quickLinks.domain | default .Values.clusterStatus.mceDomain | default "" | quote }}
+  QUICK_LINKS_ARGOCD_URL_TEMPLATE: {{ .Values.quickLinks.argocdUrlTemplate | default "https://openshift-gitops-server-openshift-gitops.apps.{cluster}.{domain}" | quote }}
+  QUICK_LINKS_CONSOLE_URL_TEMPLATE: {{ .Values.quickLinks.consoleUrlTemplate | default "https://console-openshift-console.apps.{cluster}.{domain}" | quote }}
+  {{- end }}
+
+  # ── TLS CA bundle path (used when caBundle is set) ───────────────────────────
+  {{- if .Values.tls.caBundle }}
+  SSL_CERT_FILE: {{ .Values.tls.caBundleMountPath | quote }}
+  {{- end }}
+
+---
+{{- if .Values.tls.caBundle }}
+# CA bundle as a separate ConfigMap so it can be mounted as a file
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wingman-ca-bundle
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+data:
+  ca-bundle.crt: |
+    {{- .Values.tls.caBundle | nindent 4 }}
+{{- end }}

@@ -1,0 +1,12 @@
+apiVersion: v2
+name: wingman
+description: Wingman — GitOps-backed IDP for OpenShift HostedControlPlane cluster management
+type: application
+version: 3.61.0
+appVersion: "3.61.0"
+keywords:
+  - openshift
+  - gitops
+  - internal-developer-platform
+maintainers:
+  - name: Platform Team

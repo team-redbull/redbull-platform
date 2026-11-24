@@ -1,0 +1,10 @@
+# helm template fixture: the chart's own defaults, and what it requires:
+# the Wingman image tags (an empty one fails the render, ADR-0059) and the
+# workflows orchestrator, which every create starts provision-cluster on
+# (ADR-0042), with the server-scan its uninstall needs.
+image:
+  day1: { tag: "3.33.0" }
+  day2: { tag: "3.33.0" }
+  web: { tag: "3.33.0" }
+workflows: { url: "http://workflows-orchestrator-api.ns.svc:8080" }
+serverScan: { url: "http://server-scan-api.ns.svc:8000" }

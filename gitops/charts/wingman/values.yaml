@@ -1,0 +1,470 @@
+# ══════════════════════════════════════════════════════════════════════════════
+# Wingman Helm Values
+#
+# AIR-GAPPED DEPLOYMENT CHECKLIST
+# ────────────────────────────────
+# Always: image.{day1,day2,web}.tag → the release you deploy (no default;
+# an empty one fails the render). values.schema.json refuses any key not here.
+# Fields marked [AIR-GAPPED] must be changed for air-gapped / on-prem networks:
+#   1. image.registry      → your internal container registry (nginx: mirror by digest)
+#   2. gitlab.*            → your internal GitLab instance
+#   3. auth.*              → your OpenShift OAuth settings
+#   4. tls.caBundle        → your internal CA certificate (PEM)
+#   5. route.host          → your actual OpenShift cluster domain
+#
+# SECRETS
+# ───────
+# By default the chart renders the Secret wingman-secrets from five values
+# (gitlab.accessToken, gitlab.webhookSecret, auth.oauthClientSecret,
+# auth.jwtSecret, devAuth.secret) and the OAuthClient with its secret inline:
+# pass them with --set or a values file kept out of Git.
+# From a Git repository, which must hold no secret (redbull-platform, ADR-0070),
+# set secrets.existingSecret and auth.oauthClient.create: false instead. The
+# chart then renders neither: day1 and day2 read the named Secret, whose keys
+# are the variables themselves, and the render fails while any of the five
+# values is set. Create both once, in Wingman's namespace, BEFORE the first sync:
+#
+#   oauth_secret=$(openssl rand -hex 32)
+#   oc create secret generic wingman-credentials -n wingman \
+#     --from-literal=GITLAB_TOKEN="<the GitLab token>" \
+#     --from-literal=JWT_SECRET_KEY="$(openssl rand -hex 32)" \
+#     --from-literal=OPENSHIFT_OAUTH_CLIENT_SECRET="$oauth_secret"
+#   # Optional keys: GITLAB_WEBHOOK_SECRET (without it day1's GitLab webhook
+#   # answers 404) and DEV_AUTH_SECRET (dev login only, never in production).
+#   oc apply -f - <<EOF
+#   apiVersion: oauth.openshift.io/v1
+#   kind: OAuthClient
+#   metadata:
+#     name: wingman-app                  # auth.oauthClientId
+#   secret: $oauth_secret                # the Secret's OPENSHIFT_OAUTH_CLIENT_SECRET
+#   grantMethod: auto
+#   redirectURIs:
+#     - https://<route.host>/login       # or auth.oauthRedirectUri
+#   EOF
+#
+# day1 and day2 read the Secret at start: after changing it, run
+# oc rollout restart deploy/wingman-day1 deploy/wingman-day2 -n wingman.
+# A new JWT_SECRET_KEY signs everyone out.
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── Container images ───────────────────────────────────────────────────────────
+image:
+  # [AIR-GAPPED] Replace with your internal registry
+  # Example: registry.internal/wingman
+  registry: ""   # if empty, images are pulled without a registry prefix
+
+  # [VERSIONING] Required: set every tag to the release you deploy, the same
+  # for all three images, e.g. --set image.day1.tag=3.33.0 (the GitHub release
+  # v3.33.0; no "v"). An empty tag fails the render, naming it: there is no
+  # default (ADR-0059). Every merge to main is a release (docs/ops/images.md).
+  # "latest", "3.33" and "3" move and "sha-..." names no release: production
+  # pins a full version, so releases are traceable and rollbacks are safe.
+  # Each image also takes an optional digest (sha256:...), which nodes then pull.
+
+  day1:
+    repository: ghcr.io/team-redbull/wingman-day1
+    tag: "3.61.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  day2:
+    repository: ghcr.io/team-redbull/wingman-day2
+    tag: "3.61.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  web:
+    repository: ghcr.io/team-redbull/wingman-web
+    tag: "3.61.0"
+    digest: ""
+    pullPolicy: IfNotPresent
+
+  # The one entry point (ADR-0058): Red Hat's UBI nginx, pinned by tag and by
+  # the digest of its manifest list (docs/ops/images.md, "The nginx image").
+  # The digest is what nodes pull; change the tag and the digest together, here
+  # and in templates/_helpers.tpl's copy (wingman.nginxImage refuses a tag kept
+  # from earlier values beside this digest; tests/repo/test_chart_nginx.py holds
+  # the two equal).
+  # [AIR-GAPPED] Mirror it by digest. With image.registry set it is pulled from
+  # <registry>/<repository>, like the others: set repository to its path in
+  # your mirror (for example ubi9/nginx-124). With image.registry empty, an
+  # ImageDigestMirrorSet for registry.access.redhat.com redirects it as is.
+  nginx:
+    repository: registry.access.redhat.com/ubi9/nginx-124
+    tag: "9.8"
+    digest: "sha256:d5cec86a9adf972dbfa0d87b134e7c404706cc1920fc2e6a2b146e290276f219"
+    pullPolicy: IfNotPresent
+
+# ── GitLab connection ──────────────────────────────────────────────────────────
+gitlab:
+  # [AIR-GAPPED] Your internal GitLab URL
+  url: "https://gitlab.internal"
+
+  # [AIR-GAPPED] Personal or project access token with api + read_repository + write_repository scope
+  # Generate at: GitLab → User Settings → Access Tokens
+  # IMPORTANT: Set this via --set or a separate secrets file, never commit the token
+  accessToken: ""
+
+  # GitLab project IDs or "group/subgroup/project" path strings
+  # Find at: GitLab project → Settings → General → Project ID
+  day1ProjectId: ""         # e.g. "42" or "platform-team/day1-config"
+  day2SigsGroupPath: ""    # GitLab path to the sigs subgroup e.g. "platform-team/sigs"
+  specsProjectId: ""        # e.g. "44" or "platform-team/cluster-specs"
+
+  specsRoot: "specs"        # folder of the spec files inside specsProjectId
+  # The branch the platform's generators read and day2's MRs target.
+  day2GitopsBranch: "main"
+  # TLS verification for GitLab API calls: true or false. An internal CA goes
+  # in tls.caBundle (mounted and named by SSL_CERT_FILE), not here.
+  verifyTls: true
+  # Webhook secret — GitLab will send this in X-Gitlab-Token header
+  # Set in GitLab: Project → Settings → Webhooks → Secret token
+  webhookSecret: ""
+
+# ── Runtime ────────────────────────────────────────────────────────────────────
+# production refuses the in-memory GitLab and weak dev login (ADR-0009).
+environment: "production"
+
+# ── day1 and day2 ──────────────────────────────────────────────────────────────
+day1:
+  # Stripped from a cluster file's name to make the chart's clusterName
+  # (ADR-0015): "ocp4-" as production's ApplicationSet does, "" for the sandbox.
+  clusterNameStripPrefix: "ocp4-"
+  cacheTtlSeconds: 30     # GitLab reads, per replica (ADR-0011; at most 60)
+  # provisioner (3.7.0 to 3.55) chose between Wingman's own create MR and the
+  # provision-cluster workflow: every create starts the workflow now (ADR-0042,
+  # amended 2026-11-23), so it is accepted, ignored and best deleted.
+  # MCE placement (ADR-0050): Wingman picks a new cluster's MCE. The cost of one
+  # hosted control plane: with clusterStatus.enabled, an MCE is offered only with
+  # at least this many free pods (allocatable less in use) on its workers
+  # (masters, infra nodes and tainted, cordoned or NotReady nodes left out).
+  # Without live status the free pods are not checked.
+  placementMinFreePods: 70
+  # Upgrades through the platform's upgrade-cluster workflow (ADR-0055): the
+  # cluster page starts it, shows its run and sends its decisions; while on, an
+  # edit may not change mastertag or a workertag, nor add pausedUntil. Needs
+  # workflows.url, and the workflow must read the same day1 repo as Wingman.
+  upgrades:
+    enabled: false
+  # Inventory Management (ADR-0057): admins install servers into an MCE's
+  # InfraEnv pool by starting the platform's add-server-to-mce workflow. Needs
+  # workflows.url; the page itself needs serverScan.url. Live status
+  # (clusterStatus.enabled) is not needed: the InfraEnv is picked or typed, and
+  # the workflow checks the MCE has it. Off, admins see the button disabled.
+  addServers:
+    enabled: false
+  # Scaling NodePools through the platform's update-nodepool workflow (ADR-0062):
+  # an admin's Scale on the cluster page's Nodes tab starts it for one NodePool
+  # at a time; it commits the replicas to day1 main and syncs
+  # the cluster's Argo CD Application itself. While on, no Wingman merge request
+  # changes an existing NodePool's replicas: an edit that does is refused, a
+  # flavor's sync leaves them out. On by default since 3.53.0 (update-nodepool is
+  # in production) wherever workflows.url is set; without workflows.url there is
+  # no Scale and nothing fails. false turns it off. The workflow must read the
+  # same day1 repo as Wingman; live status is not needed. Before upgrading, check
+  # the orchestrator and every MCE's worker have update-nodepool
+  # (docs/upgrade/3.52-to-3.53.md): without it a start says it is not deployed,
+  # and no existing NodePool's replicas change from Wingman until it is. A
+  # NodePool's own scale-down policy needs hostedclusters-setup patch 0001; Scale
+  # itself does not.
+  scaleNodepools:
+    enabled: true
+  # A nodepool may draw Agents from several InfraEnvs (ADR-0064): the create form
+  # and the flavor editor offer more InfraEnvs beside a nodepool's own, written as
+  # nodepool[].additionalInfraEnvNames. Parked since 2026-11-23: leave it off. The
+  # team runs no such NodePool for now, so the hostedclusters-setup chart (which
+  # without the change silently selects the first InfraEnv alone) and the
+  # specs-project template don't carry the key.
+  # Off, Wingman never writes the key; a file that has it is read and kept as it is.
+  multiInfraEnvNodepools:
+    enabled: false
+  # serverScanRefresh, segmentsArea and serverScanArea went with the Segments
+  # and Server Scan areas, removed in 3.52.1 (ADR-0066): the team
+  # keeps both systems apart, and an admin's top bar links to each one's own UI
+  # (segmentsManager.uiUrl and serverScan.uiUrl, else their url). A values file
+  # that still sets them is accepted and ignored (docs/upgrade/3.52.0-to-3.52.1.md).
+  # Agent label keys every agent NodePool excludes (ADR-0065): herzi's label for
+  # used Agents, ["redbull.io/ever-installed"] and nothing else (herzi's plan
+  # accepts that one DoesNotExist). Each new cluster's nodepools get
+  # excludeAgentLabels (a DoesNotExist each); an existing cluster takes them
+  # through its own merge request. Set it only once herzi's release that
+  # accepts the exclusion runs on every MCE, with the hostedclusters-setup
+  # chart change (patch 0002) and the specs-project template lines
+  # (docs/upgrade/3.54-to-3.55.md step 6): herzi's main blocks the pool of any
+  # NodePool that carries it. Shipped empty. Empty, placement and Inventory
+  # Management still treat an Agent carrying herzi's label as used.
+  excludedAgentLabels: []
+day2:
+  cacheTtlSeconds: 15     # GitLab reads, per replica (ADR-0011; at most 60)
+
+# ── OpenShift OAuth ────────────────────────────────────────────────────────────
+# [AIR-GAPPED] All values come from your OpenShift cluster
+auth:
+  # Hostname of your OpenShift OAuth server
+  # Find at: oc get route oauth-openshift -n openshift-authentication -o jsonpath='{.spec.host}'
+  openshiftOAuthHost: "oauth-openshift.apps.your-cluster.internal"
+
+  # Kubernetes API server (used to validate tokens via users/~ endpoint)
+  # Find at: oc whoami --show-server
+  openshiftApiHost: "api.your-cluster.internal:6443"
+
+  # OAuthClient name — must match the CR deployed by this chart
+  oauthClientId: "wingman-app"
+
+  # The OAuthClient the chart renders with openshiftRoute.enabled and without
+  # devAuth.enabled, its secret inline from oauthClientSecret. false: the chart
+  # renders none, and it is created once by hand (SECRETS at the top), as
+  # secrets.existingSecret needs: the secret is then not in the values.
+  oauthClient:
+    create: true
+
+  # SSL verification for OpenShift OAuth/API calls
+  # "true" → verify using system CAs, "false" → skip (internal self-signed certs), or CA bundle path
+  # (every sslVerify here takes true/false unquoted too: wingman.tlsVerify renders them alike)
+  sslVerify: "false"
+
+  # OAuthClient secret — generate a random string, e.g.: openssl rand -hex 32
+  # IMPORTANT: Set via --set or secrets file
+  oauthClientSecret: ""
+
+  # Full URL where OpenShift will redirect after login
+  # Must exactly match one of the OAuthClient's redirectURIs
+  # Format: https://{route.host}/login
+  oauthRedirectUri: ""  # auto-populated from route.host if left empty
+
+  # JWT signing secret — generate with: openssl rand -hex 32
+  # IMPORTANT: Set via --set or secrets file
+  jwtSecret: ""
+  jwtExpiryHours: 8
+
+  # ── Group-based access control ─────────────────────────────────────────────
+  # Comma-separated OpenShift group names
+  # Create groups: oc adm groups new wingman-admins && oc adm groups add-users wingman-admins <user>
+  adminGroups: "wingman-admins"
+  viewerGroups: ""   # leave empty to disable viewer role
+
+# ── Dev auth (minikube / local testing ONLY) ──────────────────────────────────
+# When enabled, replaces OpenShift OAuth with a simple secret-based login.
+# NEVER enable in production.
+devAuth:
+  enabled: false
+  secret: ""  # generate with: openssl rand -hex 16
+
+# ── Secrets (SECRETS at the top) ──────────────────────────────────────────────
+secrets:
+  # Empty: the chart renders the Secret wingman-secrets from the values above.
+  # A name: the chart renders no Secret and day1 and day2 read this existing
+  # one (keys GITLAB_TOKEN, JWT_SECRET_KEY, OPENSHIFT_OAUTH_CLIENT_SECRET, and
+  # optionally GITLAB_WEBHOOK_SECRET and DEV_AUTH_SECRET); gitlab.accessToken,
+  # gitlab.webhookSecret, auth.oauthClientSecret, auth.jwtSecret and
+  # devAuth.secret must then be empty, and auth.oauthClient.create false
+  # (unless devAuth.enabled or openshiftRoute.enabled false: no OAuthClient).
+  existingSecret: ""
+
+# ── Routing ────────────────────────────────────────────────────────────────────
+route:
+  # [AIR-GAPPED] Your OpenShift application domain
+  # Find at: oc get ingresses.config cluster -o jsonpath='{.spec.domain}'
+  host: "wingman.apps.your-cluster.internal"
+
+# OpenShift Route (set enabled: true on OpenShift)
+openshiftRoute:
+  enabled: true
+  tls:
+    termination: edge        # edge | passthrough | reencrypt
+    insecureEdgeTerminationPolicy: Redirect
+
+# Standard Kubernetes Ingress (set enabled: true on plain k8s / minikube)
+ingress:
+  enabled: false
+  className: "nginx"
+  annotations: {}
+  host: "wingman.local"  # add to /etc/hosts pointing to minikube IP
+
+# ── TLS / CA bundle ────────────────────────────────────────────────────────────
+tls:
+  # [AIR-GAPPED] Paste your internal CA certificate (PEM format) here.
+  # This is mounted into all pods so they can verify internal TLS certs.
+  # Get it: oc get cm -n openshift-config-managed default-ingress-cert -o jsonpath='{.data.ca-bundle\.crt}'
+  # Or export from your PKI.
+  caBundle: ""   # paste multi-line PEM cert here (use | in YAML)
+  # When caBundle is set, this path is where it's mounted inside pods
+  caBundleMountPath: "/etc/pki/tls/certs/ca-bundle.crt"
+
+# ── Image pull secret ──────────────────────────────────────────────────────────
+# Name of an existing secret with registry credentials.
+# Create with: kubectl create secret docker-registry wingman-registry \
+#   --docker-server=<registry> --docker-username=<user> --docker-password=<token> \
+#   -n wingman
+imagePullSecret: ""   # leave empty if registry is unauthenticated
+
+# ── RBAC / Service account ─────────────────────────────────────────────────────
+serviceAccount:
+  create: true
+  name: "wingman"
+
+# ── Resource requests/limits ───────────────────────────────────────────────────
+resources:
+  day1:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  day2:
+    requests:
+      cpu: "100m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+
+  web:
+    requests:
+      cpu: "50m"
+      memory: "128Mi"
+    limits:
+      cpu: "200m"
+      memory: "256Mi"
+
+  nginx:
+    requests:
+      cpu: "50m"
+      memory: "64Mi"
+    limits:
+      cpu: "100m"
+      memory: "128Mi"
+
+# ── Replica counts ─────────────────────────────────────────────────────────────
+replicaCount:
+  day1: 1
+  day2: 1
+  web: 1
+  nginx: 1
+
+# ── Live cluster status (OpenShift/HyperShift only) ───────────────────────────
+# Disabled by default. Cannot be used on minikube — requires real MCE clusters.
+# When enabled, the day1-service queries each MCE's OpenShift API using SA tokens
+# stored in a Kubernetes secret.
+#
+# Secret format (key: tokens), a YAML map of MCE folder name to its token, or to
+# its token and its own API address (ADR-0045):
+#   ocp4-prod-mce-site1-a: <SA-token>                 # https://api.{mce}.{mceDomain}:6443
+#   ocp4-prod-mce-site1-b:
+#     token: <SA-token>
+#     url: https://api.hub-b.example.com:6443         # a hub off that pattern; https, no path
+#
+# The same access serves live status, InfraEnvs, the cluster nodes and MCE
+# placement (each needs its reads: the chart README's "Live cluster status").
+clusterStatus:
+  enabled: false
+  mceDomain: ""           # e.g. "openshift.example.com" → https://api.{mce}.openshift.example.com:6443 (unless the MCE has its own url)
+  tokensSecretName: "mce-sa-tokens"  # name of the k8s secret holding SA tokens
+  sslVerify: "false"                 # "true" (or true) or a CA bundle path for production
+
+# ── Cluster nodes from server-scan (ADR-0038) ─────────────────────────────────
+# Off by default. With a url, day1 lists the servers under each hosted cluster
+# from server-scan's API (the node links point at its UI), placement counts
+# its spare servers (ADR-0050), Inventory Management its pools (ADR-0057), and
+# an admin's top bar links to its UI, all with the one viewer token below.
+serverScan:
+  url: ""                 # the API, e.g. "http://server-scan-api.<ns>.svc:8000"; empty: off
+  uiUrl: ""               # the UI, e.g. "https://server-scan.example" (node links, the top bar); empty: url
+  sslVerify: "true"       # "true", "false" (or true, false) or a CA bundle path
+  timeoutSeconds: 10      # per request, at most 60
+  # A viewer token (sent as "Authorization: Bearer"), from an existing Secret:
+  #   oc create secret generic server-scan-viewer -n <ns> --from-literal=token=<token>
+  # Empty name: no token, for a server-scan with auth off. Never put the token
+  # itself in values. day1 reads it at start: restart day1 after rotating it.
+  # adminKey and auditorKey (server-scan's admin and auditor tokens) went with
+  # the Server Scan area, removed in 3.52.1: accepted and ignored, and the
+  # Secret's keys are no longer read.
+  tokenSecret:
+    name: ""
+    key: "token"
+
+# ── The workflows orchestrator (ADR-0042, ADR-0038) ───────────────────────────
+# Required: every create starts the platform's provision-cluster workflow
+# there, and the chart fails without url (only environment: "development"
+# runs without it, on an in-memory stand-in). day1 also starts its
+# uninstall-server-from-hc, upgrade-cluster, update-nodepool and
+# add-server-to-mce workflows there and shows their runs. The orchestrator
+# has no auth. Needs serverScan.url (an uninstall checks the server in
+# server-scan first): the chart fails without it.
+workflows:
+  url: ""                 # required, e.g. "http://workflows-orchestrator-api.<ns>.svc:8080"
+  sslVerify: "true"       # "true", "false" (or true, false) or a CA bundle path
+  timeoutSeconds: 10      # per request, at most 60
+  targetsTimeoutSeconds: 65  # the upgrade targets read (the orchestrator waits up to 60 s), at most 120
+
+# ── segments-manager: the cluster's EPG, checked against Git (ADR-0039) ───────
+# Off by default. With a url, the cluster page's "HostedCluster & network" card
+# shows the EPG segments-manager records for the cluster's segment, and warns
+# where segments-manager disagrees with the cluster file (the VLAN and segment
+# shown are always the file's). day1 only reads one segment (its reads need no
+# token) and never writes. The card also links to the UI and to its search for
+# the cluster's segment (JSON): uiUrl, or url when uiUrl is empty.
+segmentsManager:
+  url: ""                 # the API, e.g. "http://segments-manager.<ns>.svc:8000"; empty: no EPG
+  uiUrl: ""               # the UI, e.g. "https://segments-manager.example"; empty: url (none: no link)
+  sslVerify: "true"       # "true", "false" (or true, false) or a CA bundle path
+  timeoutSeconds: 5       # per request, at most 60
+
+# ── Quick Links: the launcher page (ADR-0052; admins only) ────────────────────
+# A card for the hub Wingman runs on and one for every MCE of the day1 repo, by
+# site: each opens the cluster's ArgoCD, with its console beside it. Then the
+# team's own links (`sections`). Wingman only lists the links: it never calls
+# them (no status dots or ArgoCD counts since 3.13.1). `sections` and
+# `clusters` are rendered into the ConfigMap wingman-quick-links, which day1
+# re-reads on every page load: an edit shows within about a minute, without a
+# restart.
+quickLinks:
+  hubName: ""             # the hub's cluster name, as in apps.<hubName>.<domain>; empty: no hub card
+  hubDomain: ""           # the hub's domain; empty: `domain`
+  domain: ""              # the MCEs' domain; empty: clusterStatus.mceDomain
+  argocdUrlTemplate: "https://openshift-gitops-server-openshift-gitops.apps.{cluster}.{domain}"
+  consoleUrlTemplate: "https://console-openshift-console.apps.{cluster}.{domain}"
+  # A cluster whose addresses don't follow the templates:
+  #   clusters:
+  #     hub-prod:
+  #       argocd: https://gitops.hub-prod.example.internal
+  #       console: https://console.hub-prod.example.internal
+  clusters: {}
+  # The team's links, after the generated sections (docs/notes/2026-11-12-quick-links-api.md §3):
+  #   sections:
+  #     - name: Core GitOps
+  #       columns: 2                    # 1 to 6, default 4
+  #       links:
+  #         - name: GitLab GitOps Project
+  #           url: https://gitlab.example.internal/platform/gitops
+  #           description: Main GitOps repository
+  #           icon: gitlab              # a key: argocd, gitlab, openshift, grafana, confluence, cisco, dell, ...
+  #         - name: ArgoCD Main
+  #           url: https://argocd.example.internal
+  #           icon: argocd
+  sections: []
+
+# ── Namespace ──────────────────────────────────────────────────────────────────
+# Override with --namespace on helm install
+namespace: ""  # defaults to .Release.Namespace
+
+# ── Monitoring (ADR-0010; docs/ops/metrics.md, docs/ops/runbook.md) ───────────
+# day1 and day2 serve /metrics on their own port (never through the Route).
+# Everything here needs the Prometheus Operator CRDs (monitoring.coreos.com);
+# on OpenShift, enable user-workload monitoring first. All off by default.
+monitoring:
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    scrapeTimeout: 10s
+    labels: {}            # extra labels, if your Prometheus selects ServiceMonitors by label
+  prometheusRule:
+    enabled: false
+    labels: {}            # e.g. { role: alert-rules } if your Prometheus selects rules by label
+  grafanaDashboard:
+    enabled: false        # a ConfigMap for Grafana's dashboard sidecar
+    namespace: ""         # where the sidecar looks; defaults to the release namespace
+    label: grafana_dashboard
+    labelValue: "1"

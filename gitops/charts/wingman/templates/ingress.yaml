@@ -1,0 +1,29 @@
+{{- if .Values.ingress.enabled }}
+# Standard Kubernetes Ingress — used for minikube / non-OpenShift deployments
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: wingman
+  namespace: {{ include "wingman.namespace" . }}
+  labels:
+    {{- include "wingman.labels" . | nindent 4 }}
+  {{- if .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml .Values.ingress.annotations | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.ingress.className }}
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: wingman-nginx
+                port:
+                  name: http
+{{- end }}
