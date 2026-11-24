@@ -1,0 +1,65 @@
+# Wingman on this cluster (cluster-qcl8n), on top of gitops/charts/wingman's own
+# generic defaults. Named by gitops/services/wingman/app.yaml `valueFiles:`.
+#
+# The ONLY hand-kept part of Wingman's deployment: the chart copy is written by
+# team-redbull/wingman's CI on every release and would lose any edit made there.
+# Every key is checked by the chart's values.schema.json (its values.yaml has each
+# key's comment); a key it does not know fails the render, naming it.
+#
+# NOTHING SECRET IS HERE, and nothing may be: this repository is public. The
+# secrets are the out-of-band Secret `wingman-credentials` (secrets.existingSecret),
+# and the OAuthClient is made by hand (auth.oauthClient.create: false); app.yaml says
+# how. The chart refuses to render while a secret value (gitlab.accessToken,
+# gitlab.webhookSecret, auth.oauthClientSecret, auth.jwtSecret, devAuth.secret) is
+# set beside the Secret.
+
+# No `image` key: the copy's values.yaml names the three images
+# (ghcr.io/team-redbull/wingman-<name>) and their tag, written by each release. Never
+# set image.registry here: it prefixes every image, nginx's Red Hat one too, and
+# Wingman's CI refuses to push a chart whose render pulls nginx from GHCR.
+
+environment: production
+
+secrets:
+  existingSecret: wingman-credentials
+
+# The GitLab on this cluster (namespace gitlab): the day1 repo, the specs repo and
+# the sigs group of team repos. Its token is the Secret's GITLAB_TOKEN.
+gitlab:
+  url: https://gitlab-gitlab.apps.cluster-qcl8n.dyn.redhatworkshops.io
+  day1ProjectId: gitops-day1/platform-config
+  day2SigsGroupPath: sigs
+  specsProjectId: wingman/cluster-specs
+
+route:
+  host: wingman-wingman.apps.cluster-qcl8n.dyn.redhatworkshops.io
+
+# OpenShift login; the roles are these OpenShift groups.
+auth:
+  openshiftOAuthHost: oauth-openshift.apps.cluster-qcl8n.dyn.redhatworkshops.io
+  openshiftApiHost: api.cluster-qcl8n.dyn.redhatworkshops.io:6443
+  adminGroups: wingman-admins
+  viewerGroups: wingman-viewers
+  oauthClient:
+    create: false
+
+day1:
+  upgrades: {enabled: true}
+  addServers: {enabled: true}
+  # No MCE on this cluster, so nothing to scale.
+  scaleNodepools: {enabled: false}
+  multiInfraEnvNodepools: {enabled: false}
+  excludedAgentLabels: []  # set once herzi marks used Agents
+
+# The platform's own services, by in-cluster Service; their UIs by Route.
+serverScan:
+  url: http://server-scan-api.server-scan.svc:80
+  uiUrl: https://server-scan.apps.cluster-qcl8n.dyn.redhatworkshops.io
+  sslVerify: "false"
+segmentsManager:
+  url: http://segments-manager.segments-manager.svc:8000
+  uiUrl: https://segments-manager-segments-manager.apps.cluster-qcl8n.dyn.redhatworkshops.io
+  sslVerify: "false"
+workflows:
+  url: http://workflows-orchestrator-api.redbull-workflows.svc:8080
+  sslVerify: "false"

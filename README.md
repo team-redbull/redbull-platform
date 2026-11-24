@@ -43,7 +43,7 @@ database wrappers.
 One `Application` per row, generated from `gitops/services/<service>/app.yaml` by the
 `redbull-services` ApplicationSet. Each chart lives in **this** repo at
 `gitops/charts/<service>/`, and that chart's own `values.yaml` is the whole configuration
-— the ApplicationSet passes no value files.
+— the ApplicationSet passes no value files (but `wingman`'s one override file, below).
 
 | App | Namespace | Chart | Notes |
 |---|---|---|---|
@@ -59,6 +59,7 @@ One `Application` per row, generated from `gitops/services/<service>/app.yaml` b
 | `server-scan` | `server-scan` | `gitops/charts/server-scan` | bare-metal inventory platform; **combined** API + UI + MongoDB/Redis subcharts; image tags and templates pinned by upstream CI |
 | `server-scan-collectors` | `server-scan` | `gitops/charts/server-scan-collectors` | server-scan's collector CronJobs (fake-data collector only); reads server-scan's ConfigMap and `server-scan-db`; image tag bumped by hand, after `server-scan` |
 | `external-secrets` | `external-secrets` | `gitops/charts/external-secrets` | ESO + the `vault` ClusterSecretStore (hub Vault). Remote clusters run the same chart; `ocp-64spr` installs it with plain helm (gitops/SECRETS.md §4) |
+| `wingman` | `wingman` | `gitops/charts/wingman` | the self-service portal for hosted clusters (team-redbull/wingman); chart written by its CI on every release, **the one service with an override file** (`gitops/overrides/wingman.yaml`); reads the out-of-band Secret `wingman-credentials`, and its OAuthClient is made by hand |
 
 The app name, the chart path and the Helm release name are all the folder name, so a
 service's resources are named the same in every cluster.
@@ -188,7 +189,9 @@ valueFiles:
 
 Files are applied in the order listed, after the chart's own `values.yaml`, so the last
 one wins. The ApplicationSet rewrites each path to be chart-relative; no ApplicationSet
-edit is needed to use this. An absent `valueFiles` (every service today) adds nothing.
+edit is needed to use this. An absent `valueFiles` (every service but `wingman` today)
+adds nothing. Wingman uses it because its chart copy is rewritten by its CI on every
+release ([gitops/overrides/README.md](gitops/overrides/README.md)).
 
 Override files live in `gitops/overrides/` and **not** in `gitops/services/<service>/`
 on purpose: a value file inside the folder the generator watches is removed by the very
