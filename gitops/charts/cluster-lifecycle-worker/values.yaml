@@ -25,8 +25,10 @@ config:
       - [1, 10]
       - [241, 254]
   # The day2 sig repos: one GitLab project per sig, the tree at its root; the URL
-  # with {sig} filled in, as in the air-gap.
-  day2SigRepoUrlTemplate: "https://gitlab.apps.cluster-2qsc5.2qsc5.sandbox5410.opentlc.com/redbull/gitops-day2-prod/sigs/{sig}.git"
+  # with {sig} filled in, as in the air-gap. On this cluster: the GitLab in
+  # namespace `gitlab`, whose sig projects are under the top-level `sigs` group
+  # (the group Wingman's day2 reads; no `redbull` group there yet).
+  day2SigRepoUrlTemplate: "https://gitlab-gitlab.apps.cluster-qcl8n.dyn.redhatworkshops.io/sigs/{sig}.git"
   # provision-cluster's LAST step, the console shortcut (go-link): the shortcuts
   # service's base URL (GET <url>/check/<name>, POST <url>/create), the
   # `username` every shortcut is created with (the service reports it back as the
