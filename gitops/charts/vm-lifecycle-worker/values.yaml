@@ -15,7 +15,6 @@
 # and refuses to start on any other shape. A wrong value is not silent: the
 # cluster shows as `no-worker` in every run of its zone.
 kvCluster: ""
-
 # No MAC value: KubeMacPool on the cluster assigns every VM's MAC (the operator,
 # 2026-11-25), so the cluster MUST run it and the VM namespace must not be labelled
 # `mutatevirtualmachines.kubemacpool.io=ignore`. Its range is the HyperConverged
@@ -41,58 +40,50 @@ vm:
   redfishLabel: redfish-enabled=true
   # The root disk's size.
   rootDiskSize: 120Gi
-
 # Two pods share the queue, so one dying (a node drain, an upgrade of this
 # chart) never leaves the cluster without a worker: every activity is
 # idempotent — a create finds the VM its run already made, by its label — and
 # the disk wait resumes from its last heartbeat on the other pod.
 replicaCount: 2
-
 image:
   # Disconnected production: the mirror of ghcr.io/team-redbull/vm-lifecycle-worker.
   repository: ghcr.io/team-redbull/vm-lifecycle-worker
-  tag: ""            # defaults to the chart's appVersion
+  tag: "v1.0.13" # defaults to the chart's appVersion
   pullPolicy: IfNotPresent
 imagePullSecrets: []
-
 # The hub's Temporal frontend, as reachable FROM THIS KV CLUSTER: the TLS Route
 # that exposes the frontend across clusters (the one server-lifecycle-worker's
 # README describes). The worker dials OUT, so the hub needs no access to the
 # KV cluster and the KV cluster exposes nothing.
 temporal:
-  host: ""           # REQUIRED, host:port, e.g. temporal-frontend.apps.hub.example.net:443
+  host: "" # REQUIRED, host:port, e.g. temporal-frontend.apps.hub.example.net:443
   namespace: default # the TEMPORAL namespace (not the OpenShift project); must match the hub
   # TLS to the frontend. Required when `host` is a Route (it carries TLS only);
   # off only for a worker on the hub itself (a lab). The CA is PUBLIC, so it lives here.
   tls:
     enabled: false
-    serverName: ""   # defaults to the host part of `host`
+    serverName: "" # defaults to the host part of `host`
     caCert: ""
     #  -----BEGIN CERTIFICATE-----
     #  ...
     #  -----END CERTIFICATE-----
-
 # rbac.yaml: exactly the verbs the activities use, derived from the code
 # (README "RBAC"). `create: false` leaves it to whoever manages RBAC; the
 # ServiceAccount then needs the same grants.
 rbac:
   create: true
-
 serviceAccount:
   create: true
-  name: ""           # defaults to the release's full name
-
+  name: "" # defaults to the release's full name
 resources:
   requests:
     cpu: 50m
     memory: 128Mi
   limits:
     memory: 512Mi
-
 # In-flight activities get 20s to finish after SIGTERM (worker_init.py); keep
 # the pod's grace period above it.
 terminationGracePeriodSeconds: 30
-
 nodeSelector: {}
 tolerations: []
 affinity: {}
