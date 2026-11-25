@@ -1,63 +1,99 @@
-# vm-lifecycle-worker — create-vm's hub limb (redbull-workflows: activities/vm_lifecycle/).
+# vm-lifecycle-worker — one release per KV cluster, installed in that cluster.
 #
-# ONE release for every zone: the worker reaches each KubeVirt cluster through
-# that cluster's two agents behind Routes (kv-capacity, kv-vm-api — the
-# kv-agents repo, charts gitops/charts/kv-capacity and gitops/charts/kv-vm-api,
-# deployed on every KubeVirt cluster by day2 sigs) and holds no Kubernetes
-# credential. The agents must be up on a zone's clusters BEFORE a create-vm
-# run there can place anything: until then every cluster is `no-agent` and
-# the run waits (RUNNING, retried).
-config:
-  # The day1 values repo, read at main only: the zone's KubeVirt clusters are
-  # the files of sites/<site>/mces/ocp4-seed-<site>-<zone>/hostedClusters/.
-  # The same repo the segment-lifecycle-worker chart names.
-  day1RepoUrl: "https://github.com/team-redbull/gitops-day1-platform-config.git"
-  # The agents' URLs, rendered per cluster: {cluster} = the day1 clusterName
-  # (kubevirt-bat-yam-a1), {name} = the day1 file's stem (ocp4-kubevirt-bat-yam-a1),
-  # {hosted_cluster} = openshift-<clusterName>, {site}, {zone}. Whether a
-  # cluster's apps domain is apps.<clusterName>.<base> or
-  # apps.openshift-<clusterName>.<base> is this template's to say.
-  kvCapacityUrlTemplate: "https://kv-capacity.apps.{cluster}.example.net"
-  kvVmApiUrlTemplate: "https://kv-vm-api.apps.{cluster}.example.net"
-  # Our placement policy (docs/design/kubevirt-vm-placement.md): the share of
-  # every cluster's schedulable allocatable that stays free AFTER placing the
-  # VM, on CPU and on memory, per cluster. 0..90.
-  headroomBufferPercent: 30
-  # The first three octets of every VM's MAC; the run draws the other three.
-  # Locally administered + unicast: the first octet's low bits are `10`.
-  vmMacPrefix: "02:a1:b2"
-# The agents' Route certificates: a PEM CA to verify them against. EMPTY = NOT
-# VERIFIED (decided 2026-11-04: the Routes carry the ingress wildcard
-# certificate, whose CA the image cannot carry). Set to verify.
-kvAgentCa: ""
-secrets:
-  # DAY1_GIT_TOKEN: the SAME `day1-git-token` Secret the segment-lifecycle-worker
-  # chart renders (one Secret, three consumers: segment-lifecycle, upgrade-gitops
-  # and this worker). NOT rendered again here — only named. Set to another
-  # Secret holding DAY1_GIT_TOKEN to use a read-only token for this worker.
-  existingDay1Secret: "day1-git-token"
-  # KV_CAPACITY_TOKEN / KV_VM_API_TOKEN: the agents' fleet bearer tokens — the
-  # values the kv-capacity and kv-vm-api charts hold as `apiToken`. Created out
-  # of band in redbull-workflows (the value stays out of this public repo):
-  #   oc create secret generic kv-capacity-token -n redbull-workflows \
-  #     --from-literal=KV_CAPACITY_TOKEN="<the fleet token>"
-  #   oc create secret generic kv-vm-api-token -n redbull-workflows \
-  #     --from-literal=KV_VM_API_TOKEN="<the fleet token>"
-  # ROTATE EACH WITH ITS AGENTS: a stale copy fails every run with KvAgentAuthError.
-  # The placeholders below are rendered only when the existing* name is emptied
-  # (standalone/kind installs).
-  existingKvCapacitySecret: "kv-capacity-token"
-  kvCapacityToken: "dev-token"
-  existingKvVmApiSecret: "kv-vm-api-token"
-  kvVmApiToken: "dev-token"
-activityWorker:
-  image:
-    repository: ghcr.io/team-redbull/vm-lifecycle-worker
-    # Bumped by redbull-workflows' CI (build-vm-lifecycle-worker) on every
-    # push that touches the limb; the first push after this chart lands sets
-    # the first real tag.
-    tag: v1.0.12
-    pullPolicy: IfNotPresent
-  # Two: a run's activities are short and idempotent; a second pod covers a
-  # rollout. The ready wait resumes its clock from its heartbeat on the other.
-  replicas: 2
+# `kvCluster` is THE CLUSTER'S OWN; `vm` is the same on every KV cluster of a
+# platform unless one differs. Rendered through day2, never typed in by hand. The
+# chart creates no Namespace, runs no hooks and renders deterministically, so
+# Argo CD can sync and diff it as plain manifests. It needs no Secret: the
+# worker's ServiceAccount is its whole identity (rbac.yaml).
+
+# REQUIRED. The KV cluster this worker runs in: EXACTLY the name of its day1
+# file, `sites/<site>/mces/ocp4-<lifecycle>-seed-<site>-<zone>-<id>/hostedClusters/<kvCluster>.yaml`,
+# e.g. ocp4-prod-kv-five-az1-a. It names the queue the worker polls
+# (vm-lifecycle-activity-<kvCluster>), and a create-vm run builds the same queue
+# name from the list it reads in day1 — so it is NEVER canonicalised or
+# abbreviated. The worker reads its SITE and ZONE from it (`ocp4-<lifecycle>-kv-<site>-<zone>-<id>`)
+# and refuses to start on any other shape. A wrong value is not silent: the
+# cluster shows as `no-worker` in every run of its zone.
+kvCluster: ""
+
+# No MAC value: KubeMacPool on the cluster assigns every VM's MAC (the operator,
+# 2026-11-25), so the cluster MUST run it and the VM namespace must not be labelled
+# `mutatevirtualmachines.kubemacpool.io=ignore`. Its range is the HyperConverged
+# object's (`spec.networking.kubeMacPoolConfiguration`), never this chart's.
+
+# The VirtualMachine this cluster's worker builds (the platform's vm.yaml).
+vm:
+  # REQUIRED. The root disk's storage class. It MUST bind immediately and allow
+  # a ReadWriteMany + Filesystem volume: with a WaitForFirstConsumer class a
+  # Halted VM's disk never binds and every create-vm run ends in its rollback
+  # (ceph-rbd refuses RWX + Filesystem too; cephfs does not).
+  storageClassName: ""
+  # The Multus network every VM boots on, `<namespace>/<name>` of its
+  # NetworkAttachmentDefinition: the VM's `networks[0]` is always
+  # `{multus: {networkName: <this>}}`, as in the platform's vm.yaml, whose network
+  # is the default. A cluster names another only when its NAD has another name.
+  networkName: openshift-cnv/vm-external-network
+  # The VM template's nodeSelector; {} for none. The worker also measures
+  # capacity on the nodes matching it only: a node a VM cannot go to is not room.
+  nodeSelector: {}
+  # `key=value`: the label kubevirt-redfish exposes a VM by, and the one the
+  # capacity figures count stopped VMs by.
+  redfishLabel: redfish-enabled=true
+  # The root disk's size.
+  rootDiskSize: 120Gi
+
+# Two pods share the queue, so one dying (a node drain, an upgrade of this
+# chart) never leaves the cluster without a worker: every activity is
+# idempotent — a create finds the VM its run already made, by its label — and
+# the disk wait resumes from its last heartbeat on the other pod.
+replicaCount: 2
+
+image:
+  # Disconnected production: the mirror of ghcr.io/team-redbull/vm-lifecycle-worker.
+  repository: ghcr.io/team-redbull/vm-lifecycle-worker
+  tag: ""            # defaults to the chart's appVersion
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+# The hub's Temporal frontend, as reachable FROM THIS KV CLUSTER: the TLS Route
+# that exposes the frontend across clusters (the one server-lifecycle-worker's
+# README describes). The worker dials OUT, so the hub needs no access to the
+# KV cluster and the KV cluster exposes nothing.
+temporal:
+  host: ""           # REQUIRED, host:port, e.g. temporal-frontend.apps.hub.example.net:443
+  namespace: default # the TEMPORAL namespace (not the OpenShift project); must match the hub
+  # TLS to the frontend. Required when `host` is a Route (it carries TLS only);
+  # off only for a worker on the hub itself (a lab). The CA is PUBLIC, so it lives here.
+  tls:
+    enabled: false
+    serverName: ""   # defaults to the host part of `host`
+    caCert: ""
+    #  -----BEGIN CERTIFICATE-----
+    #  ...
+    #  -----END CERTIFICATE-----
+
+# rbac.yaml: exactly the verbs the activities use, derived from the code
+# (README "RBAC"). `create: false` leaves it to whoever manages RBAC; the
+# ServiceAccount then needs the same grants.
+rbac:
+  create: true
+
+serviceAccount:
+  create: true
+  name: ""           # defaults to the release's full name
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+
+# In-flight activities get 20s to finish after SIGTERM (worker_init.py); keep
+# the pod's grace period above it.
+terminationGracePeriodSeconds: 30
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+podAnnotations: {}
