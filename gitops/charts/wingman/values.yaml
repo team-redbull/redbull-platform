@@ -63,19 +63,19 @@ image:
 
   day1:
     repository: ghcr.io/team-redbull/wingman-day1
-    tag: "3.69.0"
+    tag: "3.70.0"
     digest: ""
     pullPolicy: IfNotPresent
 
   day2:
     repository: ghcr.io/team-redbull/wingman-day2
-    tag: "3.69.0"
+    tag: "3.70.0"
     digest: ""
     pullPolicy: IfNotPresent
 
   web:
     repository: ghcr.io/team-redbull/wingman-web
-    tag: "3.69.0"
+    tag: "3.70.0"
     digest: ""
     pullPolicy: IfNotPresent
 
